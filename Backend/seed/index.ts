@@ -8,9 +8,10 @@
  */
 import { prisma } from '../src/lib/prisma';
 import { cleanupDatabase } from './cleanup';
-import { PASSWORDS, REZA_ADMIN, SUPERADMIN } from './constants';
+import { PASSWORDS, REZA_ADMIN, SPA_ROYAL_ADMIN, SUPERADMIN } from './constants';
 import { seedDiscoverySalons } from './discovery-salons';
 import { seedRezaAccount } from './reza-account';
+import { seedSpaRoyalAccount } from './spa-royal-account';
 import { seedSubscriptionPlan } from './subscription-plan';
 import { seedSuperadmin } from './superadmin';
 
@@ -22,14 +23,18 @@ async function main() {
   const plan = await seedSubscriptionPlan(prisma);
   await seedSuperadmin(prisma);
   await seedRezaAccount(prisma, plan);
+  await seedSpaRoyalAccount(prisma, plan);
 
   console.log('\n🎉 Seed complete\n');
   console.log('Logins:');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`  Pro admin (multi-salon): ${REZA_ADMIN.email} / ${PASSWORDS.rezaAdmin}`);
-  console.log(`  Superadmin:              ${SUPERADMIN.email} / ${PASSWORDS.superadmin}`);
+  console.log(`  Pro admin (multi-salon):  ${REZA_ADMIN.email} / ${PASSWORDS.rezaAdmin}`);
+  console.log(`  Spa Royal admin:          ${SPA_ROYAL_ADMIN.email} / ${PASSWORDS.admin}`);
+  console.log(`  Superadmin:               ${SUPERADMIN.email} / ${PASSWORDS.superadmin}`);
+  console.log(`  Client:                   client1@gmail.com / ${PASSWORDS.client}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('\nReza account salons: Reza Salon Casablanca + Reza Salon Rabat');
+  console.log('\nReza account:   Reza Salon Casablanca + Reza Salon Rabat');
+  console.log('Spa Royal:      Spa Royal Casablanca + Spa Royal 2');
 }
 
 main()

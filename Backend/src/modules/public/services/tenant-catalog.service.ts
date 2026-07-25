@@ -107,6 +107,7 @@ export class TenantCatalogService {
         phone: true,
         avatar: true,
         isActive: true,
+        agendaSettings: true,
         employeeServices: {
           select: {
             service: {
@@ -121,8 +122,14 @@ export class TenantCatalogService {
       }
     });
 
+    // Filter out employees with inactive/vacation status from public listing
+    const filteredEmployees = employees.filter(emp => {
+      const status = emp.agendaSettings ? (emp.agendaSettings as any).status : undefined;
+      return !status || status === 'active';
+    });
+
     // Transform employees to include services array
-    const employeesWithServices = employees.map(employee => ({
+    const employeesWithServices = filteredEmployees.map(employee => ({
       id: employee.id,
       firstName: employee.firstName,
       lastName: employee.lastName,

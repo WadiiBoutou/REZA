@@ -393,6 +393,36 @@ router.delete('/payment-methods/:id', requireRole('ADMIN', 'SUPER_ADMIN'), (req,
 );
 
 /**
+ * GET /api/tenant/settings/accepted-payment-methods
+ * Get accepted payment methods list
+ */
+router.get('/settings/accepted-payment-methods', (req, res, next) => tenantController.getAcceptedPaymentMethods(req, res, next));
+
+/**
+ * POST /api/tenant/settings/accepted-payment-methods
+ * Add an accepted payment method
+ */
+router.post('/settings/accepted-payment-methods', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) => tenantController.addAcceptedPaymentMethod(req, res, next));
+
+/**
+ * DELETE /api/tenant/settings/accepted-payment-methods/:name
+ * Delete an accepted payment method
+ */
+router.delete('/settings/accepted-payment-methods/:name', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) => tenantController.deleteAcceptedPaymentMethod(req, res, next));
+
+/**
+ * GET /api/tenant/settings/auto-confirm
+ * Get auto-confirm settings
+ */
+router.get('/settings/auto-confirm', (req, res, next) => tenantController.getAutoConfirmSettings(req, res, next));
+
+/**
+ * PUT /api/tenant/settings/auto-confirm
+ * Update auto-confirm settings
+ */
+router.put('/settings/auto-confirm', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) => tenantController.updateAutoConfirmSettings(req, res, next));
+
+/**
  * GET /api/tenant/header-image
  * Get header image URL for the tenant
  */
@@ -412,6 +442,30 @@ router.post('/upload-header-image', requireRole('ADMIN', 'SUPER_ADMIN', 'STAFF',
  */
 router.post('/upload-cover-image', requireRole('ADMIN', 'SUPER_ADMIN'), upload.single('coverImage'), (req, res, next) =>
   tenantController.uploadCoverImage(req, res, next)
+);
+
+/**
+ * GET /api/tenant/subscription-invoices
+ * List SUBSCRIPTION-type invoices for this tenant's account
+ */
+router.get('/subscription-invoices', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) =>
+  tenantController.getSubscriptionInvoices(req, res, next)
+);
+
+/**
+ * GET /api/tenant/billing-payment-method
+ * Get the platform-billing payment method
+ */
+router.get('/billing-payment-method', (req, res, next) =>
+  tenantController.getBillingPaymentMethod(req, res, next)
+);
+
+/**
+ * PUT /api/tenant/billing-payment-method
+ * Set the platform-billing payment method
+ */
+router.put('/billing-payment-method', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) =>
+  tenantController.setBillingPaymentMethod(req, res, next)
 );
 
 export default router;

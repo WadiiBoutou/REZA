@@ -63,6 +63,44 @@ class DiscoveryService {
     );
     return List<String>.from((res['slots'] as List?) ?? []);
   }
+
+  /// Calls the backend employee-availability endpoint.
+  /// Returns: { "employees": [...], "commonEmployeeIds": [...], "services": [...] }
+  Future<Map<String, dynamic>> getEmployeeAvailability({
+    required String tenantId,
+    required String date,
+    required String startTime,
+    required List<String> serviceIds,
+  }) async {
+    final qs = StringBuffer('date=${Uri.encodeQueryComponent(date)}');
+    qs.write('&startTime=${Uri.encodeQueryComponent(startTime)}');
+    for (final id in serviceIds) {
+      qs.write('&serviceIds=${Uri.encodeQueryComponent(id)}');
+    }
+    final res = await apiClient.get(
+      '/public/tenant/$tenantId/employee-availability?$qs',
+    );
+    return res;
+  }
+
+  /// Resolves cross-participant conflicts via backend backtracking.
+  /// POST /public/tenant/:tenantId/resolve-conflicts
+  /// Returns: { resolved, conflict, message?, assignments?: [{ index, employeeId, locked, autoAssigned }] }
+  Future<Map<String, dynamic>> resolveConflicts({
+    required String tenantId,
+    required String date,
+    required int changedParticipantIndex,
+    String? selectedEmployeeId,
+    required List<Map<String, dynamic>> participants,
+  }) async {
+    final body = <String, dynamic>{
+      'date': date,
+      'changedParticipantIndex': changedParticipantIndex,
+      'selectedEmployeeId': selectedEmployeeId,
+      'participants': participants,
+    };
+    return apiClient.post('/public/tenant/$tenantId/resolve-conflicts', body);
+  }
 }
 
 final discoveryService = DiscoveryService();

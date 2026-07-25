@@ -736,10 +736,10 @@ export default function SalonDetail() {
                   {salonData.description && (
                     <p className="text-gray-700 leading-relaxed text-base">{salonData.description}</p>
                   )}
-                  {salonData.city && (
+                  {salonData.address && (
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <MapPin className="w-4 h-4 text-gray-800" />
-                      <span>Situé à {salonData.city}</span>
+                      <span>Situé à {salonData.address}</span>
                     </div>
                   )}
                 </div>
@@ -786,8 +786,8 @@ export default function SalonDetail() {
                     <div className="flex items-start gap-4">
                       <MapPin className="w-5 h-5 text-gray-900 flex-shrink-0" />
                       <div className="leading-tight">
-                        <p className="text-gray-900 mb-1.5">{salonData.city ? `${salonData.address ? salonData.address + ', ' : ''}${salonData.city}` : 'Racine, Casablanca'}</p>
-                        <a href={`https://maps.google.com/?q=${encodeURIComponent(salonData.address || salonData.city || 'Casablanca')}`} target="_blank" rel="noopener noreferrer" className="text-[#5C3BFE] hover:underline font-medium">
+                        <p className="text-gray-900 mb-1.5">{salonData.address || 'Racine, Casablanca'}</p>
+                        <a href={`https://maps.google.com/?q=${encodeURIComponent(salonData.address || 'Casablanca')}`} target="_blank" rel="noopener noreferrer" className="text-[#5C3BFE] hover:underline font-medium">
                           Afficher l&apos;itinéraire
                         </a>
                       </div>
@@ -1089,6 +1089,7 @@ export default function SalonDetail() {
         salonServices={salonData.services}
         salonId={salon?.id}
         employees={employees}
+        blockedDates={salon?.settings?.businessHours?.blockedDates || []}
         slotsLoading={slotsLoading}
         slotsError={slotsError}
         lastUpdated={lastUpdated}

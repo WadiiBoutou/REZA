@@ -14,7 +14,7 @@ import 'agenda/agenda_screen.dart';
 import 'clients/clients_screen.dart';
 import 'caisse/caisse_screen.dart';
 import 'admin/admin_screen.dart';
-import '../widgets/new_appointment_modal.dart';
+import '../widgets/appointment_modal.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});

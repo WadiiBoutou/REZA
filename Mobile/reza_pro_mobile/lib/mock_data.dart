@@ -4,7 +4,7 @@ import 'services/session_store.dart';
 import 'services/auth_service.dart';
 
 // Toggle this to enable/disable mock data
-const bool useMockData = true;
+const bool useMockData = false;
 
 // Salon images provided by user
 const String salon1ImageUrl =

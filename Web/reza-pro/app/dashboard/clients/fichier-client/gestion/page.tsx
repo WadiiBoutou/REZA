@@ -117,6 +117,7 @@ export default function ClientsGestionPage() {
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [createTenantId, setCreateTenantId] = useState('');
+  const [autoConfirmGlobal, setAutoConfirmGlobal] = useState<boolean | null>(null);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -124,8 +125,19 @@ export default function ClientsGestionPage() {
     phone: '',
     address: '',
     status: 'Active' as 'Active' | 'Inactive',
-    notes: ''
+    notes: '',
+    autoConfirmOverride: 'default' as 'default' | 'auto' | 'manual'
   });
+
+  // Fetch global auto-confirm default
+  const fetchAutoConfirmDefault = async () => {
+    try {
+      const res = await api.getAutoConfirmSettings();
+      setAutoConfirmGlobal(res.enabled);
+    } catch {
+      setAutoConfirmGlobal(false);
+    }
+  };
 
   // Fetch clients from API
   const fetchClients = async () => {
@@ -193,10 +205,11 @@ export default function ClientsGestionPage() {
     }
   };
 
-  // Fetch clients on mount and when filters change
+  // Fetch clients and auto-confirm default on mount
   useEffect(() => {
     if (user) {
       fetchClients();
+      fetchAutoConfirmDefault();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, salonFilterKey]);
@@ -225,13 +238,17 @@ export default function ClientsGestionPage() {
       phone: '',
       address: '',
       status: 'Active',
-      notes: ''
+      notes: '',
+      autoConfirmOverride: 'default'
     });
     setShowModal(true);
   };
 
   const handleEditClient = (client: Client) => {
     setEditingClient(client);
+    const notes = client.notes || '';
+    const acoMatch = notes.match(/__ACO:(AUTO|MANUAL)/);
+    const autoConfirmOverride = acoMatch ? (acoMatch[1] === 'AUTO' ? 'auto' : 'manual') : 'default';
     setFormData({
       firstName: client.firstName,
       lastName: client.lastName,
@@ -239,7 +256,8 @@ export default function ClientsGestionPage() {
       phone: client.phone,
       address: client.address || '',
       status: client.status,
-      notes: client.notes || ''
+      notes,
+      autoConfirmOverride
     });
     setShowModal(true);
   };
@@ -295,7 +313,7 @@ export default function ClientsGestionPage() {
           phone: formData.phone,
           address: formData.address || undefined,
           status: formData.status === 'Active' ? 'ACTIVE' : 'INACTIVE',
-          notes: formData.notes || undefined
+          notes: (formData.notes?.replace(/__ACO:(AUTO|MANUAL)/g, '').trim() || '') + (formData.autoConfirmOverride !== 'default' ? `\n__ACO:${formData.autoConfirmOverride === 'auto' ? 'AUTO' : 'MANUAL'}` : '') || undefined
         });
         toast.success(`Client "${firstName} ${lastName}" modifié avec succès`);
       } else {
@@ -312,7 +330,7 @@ export default function ClientsGestionPage() {
           phone: formData.phone,
           address: formData.address || undefined,
           status: formData.status === 'Active' ? 'ACTIVE' : 'INACTIVE',
-          notes: formData.notes || undefined,
+          notes: (formData.notes?.replace(/__ACO:(AUTO|MANUAL)/g, '').trim() || '') + (formData.autoConfirmOverride !== 'default' ? `\n__ACO:${formData.autoConfirmOverride === 'auto' ? 'AUTO' : 'MANUAL'}` : '') || undefined,
           ...(createTenantId ? { tenantId: createTenantId } : {}),
         });
         toast.success(`Client "${firstName} ${lastName}" créé avec succès`);
@@ -480,6 +498,33 @@ export default function ClientsGestionPage() {
                 Liste
               </button>
             </div>
+
+            <div className="h-8 w-px bg-gray-200"></div>
+
+            {/* Global Auto-Confirm Default Toggle */}
+            {autoConfirmGlobal !== null && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const next = !autoConfirmGlobal;
+                  setAutoConfirmGlobal(next);
+                  try {
+                    await api.updateAutoConfirmSettings(next);
+                    toast.success(next ? 'Confirmation automatique activée' : 'Confirmation manuelle par défaut');
+                  } catch {
+                    setAutoConfirmGlobal(!next);
+                    toast.error('Erreur lors de la mise à jour');
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-full border border-gray-200 hover:border-gray-300 transition-colors flex items-center gap-2 whitespace-nowrap"
+                title="Défaut pour les nouveaux clients sans override explicite"
+              >
+                <span className="text-gray-500 text-xs">Confirmation par défaut</span>
+                <span className={autoConfirmGlobal ? 'text-emerald-600 font-medium' : 'text-amber-600 font-medium'}>
+                  {autoConfirmGlobal ? 'Auto ▾' : 'Manuel ▾'}
+                </span>
+              </button>
+            )}
 
             <div className="h-8 w-px bg-gray-200"></div>
 
@@ -1002,6 +1047,34 @@ export default function ClientsGestionPage() {
                         }`}
                     >
                       Inactif
+                    </button>
+                  </div>
+                </div>
+
+                {/* Auto-confirm override */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Confirmation automatique</h3>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, autoConfirmOverride: 'default' })}
+                      className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${formData.autoConfirmOverride === 'default' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-600 border border-gray-200 hover:border-gray-300'}`}
+                    >
+                      Par défaut
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, autoConfirmOverride: 'auto' })}
+                      className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${formData.autoConfirmOverride === 'auto' ? 'bg-emerald-600 text-white' : 'bg-gray-50 text-gray-600 border border-gray-200 hover:border-gray-300'}`}
+                    >
+                      Auto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, autoConfirmOverride: 'manual' })}
+                      className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${formData.autoConfirmOverride === 'manual' ? 'bg-amber-600 text-white' : 'bg-gray-50 text-gray-600 border border-gray-200 hover:border-gray-300'}`}
+                    >
+                      Manuel
                     </button>
                   </div>
                 </div>

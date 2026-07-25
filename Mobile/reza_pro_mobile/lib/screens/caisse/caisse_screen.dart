@@ -603,11 +603,27 @@ class _NewSaleSheet extends StatefulWidget {
 class _NewSaleSheetState extends State<_NewSaleSheet> {
   String? _clientId;
   final Set<String> _serviceIds = {};
+  Map<String, String?> _serviceEmployeeIds = {};
+  List<Map<String, dynamic>> _employees = [];
   String _paymentMethod = 'CASH';
   final _amountCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   bool _amountOverridden = false;
   bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Use addPostFrameCallback so we can safely access the provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final vm = context.read<CaisseViewModel>();
+        setState(() {
+          _employees = List.from(vm.employees);
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -641,6 +657,7 @@ class _NewSaleSheetState extends State<_NewSaleSheet> {
         amountOverride: _amountOverridden ? amount : null,
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
         tenantId: auth.activeTenantId,
+        serviceEmployeeIds: _serviceEmployeeIds,
       );
       if (!mounted) return;
       Navigator.pop(context);
@@ -755,26 +772,87 @@ class _NewSaleSheetState extends State<_NewSaleSheet> {
                       final name = s['name']?.toString() ?? 'Service';
                       final price = vm.servicePrice(s);
                       final selected = _serviceIds.contains(id);
-                      return CheckboxListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        value: selected,
-                        title: Text(name, style: GoogleFonts.outfit(fontSize: 14)),
-                        subtitle: Text('${price.toStringAsFixed(0)} DH',
-                            style: GoogleFonts.outfit(
-                                fontSize: 12, color: AppColors.textGray)),
-                        onChanged: _submitting
-                            ? null
-                            : (v) {
-                                setState(() {
-                                  if (v == true) {
-                                    _serviceIds.add(id);
-                                  } else {
-                                    _serviceIds.remove(id);
-                                  }
-                                  _recalcAmount(vm);
-                                });
-                              },
+                      return Column(
+                        key: ValueKey(id),
+                        children: [
+                          CheckboxListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            value: selected,
+                            title: Text(name, style: GoogleFonts.outfit(fontSize: 14)),
+                            subtitle: Text('${price.toStringAsFixed(0)} DH',
+                                style: GoogleFonts.outfit(
+                                    fontSize: 12, color: AppColors.textGray)),
+                            onChanged: _submitting
+                                ? null
+                                : (v) {
+                                    setState(() {
+                                      if (v == true) {
+                                        _serviceIds.add(id);
+                                        if (!_serviceEmployeeIds.containsKey(id)) {
+                                          _serviceEmployeeIds[id] = _employees.isNotEmpty
+                                              ? _employees.first['id']?.toString()
+                                              : null;
+                                        }
+                                      } else {
+                                        _serviceIds.remove(id);
+                                        _serviceEmployeeIds.remove(id);
+                                      }
+                                      _recalcAmount(vm);
+                                    });
+                                  },
+                          ),
+                          if (selected) ...[
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8, bottom: 8, right: 8),
+                              child: Row(
+                                children: [
+                                  const SizedBox(width: 28),
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value: _serviceEmployeeIds[id],
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                        labelText: 'Employé (optionnel)',
+                                        labelStyle: GoogleFonts.outfit(fontSize: 12),
+                                        border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(10)),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 6),
+                                        isDense: true,
+                                      ),
+                                      items: [
+                                        const DropdownMenuItem(
+                                          value: '',
+                                          child: Text('Aucun',
+                                              style: TextStyle(fontSize: 13)),
+                                        ),
+                                        ..._employees.map((e) {
+                                          final eid = e['id']?.toString() ?? '';
+                                          final ename =
+                                              '${e['firstName'] ?? ''} ${e['lastName'] ?? ''}'
+                                                  .trim();
+                                          return DropdownMenuItem(
+                                            value: eid,
+                                            child: Text(ename.isEmpty ? 'Employé' : ename,
+                                                style: const TextStyle(fontSize: 13)),
+                                          );
+                                        }),
+                                      ],
+                                      onChanged: _submitting
+                                          ? null
+                                          : (v) {
+                                              setState(() {
+                                                _serviceEmployeeIds[id] = v;
+                                              });
+                                            },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
                       );
                     }),
                   const SizedBox(height: 12),

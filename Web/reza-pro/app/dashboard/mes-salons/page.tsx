@@ -8,6 +8,7 @@ import {
   Check,
   Loader2,
   CreditCard,
+  FileText,
   ImagePlus,
   X,
   Pencil,
@@ -482,6 +483,13 @@ export default function MesSalonsPage() {
                 : 'Vos salons sont visibles par les clients.'
               : 'Vos salons ne sont pas visibles par les clients tant que vous n\u2019êtes pas abonné.'}
           </p>
+          <Link
+            href="/dashboard/admin/mes-factures/liste-des-factures"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#002366] hover:underline mt-1"
+          >
+            <FileText size={12} />
+            Voir les factures
+          </Link>
         </div>
         {!subscriptionActive && (
           <button

@@ -11,7 +11,7 @@ import '../../services/api_client.dart';
 import '../../viewmodels/agenda_viewmodel.dart';
 import '../../viewmodels/new_appointment_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
-import '../../widgets/new_appointment_modal.dart';
+import '../../widgets/appointment_modal.dart';
 import '../../widgets/pro_drawer.dart';
 
 /// Timed block after classic calendar column-packing (overlap graph).
@@ -480,6 +480,31 @@ class _AgendaBody extends StatelessWidget {
     }
   }
 
+  void _openNewAppointmentAtSlot(
+    BuildContext context,
+    AgendaViewModel vm, {
+    required int hour,
+    required int minute,
+  }) {
+    final timeStr =
+        '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => NewAppointmentModal(
+        selectedDate: vm.selectedDate,
+        initialTime: timeStr,
+        onAdd: (_) async {
+          await Future.wait([
+            vm.loadAppointments(),
+            vm.loadMonthAppointments(forMonth: vm.selectedDate, force: true),
+          ]);
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (vm.loading) {
@@ -536,15 +561,27 @@ class _AgendaBody extends StatelessWidget {
                     const gap = 2.0;
                     return Stack(
                       children: [
+                        // Tap targets for each hour row (empty slot → create appointment)
                         ...List.generate(11, (index) {
+                          final hour = 8 + index;
                           return Positioned(
                             top: index * 70.0,
                             left: 0,
                             right: 0,
-                            child:
-                                Container(height: 1, color: Colors.grey[100]),
+                            height: 70,
+                            child: GestureDetector(
+                              onTap: () => _openNewAppointmentAtSlot(
+                                context,
+                                vm,
+                                hour: hour,
+                                minute: 0,
+                              ),
+                              child:
+                                  Container(height: 1, color: Colors.grey[100]),
+                            ),
                           );
                         }),
+                        // Appointment blocks
                         ...packed.map((slot) {
                           final app = slot.appointment;
                           var blockColor = const Color(0xFF60A5FA);
@@ -557,13 +594,17 @@ class _AgendaBody extends StatelessWidget {
                           }
                           final colW = totalW / slot.columnCount;
                           final left = slot.column * colW;
-                          final width =
-                              math.max(colW - gap, 12.0);
+                          final width = math.max(colW - gap, 12.0);
+                          final blockHeight = math.max(slot.height - 2, 18).toDouble();
+                          final contentHeight = blockHeight - 8; // minus padding
+                          // Determine layout intensity based on available height
+                          final showServicesRow = contentHeight >= 24;
+                          final showNameRow = contentHeight >= 14;
                           return Positioned(
                             top: slot.top,
                             left: left,
                             width: width,
-                            height: math.max(slot.height - 2, 18),
+                            height: blockHeight,
                             child: GestureDetector(
                               onTap: () {
                                 showModalBottomSheet(
@@ -589,35 +630,45 @@ class _AgendaBody extends StatelessWidget {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      '${app.time} - ${app.clientName}',
-                                      style: GoogleFonts.outfit(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
+                                    if (showNameRow)
+                                      Flexible(
+                                        child: Text(
+                                          '${app.time} - ${app.clientName}',
+                                          style: GoogleFonts.outfit(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
                                       ),
-                                      overflow: TextOverflow.ellipsis,
-                                      maxLines: 2,
-                                    ),
-                                    // Show all services or single service
-                                    if (app.services.length > 1)
-                                      ...app.services.map((service) => Text(
-                                        service.name,
-                                        style: GoogleFonts.outfit(
-                                          color: Colors.white.withOpacity(0.9),
-                                          fontSize: 10,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ))
-                                    else
-                                      Text(
-                                        app.service,
-                                        style: GoogleFonts.outfit(
-                                          color: Colors.white.withOpacity(0.9),
-                                          fontSize: 10,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
+                                    if (showServicesRow)
+                                      Flexible(
+                                        child: app.services.length > 1
+                                            ? Text(
+                                                app.services
+                                                    .map((s) => s.name)
+                                                    .join(', '),
+                                                style: GoogleFonts.outfit(
+                                                  color: Colors.white
+                                                      .withOpacity(0.9),
+                                                  fontSize: 10,
+                                                ),
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                maxLines: 1,
+                                              )
+                                            : Text(
+                                                app.service,
+                                                style: GoogleFonts.outfit(
+                                                  color: Colors.white
+                                                      .withOpacity(0.9),
+                                                  fontSize: 10,
+                                                ),
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                              ),
                                       ),
                                   ],
                                 ),

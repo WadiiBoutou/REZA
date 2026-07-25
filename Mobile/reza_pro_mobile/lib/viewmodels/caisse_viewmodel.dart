@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../services/api_client.dart';
 import '../services/cash_transaction_service.dart';
 import '../services/client_service.dart';
+import '../services/employee_service.dart';
 import '../services/invoice_service.dart';
 import '../services/service_catalog_service.dart';
 
@@ -12,6 +13,7 @@ class CaisseViewModel extends ChangeNotifier {
   List<Map<String, dynamic>> transactions = [];
   List<Map<String, dynamic>> clients = [];
   List<Map<String, dynamic>> catalogServices = [];
+  List<Map<String, dynamic>> employees = [];
   bool loading = true;
   bool saleBusy = false;
   String? error;
@@ -135,9 +137,11 @@ class CaisseViewModel extends ChangeNotifier {
       final results = await Future.wait([
         clientService.list(limit: 200),
         serviceCatalogService.list(),
+        employeeService.list(active: true),
       ]);
       clients = results[0];
       catalogServices = results[1];
+      employees = results[2];
       notifyListeners();
     } catch (_) {}
   }
@@ -166,6 +170,7 @@ class CaisseViewModel extends ChangeNotifier {
     double? amountOverride,
     String? notes,
     String? tenantId,
+    Map<String, String?>? serviceEmployeeIds,
   }) async {
     if (clientId.isEmpty) {
       throw ApiException('Veuillez sélectionner un client');
@@ -179,10 +184,12 @@ class CaisseViewModel extends ChangeNotifier {
         orElse: () => <String, dynamic>{},
       );
       final price = servicePrice(s);
+      final empId = serviceEmployeeIds?[id];
       return {
         'serviceId': id,
         if (price > 0) 'price': price,
         'quantity': 1,
+        if (empId != null && empId.isNotEmpty) 'employeeId': empId,
       };
     }).toList();
 

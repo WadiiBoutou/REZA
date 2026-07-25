@@ -750,11 +750,17 @@ const PhotoManagement = () => {
               >
                 {/* Photo */}
                 <div className="relative aspect-[4/3] overflow-hidden group">
+                  {photo.url ? (
                   <img
                     src={photo.url}
                     alt={photo.title}
                     className="w-full h-full object-cover"
                   />
+                  ) : (
+                  <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+                    Image non disponible
+                  </div>
+                  )}
                   {/* Status Badge */}
                   <div className="absolute top-3 right-3">
                     {photo.status === 'validated' ? (

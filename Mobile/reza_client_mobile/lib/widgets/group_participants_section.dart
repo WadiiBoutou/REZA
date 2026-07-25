@@ -9,6 +9,10 @@ class GuestParticipant {
   final String? familyMemberId;
   final bool sameServicesAsBooker;
   final List<String> serviceIds;
+  final bool followsBookerSchedule;
+  final String? customDate;
+  final String? customTime;
+  final String? employeeId;
 
   const GuestParticipant({
     required this.id,
@@ -16,12 +20,20 @@ class GuestParticipant {
     this.familyMemberId,
     this.sameServicesAsBooker = true,
     this.serviceIds = const [],
+    this.followsBookerSchedule = true,
+    this.customDate,
+    this.customTime,
+    this.employeeId,
   });
 
   GuestParticipant copyWith({
     String? name,
     bool? sameServicesAsBooker,
     List<String>? serviceIds,
+    bool? followsBookerSchedule,
+    String? customDate,
+    String? customTime,
+    String? employeeId,
   }) {
     return GuestParticipant(
       id: id,
@@ -29,6 +41,10 @@ class GuestParticipant {
       familyMemberId: familyMemberId,
       sameServicesAsBooker: sameServicesAsBooker ?? this.sameServicesAsBooker,
       serviceIds: serviceIds ?? this.serviceIds,
+      followsBookerSchedule: followsBookerSchedule ?? this.followsBookerSchedule,
+      customDate: customDate ?? this.customDate,
+      customTime: customTime ?? this.customTime,
+      employeeId: employeeId ?? this.employeeId,
     );
   }
 }

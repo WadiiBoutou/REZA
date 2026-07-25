@@ -42,7 +42,7 @@ export const createSaleSchema = z.object({
 });
 
 export const updateInvoiceSchema = z.object({
-  status: z.enum(['PENDING', 'PAID', 'CANCELLED', 'REFUNDED']).optional(),
+  status: z.enum(['PENDING', 'PAID', 'CANCELLED', 'REFUNDED', 'OVERDUE']).optional(),
   paymentMethod: paymentMethodEnum.optional(),
   paidAt: z.string().optional(),
   notes: z.string().optional()

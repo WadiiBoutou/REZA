@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Calendar, Clock, User, Phone, Mail, X, ChevronLeft, ChevronRight, MoreVertical, Plus, CalendarIcon, MapPin, Image as ImageIcon, Check, UserX, Flag, AlertTriangle, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import DatePickerDemo from '@/components/ui/datepicker';
+import { TimePicker } from '@/components/ui/time-picker';
 import ReactSelect from 'react-select';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -279,11 +279,18 @@ const canConfirmStatus = (status: string) => status === 'pending';
 const canMarkAbsentOrDone = (status: string) =>
   status === 'pending' || status === 'confirmed' || status === 'in_progress';
 
+const DEFAULT_PAYMENT_METHODS = ['Espèces', 'Carte', 'Virement', 'Chèque'];
 const PAYMENT_METHOD_LABELS: Record<FinalizePaymentMethod, string> = {
   CASH: 'Espèces',
   CARD: 'Carte',
   BANK_TRANSFER: 'Virement',
   CHECK: 'Chèque',
+};
+const API_PAYMENT_KEY: Record<string, FinalizePaymentMethod> = {
+  'Espèces': 'CASH',
+  'Carte': 'CARD',
+  'Virement': 'BANK_TRANSFER',
+  'Chèque': 'CHECK',
 };
 
 // Extract unique employee display info from appointment (per-service or top-level)
@@ -398,7 +405,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
   );
   const [date, setDate] = useState<Date | undefined>(initialDate);
   const [time, setTime] = useState(initialTime || '');
-  const [serviceIds, setServiceIds] = useState<string[]>([]);
+  const [selectedServices, setSelectedServices] = useState<Array<{id: string, name: string, duration: number}>>([]);
+  const serviceIds = selectedServices.map((s) => s.id);
   const [notes, setNotes] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Array<{id: string, name: string, duration: number}>>([]);
@@ -419,11 +427,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
   // Manually overridden assignments: serviceId -> employeeId
   const [overrides, setOverrides] = useState<Record<string, string>>({});
 
-  // Total duration computed from selected services
-  const totalDuration = serviceIds.reduce((sum, id) => {
-    const s = services.find((sv) => sv.id === id);
-    return sum + (s?.duration || 0);
-  }, 0);
+  // Total duration computed from selected services (in order)
+  const totalDuration = selectedServices.reduce((sum, s) => sum + (s.duration || 0), 0);
 
   // Fetch clients, services, and employees from API (scoped to create salon when multi)
   useEffect(() => {
@@ -488,7 +493,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
 
     const timer = setTimeout(async () => {
       try {
-        const result = await api.clientDiagnostics({ date: dateStr, startTime: normalizedTime });
+        const result = await api.clientDiagnostics({ date: dateStr, startTime: normalizedTime, tenantId: createTenantId || undefined });
         setClientAlerts(result.clientAlerts as Record<string, PlanAlert[]>);
       } catch (err) {
         console.error('Error fetching client diagnostics:', err);
@@ -502,7 +507,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
   useEffect(() => {
     if (!date || !time || serviceIds.length === 0) {
       setPlan(null);
-      setOverrides({});
+      // Only reset overrides if non-empty to avoid infinite loop:
+      // Object.is({}, {}) === false, so setOverrides({}) always triggers a re-render.
+      if (Object.keys(overrides).length > 0) setOverrides({});
       return;
     }
 
@@ -515,11 +522,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
         if (/^\d{1,2}:\d{2}:\d{2}$/.test(time)) normalizedTime = time.slice(0, 5);
         else if (/^\d{1,2}$/.test(time)) normalizedTime = time.padStart(2, '0') + ':00';
 
-        const selectedServiceObjects = services.filter((s) => serviceIds.includes(s.id));
         const hasOverrides = Object.keys(overrides).length > 0;
         let assignments: { serviceId: string; employeeId: string | null }[] | undefined;
         if (hasOverrides && plan) {
-          assignments = selectedServiceObjects.map((s) => ({
+          assignments = selectedServices.map((s) => ({
             serviceId: s.id,
             employeeId: overrides[s.id] || plan.recommendedAssignment.find((a) => a.serviceId === s.id)?.employeeId || null,
           }));
@@ -530,6 +536,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
           date: dateStr,
           startTime: normalizedTime,
           clientId: selectedClient?.id,
+          tenantId: createTenantId || undefined,
           assignments,
         });
         if (currentId !== planRequestId.current) return;
@@ -545,7 +552,11 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
     }, PLAN_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [date, time, serviceIds, selectedClient?.id, JSON.stringify(overrides)]);
+  // Dependency uses join(',') not serviceIds array ref to avoid infinite re-fetch:
+  // .map() creates a new array reference every render, which would make the effect
+  // see a "change" every time setPlan() causes a re-render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, time, serviceIds.join(','), selectedClient?.id, JSON.stringify(overrides)]);
 
   const handleClientSelect = (client: Client) => {
     setSelectedClient(client);
@@ -571,11 +582,10 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
     if (/^\d{1,2}:\d{2}:\d{2}$/.test(time)) normalizedTime = time.slice(0, 5);
     else if (/^\d{1,2}$/.test(time)) normalizedTime = time.padStart(2, '0') + ':00';
 
-    const selectedServiceObjects = services.filter(s => serviceIds.includes(s.id));
-    const serviceName = selectedServiceObjects.map((s) => s.name).join(', ');
+    const serviceName = selectedServices.map((s) => s.name).join(', ');
 
-    // Build services array with per-service employee assignments
-    const servicesPayload = selectedServiceObjects.map((s) => ({
+    // Build services array with per-service employee assignments (respects order)
+    const servicesPayload = selectedServices.map((s) => ({
       serviceId: s.id,
       employeeId: overrides[s.id] || plan?.recommendedAssignment.find((a) => a.serviceId === s.id)?.employeeId || null,
     }));
@@ -655,7 +665,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
               onValueChange={(id) => {
                 setCreateTenantId(id);
                 setSelectedClient(null);
-                setServiceIds([]);
+                setSelectedServices([]);
               }}
             >
               <SelectTrigger className="rounded-full px-4 py-2">
@@ -780,37 +790,324 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
         <div className="space-y-4">
           <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Services</h3>
           <div className="space-y-2">
-            <Label htmlFor="service">Sélectionner un ou plusieurs services</Label>
-            <ReactSelect
-              instanceId="service-select"
-              isLoading={loading}
-              isDisabled={loading || services.length === 0}
-              placeholder={loading ? "Chargement..." : "Choisir les services"}
-              noOptionsMessage={() =>"Aucun service trouvé"}
-              isMulti
-              options={services.map((s) => ({ value: s.id, label: `${s.name} (${s.duration} min)`, service: s }))}
-              onChange={(options: any) => {
-                setServiceIds((options || []).map((option: any) => option.value));
-              }}
-              value={serviceIds.map((id) => {
-                const s = services.find((sv) => sv.id === id);
-                return s ? { value: s.id, label: `${s.name} (${s.duration} min)`, service: s } : null;
-              }).filter(Boolean) as any[]}
-              className="mt-2 text-sm"
-              styles={{
-                control: (base) => ({
-                  ...base,
-                  borderRadius: '9999px',
-                  padding: '2px 8px',
-                  borderColor: '#e5e7eb',
-                  boxShadow: 'none',
-                  '&:hover': {
-                    borderColor: '#d1d5db'
+            <Label>Sélectionner les prestations</Label>
+            <button
+              type="button"
+              disabled={loading || services.length === 0}
+              onClick={() => {
+                const overlay = document.createElement('div');
+                overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4 animate-fadeIn';
+                overlay.onclick = (e: MouseEvent) => { if (e.target === overlay) closePicker(); };
+
+                const panel = document.createElement('div');
+                panel.className = 'bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col animate-slideUp overflow-hidden';
+
+                const closePicker = () => { document.body.removeChild(overlay); };
+
+                // Header
+                const header = document.createElement('div');
+                header.className = 'flex items-center justify-between px-6 py-4 border-b border-gray-100';
+                header.innerHTML = '<h2 class="text-lg font-semibold text-gray-900">Sélectionner les prestations</h2>';
+
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'p-1 text-gray-400 hover:text-gray-900 transition-colors';
+                closeBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+                closeBtn.onclick = closePicker;
+                header.appendChild(closeBtn);
+                panel.appendChild(header);
+
+                // Body - flex row
+                const body = document.createElement('div');
+                body.className = 'flex flex-1 overflow-hidden';
+
+                // LEFT: available services with checkboxes
+                const leftCol = document.createElement('div');
+                leftCol.className = 'flex-1 overflow-y-auto border-r border-gray-100 p-4 space-y-1';
+
+                const leftTitle = document.createElement('div');
+                leftTitle.className = 'text-xs font-medium text-gray-400 uppercase tracking-wider mb-3';
+                leftTitle.textContent = 'Prestations disponibles';
+                leftCol.appendChild(leftTitle);
+
+                const state: {
+                  selected: Array<{id: string; name: string; duration: number}>;
+                  selectedIds: Set<string>;
+                  dragIndex: number;
+                } = {
+                  selected: selectedServices.map((s) => ({ ...s })),
+                  selectedIds: new Set(selectedServices.map((s) => s.id)),
+                  dragIndex: -1,
+                };
+
+                // RIGHT: selected services reorderable list
+                const rightCol = document.createElement('div');
+                rightCol.className = 'w-72 overflow-y-auto p-4 space-y-1';
+
+                const rightTitle = document.createElement('div');
+                rightTitle.className = 'text-xs font-medium text-gray-400 uppercase tracking-wider mb-3';
+                rightTitle.textContent = "Ordre d'exécution";
+                rightCol.appendChild(rightTitle);
+
+                const rightCount = document.createElement('div');
+                rightCount.className = 'text-xs text-gray-500 mb-2 selected-count';
+                rightCol.appendChild(rightCount);
+
+                const rightEmpty = document.createElement('div');
+                rightEmpty.className = 'text-sm text-gray-400 text-center py-8 selected-empty';
+                rightEmpty.textContent = 'Aucune prestation sélectionnée';
+                rightCol.appendChild(rightEmpty);
+
+                const rightList = document.createElement('div');
+                rightList.className = 'space-y-2 selected-list';
+                rightList.style.display = state.selected.length > 0 ? 'block' : 'none';
+                rightCol.appendChild(rightList);
+
+                const updateRightPanel = () => {
+                  const totalDur = state.selected.reduce((sum, s) => sum + s.duration, 0);
+                  rightCount.textContent = state.selected.length > 0
+                    ? `${state.selected.length} prestation${state.selected.length > 1 ? 's' : ''} · ${totalDur} min`
+                    : '';
+                  rightEmpty.style.display = state.selected.length === 0 ? 'block' : 'none';
+                  rightList.style.display = state.selected.length > 0 ? 'block' : 'none';
+                  rightList.innerHTML = '';
+
+                  state.selected.forEach((svc, idx) => {
+                    const item = document.createElement('div');
+                    item.className = 'flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-grab active:cursor-grabbing';
+                    item.draggable = true;
+                    item.dataset.index = String(idx);
+
+                    const handle = document.createElement('span');
+                    handle.className = 'text-gray-400 shrink-0';
+                    handle.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 6h2v2H8V6zm6 0h2v2h-2V6zM8 11h2v2H8v-2zm6 0h2v2h-2v-2zm-6 5h2v2H8v-2zm6 0h2v2h-2v-2z"/></svg>';
+
+                    const info = document.createElement('div');
+                    info.className = 'flex-1 min-w-0';
+                    const nameSpan = document.createElement('div');
+                    nameSpan.className = 'text-sm font-medium text-gray-800 truncate';
+                    nameSpan.textContent = svc.name;
+                    const durSpan = document.createElement('div');
+                    durSpan.className = 'text-xs text-gray-500';
+                    durSpan.textContent = `${svc.duration} min`;
+                    info.appendChild(nameSpan);
+                    info.appendChild(durSpan);
+
+                    const removeBtn = document.createElement('button');
+                    removeBtn.type = 'button';
+                    removeBtn.className = 'p-1 text-red-400 hover:text-red-600 transition-colors shrink-0';
+                    removeBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+                    removeBtn.onclick = () => {
+                      state.selected.splice(idx, 1);
+                      state.selectedIds.delete(svc.id);
+                      updateCheckboxes();
+                      updateRightPanel();
+                    };
+
+                    item.appendChild(handle);
+                    item.appendChild(info);
+                    item.appendChild(removeBtn);
+
+                    item.ondragstart = () => {
+                      state.dragIndex = idx;
+                      item.classList.add('opacity-50');
+                    };
+                    item.ondragend = () => {
+                      item.classList.remove('opacity-50');
+                      state.dragIndex = -1;
+                    };
+                    item.ondragover = (e: DragEvent) => {
+                      e.preventDefault();
+                      const overIdx = Number((e.currentTarget as HTMLElement).dataset.index);
+                      if (overIdx === state.dragIndex || state.dragIndex < 0) return;
+                      const [moved] = state.selected.splice(state.dragIndex, 1);
+                      state.selected.splice(overIdx, 0, moved);
+                      state.dragIndex = overIdx;
+                      updateRightPanel();
+                      updateCheckboxes();
+                    };
+
+                    rightList.appendChild(item);
+                  });
+                };
+
+                const updateCheckboxes = () => {
+                  const checkboxes = leftCol.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+                  checkboxes.forEach((cb) => {
+                    cb.checked = state.selectedIds.has(cb.dataset.serviceId || '');
+                  });
+                  const leftDuration = leftCol.querySelector('.left-duration');
+                  if (leftDuration) {
+                    const totalDur = state.selected.reduce((sum, s) => sum + s.duration, 0);
+                    leftDuration.textContent = state.selected.length > 0
+                      ? `${state.selected.length} sélectionnée${state.selected.length > 1 ? 's' : ''} · ${totalDur} min`
+                      : '';
                   }
-                })
+                };
+
+                services.forEach((svc) => {
+                  const label = document.createElement('label');
+                  label.className = 'flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors';
+
+                  const cb = document.createElement('input');
+                  cb.type = 'checkbox';
+                  cb.dataset.serviceId = svc.id;
+                  cb.className = 'w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500';
+                  cb.checked = state.selectedIds.has(svc.id);
+
+                  const info = document.createElement('div');
+                  info.className = 'flex-1 min-w-0';
+                  const nameSpan = document.createElement('div');
+                  nameSpan.className = 'text-sm font-medium text-gray-800';
+                  nameSpan.textContent = svc.name;
+                  const durSpan = document.createElement('div');
+                  durSpan.className = 'text-xs text-gray-500';
+                  durSpan.textContent = `${svc.duration} min`;
+                  info.appendChild(nameSpan);
+                  info.appendChild(durSpan);
+
+                  cb.onchange = () => {
+                    if (cb.checked) {
+                      if (!state.selectedIds.has(svc.id)) {
+                        state.selected.push({ ...svc });
+                        state.selectedIds.add(svc.id);
+                      }
+                    } else {
+                      const idx = state.selected.findIndex((s) => s.id === svc.id);
+                      if (idx >= 0) {
+                        state.selected.splice(idx, 1);
+                        state.selectedIds.delete(svc.id);
+                      }
+                    }
+                    updateRightPanel();
+                  };
+
+                  label.appendChild(cb);
+                  label.appendChild(info);
+                  leftCol.appendChild(label);
+                });
+
+                // Duration summary under left column
+                const leftFooter = document.createElement('div');
+                leftFooter.className = 'px-4 py-2 border-t border-gray-100 text-xs text-gray-500 left-duration';
+                if (selectedServices.length > 0) {
+                  leftFooter.textContent = `${selectedServices.length} sélectionnée${selectedServices.length > 1 ? 's' : ''} · ${totalDuration} min`;
+                }
+                leftCol.appendChild(leftFooter);
+                body.appendChild(leftCol);
+                body.appendChild(rightCol);
+                panel.appendChild(body);
+
+                // Footer
+                const footer = document.createElement('div');
+                footer.className = 'flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100';
+
+                const cancelBtn = document.createElement('button');
+                cancelBtn.type = 'button';
+                cancelBtn.className = 'px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors rounded-full hover:bg-gray-100';
+                cancelBtn.textContent = 'Annuler';
+                cancelBtn.onclick = closePicker;
+
+                const confirmBtn = document.createElement('button');
+                confirmBtn.type = 'button';
+                confirmBtn.className = 'px-6 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors rounded-full';
+                confirmBtn.textContent = 'Terminé';
+                confirmBtn.onclick = () => {
+                  setSelectedServices(state.selected);
+                  closePicker();
+                };
+
+                footer.appendChild(cancelBtn);
+                footer.appendChild(confirmBtn);
+                panel.appendChild(footer);
+
+                overlay.appendChild(panel);
+                document.body.appendChild(overlay);
+                updateRightPanel();
+                updateCheckboxes();
               }}
-              isClearable
-            />
+              className="w-full flex items-center justify-between px-5 py-3.5 text-sm border border-gray-200 rounded-xl bg-white hover:bg-gray-50 hover:border-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
+            >
+              <span className={selectedServices.length === 0 ? 'text-gray-400' : 'text-gray-800 font-medium'}>
+                {selectedServices.length === 0
+                  ? 'Sélectionner des prestations'
+                  : `${selectedServices.length} prestation${selectedServices.length > 1 ? 's' : ''} · ${totalDuration} min`}
+              </span>
+              <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 5l7 7-7 7"/>
+              </svg>
+            </button>
+            {selectedServices.length > 0 && (
+              <div className="space-y-2">
+                {selectedServices.map((svc, idx) => {
+                  // Determine available employees + recommended from plan (if loaded)
+                  const planSvc = plan?.services.find((ps) => ps.serviceId === svc.id);
+                  const effectiveEmpId = overrides[svc.id] ||
+                    planSvc?.employees.find((e) => e.recommended)?.employeeId ||
+                    undefined;
+
+                  return (
+                    <div key={svc.id} className="rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
+                      {/* Service header row */}
+                      <div className="flex items-center gap-3 px-4 py-3">
+                        <span className="text-[10px] font-bold text-gray-400 bg-gray-200 w-5 h-5 rounded-full flex items-center justify-center shrink-0">{idx + 1}</span>
+                        <span className="flex-1 text-sm font-medium text-gray-800">{svc.name}</span>
+                        <span className="text-xs text-gray-400">{svc.duration} min</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedServices((prev) => prev.filter((s) => s.id !== svc.id));
+                            setOverrides((prev) => { const n = { ...prev }; delete n[svc.id]; return n; });
+                          }}
+                          className="ml-1 p-0.5 text-gray-300 hover:text-red-400 transition-colors"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        </button>
+                      </div>
+                      {/* Employee dropdown row */}
+                      <div className="px-4 pb-3 border-t border-gray-100">
+                        {planLoading ? (
+                          <div className="flex items-center gap-2 py-2 text-xs text-gray-400">
+                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                            Calcul de l’affectation...
+                          </div>
+                        ) : (
+                          <Select
+                            value={effectiveEmpId}
+                            onValueChange={(value) => setOverrides((prev) => ({ ...prev, [svc.id]: value }))}
+                          >
+                            <SelectTrigger className="w-full mt-2 rounded-full px-3 py-1.5 text-xs border-gray-200 text-gray-600">
+                              <SelectValue placeholder="Employé (optionnel)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {/* Full list when no plan; plan-filtered list when available */}
+                              {planSvc ? (
+                                planSvc.employees.map((emp) => (
+                                  <SelectItem key={emp.employeeId} value={emp.employeeId}>
+                                    <div className="flex items-center gap-2">
+                                      <span>{emp.employeeName}</span>
+                                      {emp.recommended && (
+                                        <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">Recommandé</span>
+                                      )}
+                                      {!emp.available && emp.reason && (
+                                        <span className="text-[10px] text-amber-500">{emp.reason}</span>
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                ))
+                              ) : (
+                                employees.map((emp) => (
+                                  <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
           {totalDuration > 0 && (
             <div className="text-sm text-gray-500">
@@ -856,77 +1153,11 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
             <div className="space-y-2">
               <Label htmlFor="time" className="mb-2">Heure de début</Label>
               <div className='mt-2'>
-                <DatePickerDemo value={time} onChange={setTime} id="rdv-time-picker" />
+                <TimePicker value={time} onChange={setTime} id="rdv-time-picker" />
               </div>
             </div>
           </div>
         </div>
-
-        {/* Employee Assignment (per service, from plan) */}
-        {serviceIds.length > 0 && date && time && (
-          <div className="space-y-4">
-            <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Affectation des employés</h3>
-            
-            {planLoading ? (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin" />
-                Calcul de l'affectation optimale...
-              </div>
-            ) : plan ? (
-              <div className="space-y-3">
-                {plan.services.map((svc) => {
-                  const effectiveEmpId = overrides[svc.serviceId] || svc.employees.find((e) => e.recommended)?.employeeId || '';
-                  return (
-                    <div key={svc.serviceId} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-sm text-gray-800">{svc.serviceName}</span>
-                        <span className="text-xs text-gray-500">{svc.duration} min</span>
-                      </div>
-                      <Select
-                        value={effectiveEmpId}
-                        onValueChange={(value) => {
-                          setOverrides((prev) => ({ ...prev, [svc.serviceId]: value }));
-                        }}
-                      >
-                        <SelectTrigger className="rounded-full px-4 py-2 text-sm">
-                          <SelectValue placeholder="Assigner un employé" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {svc.employees.map((emp) => (
-                            <SelectItem key={emp.employeeId} value={emp.employeeId}>
-                              <div className="flex items-center justify-between w-full gap-2">
-                                <div className="flex items-center gap-1.5">
-                                  <span>{emp.employeeName}</span>
-                                  {!emp.available && (
-                                    <span title={emp.reason || 'Indisponible'}>
-                                      <AlertTriangle size={14} className="text-amber-500 shrink-0" />
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  {emp.recommended && (
-                                    <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">Recommandé</span>
-                                  )}
-                                  {!emp.available && emp.reason && (
-                                    <span className="text-[10px] text-amber-500">{emp.reason}</span>
-                                  )}
-                                </div>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-sm text-amber-600 bg-amber-50 rounded-lg px-4 py-3">
-                Aucun employé disponible pour cette combinaison de services, date et heure.
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Planning Status */}
         {(() => {
@@ -1249,6 +1480,13 @@ const RendezVousPage = () => {
   
   // Load employee agendas and services for colors
   const [employeeAgendas, setEmployeeAgendas] = useState<Array<{id: string, name: string, color: string}>>([]);
+  
+  // Dynamic payment methods for finalize modal
+  const [acceptedPaymentMethods, setAcceptedPaymentMethods] = useState<string[]>(['Espèces', 'Carte', 'Virement', 'Chèque']);
+
+  // Agenda display range
+  const [agendaStart, setAgendaStart] = useState('09:00');
+  const [agendaEnd, setAgendaEnd] = useState('23:30');
   const [services, setServices] = useState<Array<{id: number, name: string, color: string}>>([]);
   const [displaySettings, setDisplaySettings] = useState<{
     showColorInRDV: boolean;
@@ -1304,6 +1542,21 @@ const RendezVousPage = () => {
         const servicesResponse = await api.getServices();
         const allServices = servicesResponse.services || [];
         setServices(allServices.map((s: any) => ({ id: s.id, name: s.name, color: s.color })));
+
+        // Fetch accepted payment methods
+        try {
+          const pmRes = await api.getAcceptedPaymentMethods();
+          if (pmRes.methods && pmRes.methods.length > 0) {
+            setAcceptedPaymentMethods(pmRes.methods);
+          }
+        } catch { /* use defaults */ }
+
+        // Fetch agenda display range
+        try {
+          const bhRes = await api.getBusinessHours();
+          if (bhRes.agendaStart) setAgendaStart(bhRes.agendaStart);
+          if (bhRes.agendaEnd) setAgendaEnd(bhRes.agendaEnd);
+        } catch { /* use defaults */ }
       } catch (err) {
         console.error('Error fetching employees/services:', err);
         // Fallback to localStorage if API fails
@@ -1612,12 +1865,20 @@ const RendezVousPage = () => {
     }
   }, [currentDate, mounted]);
 
-  // Generate time slots with half-hour intervals (09:00, 09:30, 10:00, ..., 23:00, 23:30)
-  const timeSlots = Array.from({ length: 30 }, (_, i) => {
-    const hour = Math.floor(i / 2) + 9;
-    const minute = (i % 2) * 30;
-    return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-  });
+  // Generate time slots from agendaStart to agendaEnd with 30-min intervals
+  const timeSlots = useMemo(() => {
+    const [startH, startM] = agendaStart.split(':').map(Number);
+    const [endH, endM] = agendaEnd.split(':').map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    const slots: string[] = [];
+    for (let m = startMinutes; m < endMinutes; m += 30) {
+      const h = Math.floor(m / 60);
+      const min = m % 60;
+      slots.push(`${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`);
+    }
+    return slots;
+  }, [agendaStart, agendaEnd]);
 
   // Get week days - normalized
   const getWeekDays = () => {
@@ -2149,24 +2410,63 @@ const RendezVousPage = () => {
                 })}
               </div>
 
-              {/* Time slots */}
-              {timeSlots.map((time) => (
-                <div key={time} className="grid grid-cols-8 border-b border-gray-100 hover:bg-gray-50/30 transition-colors">
-                  <div className="p-3 border-r border-gray-100 text-xs font-light text-gray-400">
+                {/* Time slots */}
+              {timeSlots.map((time) => {
+                const slotHasNoEmployee = getAvailableEmployees(new Date(currentDate), time).length === 0;
+                return (
+                <div key={time} className={`grid grid-cols-8 border-b border-gray-100 transition-colors ${
+                  slotHasNoEmployee ? '' : 'hover:bg-gray-50/30'
+                }`}>
+                  <div className={`p-3 border-r border-gray-100 text-xs font-light ${
+                    slotHasNoEmployee ? 'text-gray-300' : 'text-gray-400'
+                  }`}>
                     {time}
                   </div>
                   {getWeekDays().map((date, i) => {
                     const cellStyle = getCalendarCellStyle();
+                    const isNoEmployee = getAvailableEmployees(date, time).length === 0;
                     return (
                     <div
                       key={i}
                       className={`p-2 border-r border-gray-100 last:border-r-0 min-h-20 relative group/cell ${
+                        isNoEmployee ? 'bg-gray-50' : ''
+                      } ${
                         selectedEmployee !== 'all' && cellStyle.backgroundColor ? 'transition-colors' : ''
                       }`}
                       style={cellStyle}
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDrop(e, time, date)}
                     >
+                      {getFilteredAppointments()
+                        .filter(apt => {
+                          const aptDate = new Date(apt.date);
+                          aptDate.setHours(0, 0, 0, 0);
+                          const compareDate = new Date(date);
+                          compareDate.setHours(0, 0, 0, 0);
+                          return aptDate.getTime() === compareDate.getTime() && 
+                            apt.time === time &&
+                            (filterStatus === 'all' || apt.status === filterStatus);
+                        })
+                        .map(apt => {
+                          const employeeColor = employeeAgendas.find(e => e.name === getPrimaryEmployeeName(apt))?.color;
+                          const serviceColor = services.find(s => s.name === apt.service)?.color;
+                          return (
+                            <div key={apt.id} className="mb-1 last:mb-0">
+                              <AppointmentCard 
+                                apt={apt}
+                                isCompact
+                                onDragStart={handleDragStart}
+                                onStatusUpdate={handleUpdateAppointmentStatus}
+                                onShowDetails={handleShowDetails}
+                                employeeColor={employeeColor}
+                                serviceColor={serviceColor}
+                                showColorInRDV={displaySettings.showColorInRDV}
+                                displayFields={displaySettings.fields}
+                              />
+                            </div>
+                          );
+                        })
+                      }
                       <button
                         onClick={() => {
                           setNewRdvInitialDate(date);
@@ -2177,45 +2477,12 @@ const RendezVousPage = () => {
                       >
                         <Plus size={12} />
                       </button>
-                      {getFilteredAppointments()
-                        .filter(apt => {
-                          // Normalize both dates for comparison
-                          const aptDate = new Date(apt.date);
-                          aptDate.setHours(0, 0, 0, 0);
-                          const compareDate = new Date(date);
-                          compareDate.setHours(0, 0, 0, 0);
-                          
-                          const matches = aptDate.getTime() === compareDate.getTime() && 
-                            apt.time === time &&
-                            (filterStatus === 'all' || apt.status === filterStatus);
-                          
-                              
-                          return matches;
-                        })
-                        .map(apt => {
-                          const employeeColor = employeeAgendas.find(e => e.name === getPrimaryEmployeeName(apt))?.color;
-                          const serviceColor = services.find(s => s.name === apt.service)?.color;
-                          return (
-                          <AppointmentCard 
-                            key={apt.id} 
-                            apt={apt} 
-                            isCompact 
-                            onDragStart={handleDragStart}
-                            onStatusUpdate={handleUpdateAppointmentStatus}
-                            onShowDetails={handleShowDetails}
-                            employeeColor={employeeColor}
-                            serviceColor={serviceColor}
-                            showColorInRDV={displaySettings.showColorInRDV}
-                            displayFields={displaySettings.fields}
-                          />
-                          );
-                        })
-                      }
                     </div>
                     );
                   })}
                 </div>
-              ))}
+              );})}
+
             </div>
           </div>
         )}
@@ -2223,10 +2490,14 @@ const RendezVousPage = () => {
         {view === 'day' && (
           <div className="p-0">
             <div className="space-y-1">
-              {timeSlots.map((time) => (
+              {timeSlots.map((time) => {
+                const isNoEmployee = getAvailableEmployees(currentDate, time).length === 0;
+                return (
                 <div
                   key={time}
-                  className="grid bg-white grid-cols-12 gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50/50 transition-colors group/time relative"
+                  className={`grid grid-cols-12 gap-4 p-4 border border-gray-200 rounded-lg transition-colors group/time relative ${
+                    isNoEmployee ? 'bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'
+                  }`}
                   style={getCalendarCellStyle()}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, time, currentDate)}
@@ -2280,7 +2551,7 @@ const RendezVousPage = () => {
                     }
                   </div>
                 </div>
-              ))}
+              );})}
             </div>
           </div>
         )}
@@ -2648,9 +2919,9 @@ const RendezVousPage = () => {
                 }
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {(Object.keys(PAYMENT_METHOD_LABELS) as FinalizePaymentMethod[]).map((key) => (
-                  <option key={key} value={key}>
-                    {PAYMENT_METHOD_LABELS[key]}
+                {acceptedPaymentMethods.map((method) => (
+                  <option key={method} value={API_PAYMENT_KEY[method] || 'CASH'}>
+                    {method}
                   </option>
                 ))}
               </select>

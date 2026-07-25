@@ -10,10 +10,10 @@ class BookingService {
     required List<String> serviceIds,
     required String startTimeIso,
     String? notes,
-    bool includeBooker = true,
+    String? employeeId,
     List<Map<String, dynamic>>? participants,
   }) async {
-    return apiClient.post('/public/bookings', {
+    final body = <String, dynamic>{
       'tenantId': tenantId,
       'firstName': firstName,
       'lastName': lastName,
@@ -21,10 +21,13 @@ class BookingService {
       if (email != null && email.isNotEmpty) 'email': email,
       'serviceIds': serviceIds,
       'startTime': startTimeIso,
-      'includeBooker': includeBooker,
+      if (employeeId != null && employeeId.isNotEmpty) 'employeeId': employeeId,
       if (notes != null) 'notes': notes,
-      if (participants != null && participants.isNotEmpty) 'participants': participants,
-    });
+    };
+    if (participants != null && participants.isNotEmpty) {
+      body['participants'] = participants;
+    }
+    return apiClient.post('/public/bookings', body);
   }
 }
 

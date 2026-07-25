@@ -66,6 +66,21 @@ export class TenantService {
   }
 
   async updateTenantSettings(tenantId: string, input: any) {
+    // Handle emailNotifications merge for nested fields (autoConfirm, acceptedPaymentMethods)
+    let finalEmailNotifications = input.emailNotifications;
+    if (input.autoConfirm !== undefined || input.acceptedPaymentMethods !== undefined) {
+      let existing: any = input.emailNotifications;
+      if (!existing) {
+        try {
+          const currentSettings = await prisma.tenantSettings.findUnique({ where: { tenantId }, select: { emailNotifications: true } });
+          existing = (currentSettings?.emailNotifications as any) || {};
+        } catch { existing = {}; }
+      }
+      finalEmailNotifications = { ...existing };
+      if (input.autoConfirm !== undefined) finalEmailNotifications.autoConfirm = input.autoConfirm;
+      if (input.acceptedPaymentMethods !== undefined) finalEmailNotifications.acceptedPaymentMethods = input.acceptedPaymentMethods;
+    }
+
     const {
       businessHours,
       timezone,
@@ -75,7 +90,6 @@ export class TenantService {
       cancellationHours,
       appointmentDisplaySettings,
       description,
-      emailNotifications,
       photos,
       paymentMethods,
       amenities,
@@ -97,7 +111,7 @@ export class TenantService {
     if (cancellationHours !== undefined) updateData.cancellationHours = cancellationHours;
     if (appointmentDisplaySettings !== undefined) updateData.appointmentDisplaySettings = appointmentDisplaySettings;
     if (description !== undefined) updateData.description = description;
-    if (emailNotifications !== undefined) updateData.emailNotifications = emailNotifications;
+    updateData.emailNotifications = finalEmailNotifications !== undefined ? finalEmailNotifications : undefined;
     if (photos !== undefined) updateData.photos = photos;
     if (paymentMethods !== undefined) updateData.paymentMethods = paymentMethods;
     if (amenities !== undefined) updateData.amenities = amenities;
@@ -345,26 +359,31 @@ export class TenantService {
       agendaEnd: businessHours.agendaEnd || '23:55',
       bookingDelay: businessHours.bookingDelay || { value: '1', unit: 'jours', allowLastMoment: false },
       cancellationDelay: businessHours.cancellationDelay || { value: '1', unit: 'jours', allowLastMoment: false },
-      advanceBooking: businessHours.advanceBooking || { value: '1', unit: 'mois' }
+      advanceBooking: businessHours.advanceBooking || { value: '1', unit: 'mois' },
+      blockedDates: businessHours.blockedDates || []
     };
   }
 
   async updateBusinessHours(tenantId: string, input: any) {
-    const { onlineBooking, schedules, exceptionalSchedules, agendaStart, agendaEnd, bookingDelay, cancellationDelay, advanceBooking } = input;
+    const { onlineBooking, schedules, exceptionalSchedules, agendaStart, agendaEnd, bookingDelay, cancellationDelay, advanceBooking, blockedDates } = input;
 
     let settings = await prisma.tenantSettings.findUnique({
       where: { tenantId }
     });
 
+    const existingHours = settings?.businessHours ? (settings.businessHours as any) : {};
+
     const businessHours = {
-      onlineBooking,
-      schedules,
-      exceptionalSchedules,
-      agendaStart,
-      agendaEnd,
-      bookingDelay,
-      cancellationDelay,
-      advanceBooking
+      ...existingHours,
+      onlineBooking: onlineBooking !== undefined ? onlineBooking : existingHours.onlineBooking,
+      schedules: schedules !== undefined ? schedules : existingHours.schedules,
+      exceptionalSchedules: exceptionalSchedules !== undefined ? exceptionalSchedules : existingHours.exceptionalSchedules,
+      agendaStart: agendaStart !== undefined ? agendaStart : existingHours.agendaStart,
+      agendaEnd: agendaEnd !== undefined ? agendaEnd : existingHours.agendaEnd,
+      bookingDelay: bookingDelay !== undefined ? bookingDelay : existingHours.bookingDelay,
+      cancellationDelay: cancellationDelay !== undefined ? cancellationDelay : existingHours.cancellationDelay,
+      advanceBooking: advanceBooking !== undefined ? advanceBooking : existingHours.advanceBooking,
+      blockedDates: blockedDates !== undefined ? blockedDates : existingHours.blockedDates
     };
 
     settings = await prisma.tenantSettings.upsert({
@@ -383,6 +402,84 @@ export class TenantService {
     });
 
     return { settings: settings.businessHours };
+  }
+
+  async getAcceptedPaymentMethods(tenantId: string) {
+    let settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId }
+    });
+
+    if (!settings) {
+      settings = await prisma.tenantSettings.create({
+        data: { tenantId, emailNotifications: { acceptedPaymentMethods: ['Espèces'] } as any }
+      });
+    }
+
+    const emailNotif = (settings.emailNotifications as any) || {};
+    const methods: string[] = emailNotif.acceptedPaymentMethods || ['Espèces'];
+    return { methods };
+  }
+
+  async addAcceptedPaymentMethod(tenantId: string, name: string) {
+    let settings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!settings) {
+      settings = await prisma.tenantSettings.create({ data: { tenantId } });
+    }
+    const emailNotif = (settings.emailNotifications as any) || {};
+    const methods: string[] = emailNotif.acceptedPaymentMethods || ['Espèces'];
+    if (methods.includes(name)) {
+      throw { status: 409, error: 'Duplicate', message: 'Cette méthode de paiement existe déjà.' };
+    }
+    methods.push(name);
+    emailNotif.acceptedPaymentMethods = methods;
+    await prisma.tenantSettings.update({
+      where: { tenantId },
+      data: { emailNotifications: emailNotif as any }
+    });
+    return { methods };
+  }
+
+  async deleteAcceptedPaymentMethod(tenantId: string, name: string) {
+    let settings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!settings) throw { status: 404, error: 'Settings not found' };
+    const emailNotif = (settings.emailNotifications as any) || {};
+    const methods: string[] = emailNotif.acceptedPaymentMethods || ['Espèces'];
+    if (methods.length <= 1) {
+      throw { status: 400, error: 'Last method', message: 'Impossible de supprimer la dernière méthode de paiement.' };
+    }
+    const filtered = methods.filter((m) => m !== name);
+    if (filtered.length === methods.length) {
+      throw { status: 404, error: 'Not found', message: 'Méthode de paiement introuvable.' };
+    }
+    emailNotif.acceptedPaymentMethods = filtered;
+    await prisma.tenantSettings.update({
+      where: { tenantId },
+      data: { emailNotifications: emailNotif as any }
+    });
+    return { methods: filtered };
+  }
+
+  async getAutoConfirmSettings(tenantId: string) {
+    let settings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!settings) {
+      settings = await prisma.tenantSettings.create({ data: { tenantId } });
+    }
+    const emailNotif = (settings.emailNotifications as any) || {};
+    return { enabled: emailNotif.autoConfirm === true };
+  }
+
+  async updateAutoConfirmSettings(tenantId: string, enabled: boolean) {
+    let settings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
+    if (!settings) {
+      settings = await prisma.tenantSettings.create({ data: { tenantId } });
+    }
+    const emailNotif = (settings.emailNotifications as any) || {};
+    emailNotif.autoConfirm = enabled === true;
+    await prisma.tenantSettings.update({
+      where: { tenantId },
+      data: { emailNotifications: emailNotif as any }
+    });
+    return { enabled: emailNotif.autoConfirm };
   }
 
   async getPaymentMethods(tenantId: string) {

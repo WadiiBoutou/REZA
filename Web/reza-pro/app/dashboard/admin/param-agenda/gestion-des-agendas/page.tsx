@@ -5,7 +5,7 @@ import { Plus, Search, Edit2, Trash2, X, Copy } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Sketch } from '@uiw/react-color';
 import { Checkbox } from '@/components/ui/checkbox';
-import DatePickerDemo from '@/components/ui/datepicker';
+import { TimePicker } from '@/components/ui/time-picker';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -85,7 +85,7 @@ const transformAgendaToEmployee = (agenda: EmployeeAgenda, existingEmployee?: an
     email: agenda.email || undefined,
     workingHours: agenda.workingHours,
     agendaSettings,
-    isActive: agenda.status === 'active'
+    isActive: true
   };
 };
 
@@ -667,7 +667,7 @@ const AgendaModal = ({
     }
   );
 
-  const [activeTab, setActiveTab] = useState<'info' | 'hours' | 'settings'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'hours'>('info');
   const [showColorPicker, setShowColorPicker] = useState(false);
 
   const handleSubmit = () => {
@@ -739,16 +739,6 @@ const AgendaModal = ({
               }`}
             >
               Horaires
-            </button>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`px-5 py-2 rounded-full text-sm font-medium transition-colors border ${
-                activeTab === 'settings'
-                  ? 'bg-[#002366] text-white border-[#002366] shadow'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
-              }`}
-            >
-              Paramètres
             </button>
           </div>
         </div>
@@ -875,8 +865,25 @@ const AgendaModal = ({
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Prestations
                   </label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allSelected = services.every((s: any) => formData.services.includes(s.name));
+                        setFormData({
+                          ...formData,
+                          services: allSelected ? [] : services.map((s: any) => s.name)
+                        });
+                      }}
+                      className="text-xs text-[#002366] hover:underline font-medium"
+                    >
+                      {services.every((s: any) => formData.services.includes(s.name))
+                        ? 'Désélectionner tout'
+                        : 'Sélectionner tous'}
+                    </button>
+                  </div>
                   <div className="flex flex-wrap gap-2">
-                    {services.map(service => (
+                    {services.map((service: any) => (
                       <button
                         key={service.id}
                         type="button"
@@ -925,7 +932,7 @@ const AgendaModal = ({
                     <div className="grid grid-cols-2 gap-3 ml-7">
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">Début</label>
-                        <DatePickerDemo
+                        <TimePicker
                           value={day.startTime}
                           onChange={(val: string) => updateWorkingHours(idx, { startTime: val })}
                           id={`startTime-${idx}`}
@@ -933,7 +940,7 @@ const AgendaModal = ({
                       </div>
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">Fin</label>
-                        <DatePickerDemo
+                        <TimePicker
                           value={day.endTime}
                           onChange={(val: string) => updateWorkingHours(idx, { endTime: val })}
                           id={`endTime-${idx}`}
@@ -946,22 +953,6 @@ const AgendaModal = ({
             </div>
           )}
 
-          {/* Settings Tab */}
-          {activeTab === 'settings' && (
-            <div className="space-y-6">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="allowOnlineBooking"
-                  checked={formData.allowOnlineBooking}
-                  onCheckedChange={(checked) => setFormData({ ...formData, allowOnlineBooking: !!checked })}
-                  className="w-4 h-4 rounded-full text-[#002366] border-gray-300 focus:ring-gray-900"
-                />
-                <label htmlFor="allowOnlineBooking" className="text-sm text-gray-700">
-                  Autoriser la réservation en ligne
-                </label>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Footer */}

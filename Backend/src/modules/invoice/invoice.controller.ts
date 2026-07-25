@@ -7,10 +7,11 @@ import { isSalonRequiredError, resolveWriteTenantId } from '../../utils/salonSco
 export class InvoiceController {
   async getInvoices(req: Request, res: Response, next: NextFunction) {
     try {
-      const { status } = req.query;
+      const { status, type } = req.query;
       const invoices = await invoiceService.getInvoices(
         req.salonIds || [req.tenantId!],
-        status as string
+        status as string,
+        type as string
       );
       res.json({ invoices });
     } catch (error) {

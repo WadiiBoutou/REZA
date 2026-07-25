@@ -41,6 +41,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
 
   VenueItem? _venue;
   List<ServiceItem> _services = [];
+  final Set<String> _stagedServiceIds = {};
   List<Map<String, dynamic>> _employees = [];
   List<Map<String, dynamic>> _reviews = [];
   String _description = '';
@@ -160,16 +161,20 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
     }
   }
 
-  void _openBooking([ServiceItem? service]) {
+  void _openBooking() {
     final venue = _venue;
     if (venue == null) return;
+    final allSelected = _stagedServiceIds.isEmpty
+        ? <ServiceItem>[]
+        : _services.where((s) => _stagedServiceIds.contains(s.id.isNotEmpty ? s.id : s.name)).toList();
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => BookingScreen(
           tenantId: widget.tenantId,
           venue: venue.copyWithServices(_services),
-          preselectedService: service ?? widget.preselectedService,
+          preselectedService: allSelected.length == 1 ? allSelected.first : null,
+          preselectedServices: allSelected,
           onGoToBookings: widget.onGoToBookings,
         ),
       ),
@@ -320,7 +325,20 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                 const Divider(height: 32, indent: 20, endIndent: 20, color: AppColors.border),
                 Container(
                   key: _keys[1],
-                  child: _PrestationsSection(services: _services, onReserve: _openBooking),
+                  child: _PrestationsSection(
+                    services: _services,
+                    stagedIds: _stagedServiceIds,
+                    onToggle: (s) {
+                      setState(() {
+                        final id = s.id.isNotEmpty ? s.id : s.name;
+                        if (_stagedServiceIds.contains(id)) {
+                          _stagedServiceIds.remove(id);
+                        } else {
+                          _stagedServiceIds.add(id);
+                        }
+                      });
+                    },
+                  ),
                 ),
                 const Divider(height: 32, indent: 20, endIndent: 20, color: AppColors.border),
                 Container(
@@ -360,7 +378,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
             Text('${_services.length} prestations disponibles', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray)),
             const Spacer(),
             ElevatedButton(
-              onPressed: () => _openBooking(),
+              onPressed: _openBooking,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.textDark,
                 foregroundColor: Colors.white,
@@ -505,8 +523,9 @@ class _AProposSection extends StatelessWidget {
 
 class _PrestationsSection extends StatelessWidget {
   final List<ServiceItem> services;
-  final void Function(ServiceItem) onReserve;
-  const _PrestationsSection({required this.services, required this.onReserve});
+  final Set<String> stagedIds;
+  final void Function(ServiceItem) onToggle;
+  const _PrestationsSection({required this.services, required this.stagedIds, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
@@ -523,50 +542,57 @@ class _PrestationsSection extends StatelessWidget {
             child: Text('Aucune prestation', style: GoogleFonts.inter(color: AppColors.textGray)),
           )
         else
-          ...services.map((s) => Container(
-                margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: AppColors.border),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(s.name.toUpperCase(),
-                              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textDark)),
-                          const SizedBox(height: 4),
-                          Text(
-                            s.durationMin >= 60
-                                ? '${s.durationMin ~/ 60} h${s.durationMin % 60 == 0 ? '' : ' ${s.durationMin % 60} min'}'
-                                : '${s.durationMin} min',
-                            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textLight),
-                          ),
-                          const SizedBox(height: 12),
-                          Text('${s.price.toInt()} MAD',
-                              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textDark)),
-                        ],
-                      ),
+          ...services.map((s) {
+            final id = s.id.isNotEmpty ? s.id : s.name;
+            final added = stagedIds.contains(id);
+            return Container(
+              margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: added ? AppColors.primary : AppColors.border),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(s.name.toUpperCase(),
+                            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textDark)),
+                        const SizedBox(height: 4),
+                        Text(
+                          s.durationMin >= 60
+                              ? '${s.durationMin ~/ 60} h${s.durationMin % 60 == 0 ? '' : ' ${s.durationMin % 60} min'}'
+                              : '${s.durationMin} min',
+                          style: GoogleFonts.inter(fontSize: 12, color: AppColors.textLight),
+                        ),
+                        const SizedBox(height: 12),
+                        Text('${s.price.toInt()} MAD',
+                            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+                      ],
                     ),
-                    OutlinedButton(
-                      onPressed: () => onReserve(s),
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        side: const BorderSide(color: AppColors.border),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                        minimumSize: const Size(0, 32),
+                  ),
+                  GestureDetector(
+                    onTap: () => onToggle(s),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: added ? AppColors.primary : Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: added ? AppColors.primary : AppColors.border),
                       ),
-                      child: Text('Réserver',
-                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.textDark)),
+                      child: Icon(added ? Icons.remove : Icons.add, size: 20,
+                          color: added ? Colors.white : AppColors.textDark),
                     ),
-                  ],
-                ),
-              )),
+                  ),
+                ],
+              ),
+            );
+          }),
         const SizedBox(height: 8),
       ],
     );

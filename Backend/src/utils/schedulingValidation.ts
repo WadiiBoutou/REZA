@@ -217,6 +217,50 @@ export async function validateAppointmentRules(params: ValidationParams) {
     where: { tenantId },
   });
 
+  // Blocked dates check (public bookings only, admins can bypass)
+  if (isPublicBooking && source !== 'ADMIN' && settings) {
+    const businessHours = settings.businessHours as Record<string, any> | null;
+    const blockedDates: string[] = businessHours?.blockedDates || [];
+    if (blockedDates.length > 0) {
+      const dateStr = startTime.toISOString().slice(0, 10);
+      if (blockedDates.includes(dateStr)) {
+        return {
+          isValid: false,
+          status: 400,
+          error: 'Date blocked',
+          message: "L'établissement est fermé ce jour-là (jour bloqué).",
+        };
+      }
+    }
+  }
+
+  // Minimum booking lead time check (public bookings only)
+  if (isPublicBooking && source !== 'ADMIN' && settings) {
+    const businessHours = settings.businessHours as Record<string, any> | null;
+    if (businessHours?.bookingDelay) {
+      const delay = businessHours.bookingDelay;
+      if (delay.value && delay.unit && !delay.allowLastMoment) {
+        const now = new Date();
+        let minStartTime = new Date(now);
+        if (delay.unit === 'heures') {
+          minStartTime.setHours(minStartTime.getHours() + parseInt(delay.value));
+        } else if (delay.unit === 'jours') {
+          minStartTime.setDate(minStartTime.getDate() + parseInt(delay.value));
+        } else if (delay.unit === 'semaines') {
+          minStartTime.setDate(minStartTime.getDate() + parseInt(delay.value) * 7);
+        }
+        if (startTime < minStartTime) {
+          return {
+            isValid: false,
+            status: 400,
+            error: 'Lead time not met',
+            message: `Les réservations doivent être faites au moins ${delay.value} ${delay.unit} à l'avance.`,
+          };
+        }
+      }
+    }
+  }
+
   if (settings && settings.businessHours) {
     const businessHours = settings.businessHours as Record<
       string,
@@ -296,6 +340,22 @@ export async function validateAppointmentRules(params: ValidationParams) {
     },
     include: { employeeServices: true },
   });
+
+  if (employee) {
+    const employeeStatus = employee.agendaSettings ? (employee.agendaSettings as any).status : undefined;
+    if (employeeStatus && employeeStatus !== 'active') {
+      if (source === 'ADMIN') {
+        return { isValid: true };
+      }
+      const statusMsg = employeeStatus === 'inactive' ? 'inactif' : 'en vacances';
+      return {
+        isValid: false,
+        status: 400,
+        error: `Employee ${employeeStatus}`,
+        message: `Ce collaborateur est ${statusMsg} et n'est pas disponible pour de nouvelles réservations.`,
+      };
+    }
+  }
 
   if (employee && employee.workingHours) {
     const whResult = checkEmployeeWorkingHoursAndBreaks({

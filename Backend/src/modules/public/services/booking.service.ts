@@ -509,6 +509,65 @@ export class BookingService {
         console.error('Error creating notification for new booking:', notificationError);
       }
 
+      // ---- Auto-confirm logic ----
+      const tenantAutoConfirm = settings?.emailNotifications as any;
+      const globalAutoConfirm = tenantAutoConfirm?.autoConfirm === true;
+      try {
+        if (globalAutoConfirm) {
+          for (const appointment of appointments) {
+            // Check per-client override
+            let shouldAutoConfirm = true;
+            const participant = resolved.find((p) => p.appointmentClientId === appointment.clientId);
+            if (participant) {
+              const clientRec = await prisma.client.findUnique({
+                where: { id: participant.appointmentClientId },
+                select: { notes: true },
+              });
+              // Per-client override stored in notes as __ACO:MANUAL or __ACO:AUTO
+              const clientNotes = clientRec?.notes || '';
+              const acoMatch = clientNotes.match(/__ACO:(AUTO|MANUAL)/);
+              if (acoMatch) {
+                shouldAutoConfirm = acoMatch[1] === 'AUTO';
+              }
+            }
+
+            if (shouldAutoConfirm) {
+              await prisma.appointment.update({
+                where: { id: appointment.id },
+                data: { status: 'CONFIRMED' },
+              });
+
+              // Create confirmation notification for tenant
+              const tenantUsers = await prisma.user.findMany({
+                where: { tenantId: tenant.id, isActive: true },
+                select: { id: true },
+              });
+              await Promise.all(
+                tenantUsers.map((u) =>
+                  prisma.notification.create({
+                    data: {
+                      tenantId: tenant.id,
+                      userId: u.id,
+                      type: 'APPOINTMENT_CONFIRMED',
+                      title: 'Rendez-vous confirmé automatiquement',
+                      message: `Le rendez-vous de ${appointment.client?.firstName || firstName} ${appointment.client?.lastName || lastName} a été automatiquement confirmé.`,
+                      link: `/dashboard/rendez-vous`,
+                      metadata: { appointmentId: appointment.id, tenantId: tenant.id },
+                    },
+                  }).catch(() => {})
+                )
+              );
+            }
+          }
+        }
+      } catch (autoConfirmError) {
+        console.error('[Auto-Confirm] Error:', autoConfirmError);
+      }
+
+      const messageText = globalAutoConfirm
+        ? 'Réservation créée et confirmée avec succès.'
+        : 'Réservation créée avec succès. Elle apparaîtra dans le calendrier du salon et sera confirmée par l\'établissement.';
+
       return {
         bookingGroup,
         appointments,
@@ -517,8 +576,7 @@ export class BookingService {
           participants: pricingSummary,
           grandTotal: Math.round(grandTotal * 100) / 100,
         },
-        message:
-          'Réservation créée avec succès. Elle apparaîtra dans le calendrier du salon et sera confirmée par l\'établissement.',
+        message: messageText,
       };
     } catch (error: unknown) {
       // Only log unexpected errors — HttpError is normal flow for validation failures
@@ -579,8 +637,15 @@ export class BookingService {
       totalDuration = services.reduce((sum, s) => sum + s.duration, 0);
     }
 
-    // Get business hours from settings
     const businessHours = tenant.settings?.businessHours as any || {};
+    
+    // Check blocked dates
+    const blockedDates: string[] = businessHours.blockedDates || [];
+    const dateStr = date as string;
+    if (blockedDates.includes(dateStr)) {
+      return { slots: [] }; // Blocked/closed on this day
+    }
+
     const defaultHours = {
       monday: { open: '09:00', close: '18:00' },
       tuesday: { open: '09:00', close: '18:00' },
@@ -591,7 +656,7 @@ export class BookingService {
       sunday: null
     };
 
-    const selectedDate = new Date(date as string);
+    const selectedDate = new Date(dateStr);
     const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const dayName = dayNames[selectedDate.getDay()];
     const hours = businessHours[dayName] || defaultHours[dayName as keyof typeof defaultHours];
@@ -599,6 +664,9 @@ export class BookingService {
     if (!hours || !hours.open || !hours.close) {
       return { slots: [] }; // Closed on this day
     }
+
+    // Minimum booking lead time check: skip past dates and dates within lead time window
+    const bookingDelay = businessHours.bookingDelay || null;
 
     // Generate available slots — each slot is validated against the scheduling engine
     const slots: string[] = [];
@@ -611,13 +679,28 @@ export class BookingService {
     const closeTime = new Date(selectedDate);
     closeTime.setHours(closeHour, closeMin, 0, 0);
 
-    // Check if selected date is today
+    // Check if selected date is within lead time window
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
     const isToday = today.getTime() === selectedDay.getTime();
 
-    const dateStr = date as string;
+    // Calculate minimum lead time date
+    let minLeadDate = new Date(today);
+    if (bookingDelay && bookingDelay.value && bookingDelay.unit && !bookingDelay.allowLastMoment) {
+      if (bookingDelay.unit === 'heures') {
+        minLeadDate.setHours(minLeadDate.getHours() + parseInt(bookingDelay.value));
+      } else if (bookingDelay.unit === 'jours') {
+        minLeadDate.setDate(minLeadDate.getDate() + parseInt(bookingDelay.value));
+      } else if (bookingDelay.unit === 'semaines') {
+        minLeadDate.setDate(minLeadDate.getDate() + parseInt(bookingDelay.value) * 7);
+      }
+    }
+    const isBeforeLeadTime = selectedDay.getTime() < new Date(minLeadDate.getFullYear(), minLeadDate.getMonth(), minLeadDate.getDate()).getTime();
+
+    if (isBeforeLeadTime) {
+      return { slots: [] }; // Date is within lead time window
+    }
 
     // Generate 30-minute slots
     const slotDuration = 30; // minutes
@@ -688,6 +771,7 @@ export class BookingService {
     }
 
     // Check if appointment can be cancelled (not already completed or cancelled)
+    // TODO: Enforce cancellationDelay from tenant settings — currently stored but not validated here
     if (appointment.status === 'COMPLETED') {
       fail(400, {
         error: 'Cannot cancel completed appointment',
@@ -1041,6 +1125,8 @@ export class BookingService {
       const endMin = startMin + p.duration;
       const eligible = employees
         .filter((emp) => {
+          const empStatus = emp.agendaSettings ? (emp.agendaSettings as any).status : undefined;
+          if (empStatus && empStatus !== 'active') return false;
           const empSkills = skillMap.get(emp.id);
           if (empSkills && empSkills.size > 0) {
             if (!p.serviceIds.every((sid) => empSkills!.has(sid))) return false;

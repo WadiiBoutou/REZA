@@ -20,6 +20,11 @@ export default function PaymentMethodsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   
+  // Accepted payment methods (for dropdowns)
+  const [acceptedMethods, setAcceptedMethods] = useState<string[]>([]);
+  const [newAcceptedMethod, setNewAcceptedMethod] = useState('');
+  const [addingAccepted, setAddingAccepted] = useState(false);
+  
   const [newPaymentType, setNewPaymentType] = useState<'moroccan_transfer' | 'card'>('moroccan_transfer');
   const [iban, setIban] = useState('');
   const [cardNumber, setCardNumber] = useState('');
@@ -33,7 +38,42 @@ export default function PaymentMethodsPage() {
   useEffect(() => {
     setMounted(true);
     fetchPaymentMethods();
+    fetchAcceptedMethods();
   }, []);
+
+  const fetchAcceptedMethods = async () => {
+    try {
+      const res = await api.getAcceptedPaymentMethods();
+      setAcceptedMethods(res.methods || []);
+    } catch { /* ignore */ }
+  };
+
+  const handleAddAcceptedMethod = async () => {
+    const name = newAcceptedMethod.trim();
+    if (!name) return;
+    setAddingAccepted(true);
+    try {
+      const res = await api.addAcceptedPaymentMethod(name);
+      setAcceptedMethods(res.methods || []);
+      setNewAcceptedMethod('');
+      toast.success('Méthode de paiement ajoutée');
+    } catch (err: any) {
+      toast.error(err.message || 'Erreur');
+    } finally {
+      setAddingAccepted(false);
+    }
+  };
+
+  const handleDeleteAcceptedMethod = async (name: string) => {
+    if (!confirm(`Supprimer "${name}" ?`)) return;
+    try {
+      const res = await api.deleteAcceptedPaymentMethod(name);
+      setAcceptedMethods(res.methods || []);
+      toast.success('Méthode de paiement supprimée');
+    } catch (err: any) {
+      toast.error(err.message || 'Erreur');
+    }
+  };
 
   const fetchPaymentMethods = async () => {
     try {
@@ -134,7 +174,7 @@ export default function PaymentMethodsPage() {
       setCardExpiry('');
       setCardCvc('');
       setNewPaymentType('moroccan_transfer');
-      fetchPaymentMethods(); // Refresh the list
+      fetchPaymentMethods();
     } catch (err: any) {
       console.error('Error adding payment method:', err);
       setError(err.message || 'Erreur lors de l\'ajout du moyen de paiement');
@@ -147,7 +187,7 @@ export default function PaymentMethodsPage() {
     try {
       await api.updatePaymentMethod(id, { isDefault: true });
       toast.success('Moyen de paiement défini par défaut');
-      fetchPaymentMethods(); // Refresh the list
+      fetchPaymentMethods();
     } catch (err: any) {
       console.error('Error setting default payment method:', err);
       toast.error(err.message || 'Erreur lors de la mise à jour');
@@ -162,7 +202,7 @@ export default function PaymentMethodsPage() {
     try {
       await api.deletePaymentMethod(id);
       toast.success('Moyen de paiement supprimé avec succès');
-      fetchPaymentMethods(); // Refresh the list
+      fetchPaymentMethods();
     } catch (err: any) {
       console.error('Error deleting payment method:', err);
       toast.error(err.message || 'Erreur lors de la suppression');
@@ -274,6 +314,54 @@ export default function PaymentMethodsPage() {
           </p>
         </div>
       )}
+
+      {/* Accepted Payment Methods Section (for dropdowns) */}
+      <div className="mb-8 bg-white rounded-xl border border-gray-100 p-6 animate-slideUp">
+        <h2 className="text-lg font-medium text-gray-900 mb-1">Méthodes de paiement acceptées</h2>
+        <p className="text-xs text-gray-400 mb-4">
+          Ces méthodes apparaîtront dans les listes déroulantes de "Finaliser le rendez-vous" et "Encaisser une vente".
+        </p>
+
+        {/* Current methods */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          {acceptedMethods.map((method) => (
+            <span
+              key={method}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full text-sm text-gray-700"
+            >
+              {method}
+              <button
+                onClick={() => handleDeleteAcceptedMethod(method)}
+                disabled={acceptedMethods.length <= 1}
+                className="text-gray-400 hover:text-red-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                title={acceptedMethods.length <= 1 ? 'Impossible de supprimer la dernière méthode' : undefined}
+              >
+                <X size={14} />
+              </button>
+            </span>
+          ))}
+        </div>
+
+        {/* Add new */}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newAcceptedMethod}
+            onChange={(e) => setNewAcceptedMethod(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAddAcceptedMethod(); }}
+            placeholder="Nom de la méthode (ex: Carte bancaire)"
+            className="flex-1 px-4 py-2 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#002366] focus:border-transparent"
+          />
+          <button
+            onClick={handleAddAcceptedMethod}
+            disabled={addingAccepted || !newAcceptedMethod.trim()}
+            className="px-4 py-2 bg-[#002366] text-white text-sm font-medium rounded-full hover:bg-gray-800 transition-colors disabled:opacity-50 flex items-center gap-1"
+          >
+            {addingAccepted ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus size={16} />}
+            Ajouter
+          </button>
+        </div>
+      </div>
 
       {/* Add Payment Form - Inline */}
       {showAddForm ? (

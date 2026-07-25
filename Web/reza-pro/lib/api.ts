@@ -46,6 +46,12 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
+type PlanAlert = {
+  severity: 'conflict' | 'warning' | 'info';
+  type: string;
+  message: string;
+};
+
 export interface ApiError {
   error: string;
   message: string;
@@ -808,6 +814,7 @@ class ApiClient {
     date: string;
     startTime: string;
     clientId?: string;
+    tenantId?: string;
     assignments?: { serviceId: string; employeeId: string | null }[];
   }) {
     return this.request<any>('/appointments/plan', {
@@ -816,8 +823,8 @@ class ApiClient {
     });
   }
 
-  async clientDiagnostics(params: { date: string; startTime: string; estimatedDuration?: number }) {
-    return this.request<{ clientAlerts: Record<string, { severity: string; type: string; message: string }[]> }>('/appointments/client-diagnostics', {
+  async clientDiagnostics(params: { date: string; startTime: string; estimatedDuration?: number; tenantId?: string }) {
+    return this.request<{ clientAlerts: Record<string, PlanAlert[]> }>('/appointments/client-diagnostics', {
       method: 'POST',
       body: JSON.stringify(params),
     });
@@ -847,6 +854,7 @@ class ApiClient {
   async getInvoices(params?: {
     clientId?: string;
     status?: string;
+    type?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
@@ -855,6 +863,7 @@ class ApiClient {
     const query = new URLSearchParams();
     if (params?.clientId) query.append('clientId', params.clientId);
     if (params?.status) query.append('status', params.status);
+    if (params?.type) query.append('type', params.type);
     if (params?.startDate) query.append('startDate', params.startDate);
     if (params?.endDate) query.append('endDate', params.endDate);
     if (params?.page) query.append('page', params.page.toString());
@@ -876,7 +885,13 @@ class ApiClient {
   /** Flow A — Encaisser une vente (PAID invoice + service line items) */
   async createSale(saleData: {
     clientId: string;
-    items: Array<{ serviceId: string; price?: number; quantity?: number }>;
+    items: Array<{
+      serviceId: string;
+      price?: number;
+      quantity?: number;
+      /** Optional per-item employee assignment for manual caisse sales */
+      employeeId?: string;
+    }>;
     amount?: number;
     tax?: number;
     paymentMethod: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'CHECK' | 'ONLINE';
@@ -1148,6 +1163,7 @@ class ApiClient {
       bookingDelay?: any;
       cancellationDelay?: any;
       advanceBooking?: any;
+      blockedDates?: string[];
     },
     opts?: { salonIds?: string | string[] }
   ) {
@@ -1337,7 +1353,37 @@ class ApiClient {
     return this.request<any>(`/stats/occupation/prestations?${query.toString()}`);
   }
 
-  // Payment methods endpoints
+  // Accepted payment methods (simple text names for dropdowns)
+  async getAcceptedPaymentMethods() {
+    return this.request<{ methods: string[] }>('/tenant/settings/accepted-payment-methods');
+  }
+
+  async addAcceptedPaymentMethod(name: string) {
+    return this.request<{ methods: string[] }>('/tenant/settings/accepted-payment-methods', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  async deleteAcceptedPaymentMethod(name: string) {
+    return this.request<{ methods: string[] }>(`/tenant/settings/accepted-payment-methods/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Auto-confirm settings
+  async getAutoConfirmSettings() {
+    return this.request<{ enabled: boolean }>('/tenant/settings/auto-confirm');
+  }
+
+  async updateAutoConfirmSettings(enabled: boolean) {
+    return this.request<{ enabled: boolean }>('/tenant/settings/auto-confirm', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
+  // Payment methods endpoints (bank instruments)
   async getPaymentMethods() {
     return this.request<any>('/tenant/payment-methods');
   }
@@ -1450,6 +1496,23 @@ class ApiClient {
   async deleteCashTransaction(id: string) {
     return this.request<any>(`/cash-transactions/${id}`, {
       method: 'DELETE',
+    });
+  }
+
+  // Subscription invoices (SUBSCRIPTION type)
+  async getSubscriptionInvoices() {
+    return this.request<{ invoices: any[] }>('/tenant/subscription-invoices');
+  }
+
+  // Billing payment method (platform billing, not client-facing)
+  async getBillingPaymentMethod() {
+    return this.request<{ method: any }>('/tenant/billing-payment-method');
+  }
+
+  async setBillingPaymentMethod(method: { type: string; iban?: string; cardLast4?: string; holderName?: string }) {
+    return this.request<{ method: any }>('/tenant/billing-payment-method', {
+      method: 'PUT',
+      body: JSON.stringify(method),
     });
   }
 }

@@ -58,7 +58,7 @@ export class AppointmentController {
   async planAppointment(req: Request, res: Response, next: NextFunction) {
     try {
       const data = planAppointmentSchema.parse(req.body);
-      const tenantId = (req.salonIds || [req.tenantId!])[0];
+      const tenantId = data.tenantId || (req.salonIds || [req.tenantId!])[0];
       const plan = await schedulingService.planReservation({
         tenantId,
         serviceIds: data.serviceIds,
@@ -79,7 +79,7 @@ export class AppointmentController {
   async clientDiagnostics(req: Request, res: Response, next: NextFunction) {
     try {
       const data = clientDiagnosticsSchema.parse(req.body);
-      const tenantId = (req.salonIds || [req.tenantId!])[0];
+      const tenantId = data.tenantId || (req.salonIds || [req.tenantId!])[0];
       const result = await schedulingService.clientDiagnostics({
         tenantId,
         date: data.date,

@@ -15,7 +15,16 @@ const invoiceListInclude = {
   },
   appointment: {
     include: {
-      services: true
+      services: {
+        include: {
+          employee: {
+            select: { firstName: true, lastName: true, id: true }
+          }
+        }
+      },
+      bookingParticipant: {
+        select: { displayName: true }
+      }
     }
   },
   items: {
@@ -30,10 +39,13 @@ const invoiceListInclude = {
 } as const;
 
 export class InvoiceService {
-  async getInvoices(tenantIds: string | string[], status?: string) {
+  async getInvoices(tenantIds: string | string[], status?: string, type?: string) {
     const where: any = { tenantId: tenantIdFilter(tenantIds) };
     if (status && status !== 'ALL') {
       where.status = status;
+    }
+    if (type) {
+      where.type = type;
     }
 
     return prisma.invoice.findMany({

@@ -40,6 +40,24 @@ class AppointmentService {
     return List<Map<String, dynamic>>.from((res['appointments'] as List?) ?? []);
   }
 
+  Future<Map<String, dynamic>> planAppointment(Map<String, dynamic> params) async {
+    if (useMockData) {
+      return {
+        'alerts': [],
+        'services': [],
+        'recommendedAssignment': [],
+        'estimatedEndTime': params['startTime'],
+      };
+    }
+    final res = await apiClient.post('/appointments/plan', params);
+    return res;
+  }
+
+  Future<Map<String, dynamic>> clientDiagnostics(Map<String, dynamic> params) async {
+    if (useMockData) return {};
+    return await apiClient.post('/appointments/client-diagnostics', params);
+  }
+
   Future<Map<String, dynamic>> create(Map<String, dynamic> data) async {
     if (useMockData) {
       return {

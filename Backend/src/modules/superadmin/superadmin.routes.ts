@@ -2,6 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import { superAdminAuthMiddleware } from '../../middleware/authenticateRequest';
 import { superAdminService } from './superadmin.service';
+import { subscriptionInvoiceService } from '../subscription/subscription-invoice.service';
 
 const router = express.Router();
 
@@ -32,6 +33,16 @@ router.get('/accounts', async (req, res, next) => {
     });
     const params = querySchema.parse(req.query);
     res.json(await superAdminService.listAccounts(params));
+  } catch (error: any) {
+    handleError(res, error, next);
+  }
+});
+
+/** POST /api/superadmin/accounts/:id/generate-invoice — generate a SUBSCRIPTION invoice for the account's active period */
+router.post('/accounts/:id/generate-invoice', async (req, res, next) => {
+  try {
+    const result = await subscriptionInvoiceService.generateForAccount(req.params.id);
+    res.status(201).json(result);
   } catch (error: any) {
     handleError(res, error, next);
   }

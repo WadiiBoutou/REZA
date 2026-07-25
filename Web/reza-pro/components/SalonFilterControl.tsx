@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Building, ChevronDown, Check } from 'lucide-react';
+import Link from 'next/link';
+import { Building, ChevronDown, Check, ExternalLink } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAuth, type Salon } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -141,6 +142,15 @@ export function SalonFilterControl({
             );
           })}
         </div>
+        <div className="my-1 h-px bg-gray-100" />
+        <Link
+          href="/dashboard/mes-salons"
+          onClick={() => setOpen(false)}
+          className="w-full flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-[#002366] hover:bg-[#002366]/5 font-medium"
+        >
+          <ExternalLink size={14} />
+          <span>Modifier</span>
+        </Link>
         <p className="px-2 pt-2 pb-1 text-[11px] text-gray-400 leading-snug">
           Filtre Agenda, Clients et Caisse. Création → un salon précis requis si plusieurs sélectionnés.
         </p>

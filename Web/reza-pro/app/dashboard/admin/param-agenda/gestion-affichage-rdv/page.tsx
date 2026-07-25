@@ -25,6 +25,7 @@ const GestionAffichageRDV = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showColorInRDV, setShowColorInRDV] = useState(true);
+  const [autoConfirm, setAutoConfirm] = useState(false);
   const [fields, setFields] = useState<DisplayField[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,6 +49,12 @@ const GestionAffichageRDV = () => {
       } else {
         setShowColorInRDV(true);
       }
+
+      // Fetch auto-confirm settings
+      try {
+        const acRes = await api.getAutoConfirmSettings();
+        setAutoConfirm(acRes.enabled);
+      } catch { /* use default */ }
       
       // Set fields from API or use defaults
       if (settings.fields && Array.isArray(settings.fields) && settings.fields.length > 0) {
@@ -101,6 +108,7 @@ const GestionAffichageRDV = () => {
         showColorInRDV,
         fields: orderedFields
       });
+      await api.updateAutoConfirmSettings(autoConfirm);
       
       toast.dismiss(loadingToast);
       toast.success('Paramètres enregistrés avec succès');
@@ -261,6 +269,42 @@ const GestionAffichageRDV = () => {
                       value="non"
                       checked={!showColorInRDV}
                       onChange={() => setShowColorInRDV(false)}
+                      className="h-4 w-4 accent-[#002366]"
+                    />
+                    Non
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Auto-confirm Setting */}
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 bg-gray-50 border-b border-gray-100">
+                <h3 className="text-sm font-medium text-gray-900">Confirmation automatique</h3>
+              </div>
+              <div className="p-6">
+                <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+                  Confirmer automatiquement les rendez-vous pris en ligne sans intervention manuelle
+                </p>
+                <div className="flex items-center gap-6">
+                  <label className="flex items-center gap-2 text-gray-700 text-sm">
+                    <input
+                      type="radio"
+                      name="autoConfirm"
+                      value="oui"
+                      checked={autoConfirm}
+                      onChange={() => setAutoConfirm(true)}
+                      className="h-4 w-4 accent-[#002366]"
+                    />
+                    Oui
+                  </label>
+                  <label className="flex items-center gap-2 text-gray-700 text-sm">
+                    <input
+                      type="radio"
+                      name="autoConfirm"
+                      value="non"
+                      checked={!autoConfirm}
+                      onChange={() => setAutoConfirm(false)}
                       className="h-4 w-4 accent-[#002366]"
                     />
                     Non

@@ -76,6 +76,8 @@ const REASON_DAY_OFF = 'Jour de repos';
 const REASON_OUTSIDE_HOURS = 'En dehors des horaires';
 const REASON_BREAK = 'En pause';
 const REASON_BOOKED = 'Déjà occupé';
+const REASON_INACTIF = 'INACTIF';
+const REASON_VACATION = 'VACATION';
 
 function minutesSinceMidnight(time: string): number {
   const [h, m] = time.split(':').map(Number);
@@ -282,7 +284,29 @@ export class SchedulingService {
       for (const emp of employees) {
         const empSkills = skillMap.get(emp.id);
         const hasSkill = !empSkills || empSkills.size === 0 || empSkills.has(service.id);
-        if (!hasSkill) continue;
+        if (!hasSkill) {
+          serviceEmployees.push({
+            employeeId: emp.id,
+            employeeName: `${emp.firstName} ${emp.lastName}`,
+            available: false,
+            recommended: false,
+            reason: 'Ne peut pas réaliser cette prestation',
+          });
+          continue;
+        }
+
+        // Employee status check (inactive / vacation)
+        const empStatus = emp.agendaSettings ? (emp.agendaSettings as any).status : undefined;
+        if (empStatus && empStatus !== 'active') {
+          serviceEmployees.push({
+            employeeId: emp.id,
+            employeeName: `${emp.firstName} ${emp.lastName}`,
+            available: false,
+            recommended: false,
+            reason: empStatus === 'inactive' ? REASON_INACTIF : REASON_VACATION,
+          });
+          continue;
+        }
 
         const wh = getWorkingHours(emp);
         if (!wh) {
@@ -400,7 +424,7 @@ export class SchedulingService {
         const empAvail = svc.employees.find((e) => e.employeeId === assignment.employeeId);
         if (!empAvail) {
           const allEmp = employees.find((e) => e.id === assignment.employeeId);
-          const name = allEmp ? `${allEmp.firstName} ${allEmp.lastName}` : assignment.employeeId;
+          const name = allEmp ? `${allEmp.firstName} ${allEmp.lastName}` : 'Collaborateur introuvable';
           alerts.push({
             severity: 'conflict',
             type: 'EMPLOYEE_NOT_COMPATIBLE',
@@ -463,6 +487,16 @@ export class SchedulingService {
       select: { businessHours: true },
     });
     if (tenantSettings?.businessHours) {
+      const bh = tenantSettings.businessHours as Record<string, any>;
+      // Check blocked dates
+      const blockedDates: string[] = bh.blockedDates || [];
+      if (blockedDates.includes(date)) {
+        alerts.push({
+          severity: 'conflict',
+          type: 'DATE_BLOCKED',
+          message: "L'établissement est fermé ce jour-là (jour bloqué).",
+        });
+      }
       const hours = tenantSettings.businessHours as Record<string, { open?: string; close?: string } | null>;
       const dayKey = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayDate.getDay()];
       const dayHours = hours[dayKey];
@@ -592,7 +626,13 @@ export class SchedulingService {
       select: { businessHours: true },
     });
     if (tenantSettings?.businessHours) {
-      const hours = tenantSettings.businessHours as Record<string, { open?: string; close?: string } | null>;
+      const businessHours = tenantSettings.businessHours as Record<string, any>;
+      // Check blocked dates
+      const blockedDates: string[] = businessHours.blockedDates || [];
+      if (blockedDates.includes(date)) {
+        return { available: false, reason: 'Établissement fermé ce jour (jour bloqué).' };
+      }
+      const hours = businessHours as Record<string, { open?: string; close?: string } | null>;
       const dayKey = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayIndex];
       const dayHours = hours[dayKey];
       if (!dayHours?.open || !dayHours?.close) {
@@ -614,6 +654,7 @@ export class SchedulingService {
         lastName: true,
         email: true,
         workingHours: true,
+        agendaSettings: true,
         employeeServices: { select: { serviceId: true } },
       },
     });
@@ -704,6 +745,9 @@ export class SchedulingService {
         const empSkills = skillMap.get(emp.id);
         const hasSkill = !empSkills || empSkills.size === 0 || empSkills.has(service.id);
         if (!hasSkill) continue;
+
+        const empStatus = emp.agendaSettings ? (emp.agendaSettings as any).status : undefined;
+        if (empStatus && empStatus !== 'active') continue;
 
         const wh = getWorkingHours(emp);
         if (!wh) continue;

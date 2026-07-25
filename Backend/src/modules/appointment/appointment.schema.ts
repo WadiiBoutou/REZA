@@ -31,6 +31,7 @@ export const clientDiagnosticsSchema = z.object({
   date: z.string(),
   startTime: z.string(),
   estimatedDuration: z.number().int().positive().optional(),
+  tenantId: z.string().optional(),
 });
 
 export const planAppointmentSchema = z.object({
@@ -38,6 +39,7 @@ export const planAppointmentSchema = z.object({
   date: z.string(),
   startTime: z.string(),
   clientId: z.string().optional(),
+  tenantId: z.string().optional(),
   assignments: z.array(z.object({
     serviceId: z.string(),
     employeeId: z.string().nullable(),

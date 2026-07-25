@@ -12,54 +12,57 @@ datasource db {
 
 // Account: groups salons (tenants) owned by one admin; holds the subscription
 model Account {
-  id          String   @id @default(cuid())
-  ownerUserId String   @unique
-  owner       User     @relation("AccountOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  id          String @id @default(cuid())
+  ownerUserId String @unique
+  owner       User   @relation("AccountOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
 
-  isActive    Boolean  @default(true)
+  isActive Boolean @default(true)
 
   tenants      Tenant[]
   subscription Subscription?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // Platform-billing payment method (how the salon pays the SAAS platform)
+  billingPaymentMethod Json? // { type: 'SEPA' | 'CARD', iban?: string, cardLast4?: string, holderName?: string }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("accounts")
 }
 
 // Subscription plans (managed by superadmin); salon limit is per plan
 model SubscriptionPlan {
-  id            String   @id @default(cuid())
+  id            String  @id @default(cuid())
   name          String
   priceCents    Int
-  currency      String   @default("MAD")
-  interval      String   @default("year")
+  currency      String  @default("MAD")
+  interval      String  @default("year")
   maxSalons     Int
   stripePriceId String?
-  isActive      Boolean  @default(true)
+  isActive      Boolean @default(true)
 
   subscriptions Subscription[]
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("subscription_plans")
 }
 
 model Subscription {
-  id                   String   @id @default(cuid())
-  accountId            String   @unique
-  account              Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  planId               String
-  plan                 SubscriptionPlan @relation(fields: [planId], references: [id])
+  id        String           @id @default(cuid())
+  accountId String           @unique
+  account   Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  planId    String
+  plan      SubscriptionPlan @relation(fields: [planId], references: [id])
 
   status               SubscriptionStatus @default(NONE)
   stripeCustomerId     String?
   stripeSubscriptionId String?
   currentPeriodEnd     DateTime?
 
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("subscriptions")
 }
@@ -73,168 +76,168 @@ enum SubscriptionStatus {
 
 // Multi-Tenant: Each tenant is an organization/establishment
 model Tenant {
-  id          String   @id @default(cuid())
-  name        String
-  subdomain   String?  @unique // Optional subdomain for tenant
-  domain      String?  @unique // Optional custom domain
-  email       String
-  phone       String?
-  address     String?
-  logo        String?
-  
+  id        String  @id @default(cuid())
+  name      String
+  subdomain String? @unique // Optional subdomain for tenant
+  domain    String? @unique // Optional custom domain
+  email     String
+  phone     String?
+  address   String?
+  logo      String?
+
   // Landing page fields
-  category    String?  // Main category (Coiffeur, Barbier, Manucure, Institut, etc.)
-  coverImage  String?  // Cover image for landing page
+  category         String? // Main category (Coiffeur, Barbier, Manucure, Institut, etc.)
+  coverImage       String? // Cover image for landing page
   shortDescription String? // Short description for search cards
-  website     String?  // Website URL
-  city        String?  // City name (for search and display)
-  googleMapsLink String? // Google Maps link (e.g., https://maps.google.com/?q=...)
-  latitude    Float?   // GPS coordinates for map
-  longitude   Float?   // GPS coordinates for map
-  tags        String[] // Tags for search and filtering (e.g., ["spa", "hammam", "massage"])
-  
-  isActive    Boolean  @default(true)
+  website          String? // Website URL
+  city             String? // City name (for search and display)
+  googleMapsLink   String? // Google Maps link (e.g., https://maps.google.com/?q=...)
+  latitude         Float? // GPS coordinates for map
+  longitude        Float? // GPS coordinates for map
+  tags             String[] // Tags for search and filtering (e.g., ["spa", "hammam", "massage"])
+
+  isActive           Boolean @default(true)
   subscriptionActive Boolean @default(true)
 
   // Multi-salon ownership
-  accountId   String?
-  account     Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  users       User[]
-  clients     Client[]
-  services    Service[]
-  employees   Employee[]
-  appointments Appointment[]
-  invoices    Invoice[]
-  reviews     Review[]
+  users            User[]
+  clients          Client[]
+  services         Service[]
+  employees        Employee[]
+  appointments     Appointment[]
+  invoices         Invoice[]
+  reviews          Review[]
   cashTransactions CashTransaction[]
-  settings    TenantSettings?
-  favorites   Favorite[] @relation("TenantFavorites")
-  notifications Notification[]
-  bookingGroups BookingGroup[]
+  settings         TenantSettings?
+  favorites        Favorite[]        @relation("TenantFavorites")
+  notifications    Notification[]
+  bookingGroups    BookingGroup[]
 
   @@map("tenants")
 }
 
 // Tenant-specific settings
 model TenantSettings {
-  id              String   @id @default(cuid())
-  tenantId        String   @unique
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   // Business hours
-  businessHours   Json?    // Store business hours as JSON
-  timezone        String   @default("Europe/Paris")
-  currency        String   @default("EUR")
-  language        String   @default("fr")
-  
+  businessHours Json? // Store business hours as JSON
+  timezone      String @default("Europe/Paris")
+  currency      String @default("EUR")
+  language      String @default("fr")
+
   // Booking settings
-  bookingAdvanceDays Int   @default(30)
-  cancellationHours  Int   @default(24)
-  
+  bookingAdvanceDays Int @default(30)
+  cancellationHours  Int @default(24)
+
   // Notification settings
   emailNotifications Json?
-  smsNotifications     Json?
-  
+  smsNotifications   Json?
+
   // Appointment display settings
   appointmentDisplaySettings Json? // Store appointment display preferences (showColorInRDV, fields order and visibility)
-  
+
   // Photos/Gallery
   photos Json? // Store establishment photos as JSON array
-  
+
   // Establishment description
   description String? // Store establishment description (À-propos section)
-  
+
   // Payment methods
   paymentMethods Json? // Store payment methods (IBAN, cards, etc.) as JSON array
-  
+
   // Landing page additional fields
-  amenities Json? // Store amenities as JSON array (e.g., ["WiFi gratuit", "Climatisation", "Parking"])
+  amenities   Json? // Store amenities as JSON array (e.g., ["WiFi gratuit", "Climatisation", "Parking"])
   socialMedia Json? // Store social media links as JSON (e.g., { instagram: "...", facebook: "..." })
-  featured Boolean @default(false) // Whether tenant is featured on landing page
-  
+  featured    Boolean @default(false) // Whether tenant is featured on landing page
+
   // Landing page display controls
-  showMap Boolean @default(true) // Show map on landing page
-  showOpeningHours Boolean @default(true) // Show opening hours on landing page
-  showOnlineReservation Boolean @default(true) // Show online reservation button/feature
-  showReviews Boolean @default(true) // Show reviews section on landing page
+  showMap                  Boolean @default(true) // Show map on landing page
+  showOpeningHours         Boolean @default(true) // Show opening hours on landing page
+  showOnlineReservation    Boolean @default(true) // Show online reservation button/feature
+  showReviews              Boolean @default(true) // Show reviews section on landing page
   onlineReservationEnabled Boolean @default(true) // Enable online reservation functionality
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("tenant_settings")
 }
 
 // Users (staff members) - belong to a tenant
 model User {
-  id          String   @id @default(cuid())
-  tenantId    String?  // Nullable: global SUPER_ADMIN has no tenant
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  email       String
-  password    String   // Hashed password
-  firstName   String
-  lastName    String
-  phone       String?
-  role        UserRole @default(STAFF)
-  isActive    Boolean  @default(true)
-  avatar      String?
-  
+  id       String  @id @default(cuid())
+  tenantId String? // Nullable: global SUPER_ADMIN has no tenant
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  email     String
+  password  String // Hashed password
+  firstName String
+  lastName  String
+  phone     String?
+  role      UserRole @default(STAFF)
+  isActive  Boolean  @default(true)
+  avatar    String?
+
   // Relations
-  appointments Appointment[] @relation("AppointmentEmployee")
-  createdAppointments Appointment[] @relation("AppointmentCreator")
-  createdCashTransactions CashTransaction[] @relation("CashTransactionCreator")
-  serviceItems AppointmentServiceItem[] @relation("ServiceItemEmployee")
-  notifications Notification[]
-  ownedAccount Account? @relation("AccountOwner")
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  appointments            Appointment[]            @relation("AppointmentEmployee")
+  createdAppointments     Appointment[]            @relation("AppointmentCreator")
+  createdCashTransactions CashTransaction[]        @relation("CashTransactionCreator")
+  serviceItems            AppointmentServiceItem[] @relation("ServiceItemEmployee")
+  notifications           Notification[]
+  ownedAccount            Account?                 @relation("AccountOwner")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([tenantId, email])
   @@map("users")
 }
 
 enum UserRole {
-  SUPER_ADMIN  // System admin (can access all tenants)
-  ADMIN        // Tenant admin
-  STAFF        // Regular staff member
+  SUPER_ADMIN // System admin (can access all tenants)
+  ADMIN // Tenant admin
+  STAFF // Regular staff member
   RECEPTIONIST // Reception staff
 }
 
 // Clients - belong to a tenant
 model Client {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   firstName   String
   lastName    String
   email       String?
   phone       String
   address     String?
-  avatar      String?   // Profile picture URL or base64
-  password    String?  // Hashed password (optional)
+  avatar      String? // Profile picture URL or base64
+  password    String? // Hashed password (optional)
   dateOfBirth DateTime?
   notes       String?
   status      ClientStatus @default(ACTIVE)
-  
+
   // Relations
-  appointments Appointment[]
-  reviews      Review[]
-  invoices     Invoice[]
-  familyMembers FamilyMember[] @relation("ClientFamilyMembers")
-  favorites    Favorite[] @relation("ClientFavorites")
-  bookingGroupsAsBooker BookingGroup[] @relation("BookingGroupBooker")
-  bookingParticipants BookingParticipant[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  appointments          Appointment[]
+  reviews               Review[]
+  invoices              Invoice[]
+  familyMembers         FamilyMember[]       @relation("ClientFamilyMembers")
+  favorites             Favorite[]           @relation("ClientFavorites")
+  bookingGroupsAsBooker BookingGroup[]       @relation("BookingGroupBooker")
+  bookingParticipants   BookingParticipant[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId, email])
   @@index([tenantId, phone])
@@ -249,19 +252,19 @@ enum ClientStatus {
 
 // Family Members / Proches - belong to a client
 model FamilyMember {
-  id          String   @id @default(cuid())
-  clientId    String
-  client      Client   @relation("ClientFamilyMembers", fields: [clientId], references: [id], onDelete: Cascade)
-  
-  firstName   String
-  lastName    String
-  email       String?
-  phone       String?
-  relationship String  // e.g., "Fille", "Fils", "Mère", "Épouse", etc.
-  avatar      String?   // URL or base64 image
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation("ClientFamilyMembers", fields: [clientId], references: [id], onDelete: Cascade)
+
+  firstName    String
+  lastName     String
+  email        String?
+  phone        String?
+  relationship String // e.g., "Fille", "Fils", "Mère", "Épouse", etc.
+  avatar       String? // URL or base64 image
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@map("family_members")
@@ -269,14 +272,14 @@ model FamilyMember {
 
 // Favorites / Favoris - clients can favorite tenants (salons)
 model Favorite {
-  id          String   @id @default(cuid())
-  clientId    String
-  client      Client   @relation("ClientFavorites", fields: [clientId], references: [id], onDelete: Cascade)
-  
-  tenantId    String
-  tenant      Tenant   @relation("TenantFavorites", fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  createdAt   DateTime @default(now())
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation("ClientFavorites", fields: [clientId], references: [id], onDelete: Cascade)
+
+  tenantId String
+  tenant   Tenant @relation("TenantFavorites", fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
 
   @@unique([clientId, tenantId]) // A client can only favorite a tenant once
   @@index([clientId])
@@ -286,43 +289,43 @@ model Favorite {
 
 // Services/Prestations - belong to a tenant
 model Service {
-  id              String   @id @default(cuid())
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  name            String
-  abbreviation    String?
-  description     String?
-  category        String?
-  color           String   @default("#002366")
-  
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  name         String
+  abbreviation String?
+  description  String?
+  category     String?
+  color        String  @default("#002366")
+
   // Pricing
-  price           Float?
-  priceType       PriceType @default(FIXED)
-  priceFrom       Float?
-  priceTo         Float?
-  onQuote         Boolean  @default(false)
-  
+  price     Float?
+  priceType PriceType @default(FIXED)
+  priceFrom Float?
+  priceTo   Float?
+  onQuote   Boolean   @default(false)
+
   // Duration in minutes
-  duration        Int
-  
+  duration Int
+
   // Visibility
-  visibility      Visibility @default(BOOKABLE)
-  
+  visibility Visibility @default(BOOKABLE)
+
   // Multiple providers can offer this service
   multipleProviders Boolean @default(false)
-  
+
   // Competences/skills required
-  competences     String[]
-  
+  competences String[]
+
   // Relations
-  appointments    Appointment[]
+  appointments     Appointment[]
   employeeServices EmployeeService[]
-  invoiceItems    InvoiceItem[]
+  invoiceItems     InvoiceItem[]
   appointmentItems AppointmentServiceItem[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId])
   @@map("services")
@@ -335,36 +338,36 @@ enum PriceType {
 }
 
 enum Visibility {
-  BOOKABLE  // Can be booked online
-  VISIBLE   // Visible but not bookable
-  HIDDEN    // Hidden from clients
+  BOOKABLE // Can be booked online
+  VISIBLE // Visible but not bookable
+  HIDDEN // Hidden from clients
 }
 
 // Employees/Collaborateurs - belong to a tenant
 model Employee {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  firstName   String
-  lastName    String
-  email       String?
-  phone       String?
-  avatar      String?
-  isActive    Boolean  @default(true)
-  
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  avatar    String?
+  isActive  Boolean @default(true)
+
   // Working hours (stored as JSON for flexibility)
   workingHours Json?
-  
+
   // Agenda settings (stored as JSON for flexibility)
   // Contains: color, role, timeSlotDuration, bufferTime, maxAppointmentsPerDay, allowOnlineBooking, status
   agendaSettings Json?
-  
+
   // Relations
   employeeServices EmployeeService[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId])
   @@map("employees")
@@ -372,13 +375,13 @@ model Employee {
 
 // Many-to-many: Employees can offer multiple services
 model EmployeeService {
-  id          String   @id @default(cuid())
-  employeeId  String
-  serviceId   String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  service     Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  employeeId String
+  serviceId  String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
 
   @@unique([employeeId, serviceId])
   @@map("employee_services")
@@ -386,48 +389,48 @@ model EmployeeService {
 
 // Appointments/Rendez-vous - belong to a tenant
 model Appointment {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  clientId    String
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  
-  serviceId   String
-  service     Service  @relation(fields: [serviceId], references: [id])
-  
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id])
+
   /// LEGACY: top-level employee for the entire appointment.
   /// Kept for backward compatibility (stats, invoices, existing single-service appointments).
   /// NEW FLOW: per-service employees are stored on AppointmentServiceItem.employeeId instead.
   /// When creating via the `services[]` array, this field SHOULD be null.
-  employeeId  String?
-  employee    User?    @relation("AppointmentEmployee", fields: [employeeId], references: [id])
-  
+  employeeId String?
+  employee   User?   @relation("AppointmentEmployee", fields: [employeeId], references: [id])
+
   createdById String
-  createdBy   User     @relation("AppointmentCreator", fields: [createdById], references: [id])
-  
+  createdBy   User   @relation("AppointmentCreator", fields: [createdById], references: [id])
+
   // Appointment details
-  startTime   DateTime
-  endTime     DateTime
-  duration    Int      // Duration in minutes
-  status      AppointmentStatus @default(CONFIRMED)
-  notes       String?
-  
+  startTime DateTime
+  endTime   DateTime
+  duration  Int // Duration in minutes
+  status    AppointmentStatus @default(CONFIRMED)
+  notes     String?
+
   // Cancellation
-  cancelledAt DateTime?
-  cancelledBy String?
+  cancelledAt        DateTime?
+  cancelledBy        String?
   cancellationReason String?
 
-  bookingGroupId String?
-  bookingGroup   BookingGroup? @relation(fields: [bookingGroupId], references: [id], onDelete: SetNull)
+  bookingGroupId     String?
+  bookingGroup       BookingGroup?       @relation(fields: [bookingGroupId], references: [id], onDelete: SetNull)
   bookingParticipant BookingParticipant?
-  
+
   // Relations
-  invoice     Invoice?
-  services    AppointmentServiceItem[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  invoice  Invoice?
+  services AppointmentServiceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId, startTime])
   @@index([tenantId, clientId])
@@ -440,19 +443,19 @@ model AppointmentServiceItem {
   appointmentId String
   appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
-  serviceId     String?
-  service       Service?    @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
-  employeeId    String?
-  employee      User?       @relation("ServiceItemEmployee", fields: [employeeId], references: [id])
+  employeeId String?
+  employee   User?   @relation("ServiceItemEmployee", fields: [employeeId], references: [id])
 
-  serviceName   String
-  duration      Int
-  price         Float       @default(0)
-  sortOrder     Int         @default(0)
+  serviceName String
+  duration    Int
+  price       Float  @default(0)
+  sortOrder   Int    @default(0)
 
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([appointmentId])
   @@index([serviceId])
@@ -470,50 +473,65 @@ enum AppointmentStatus {
 
 // Invoices/Factures - belong to a tenant
 model Invoice {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  clientId    String?
-  client      Client?  @relation(fields: [clientId], references: [id])
-  
-  appointmentId String? @unique
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // SALE invoices link to a client + optional appointment
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id])
+
+  appointmentId String?      @unique
   appointment   Appointment? @relation(fields: [appointmentId], references: [id])
-  
+
+  // SUBSCRIPTION invoices link to an account (not client/appointment)
+  accountId String?
+
+  type          InvoiceType    @default(SALE)
   invoiceNumber String
-  amount      Float
-  tax         Float    @default(0)
-  total       Float
-  status      InvoiceStatus @default(PENDING)
+  amount        Float
+  tax           Float          @default(0)
+  total         Float
+  status        InvoiceStatus  @default(PENDING)
   paymentMethod PaymentMethod?
-  paidAt      DateTime?
-  notes       String?
-  
-  items       InvoiceItem[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  paidAt        DateTime?
+  notes         String?
+
+  // Period covered (for SUBSCRIPTION-type invoices)
+  periodStart DateTime?
+  periodEnd   DateTime?
+
+  items InvoiceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, clientId])
+  @@index([accountId])
   @@map("invoices")
+}
+
+enum InvoiceType {
+  SALE
+  SUBSCRIPTION
 }
 
 // Line items for a sale invoice (catalog services)
 model InvoiceItem {
-  id          String   @id @default(cuid())
-  invoiceId   String
-  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
-  serviceId   String?
-  service     Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
   // Snapshot at sale time (service may later change/delete)
   serviceName String
   price       Float
-  quantity    Int      @default(1)
+  quantity    Int    @default(1)
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([invoiceId])
   @@index([serviceId])
@@ -525,6 +543,7 @@ enum InvoiceStatus {
   PAID
   CANCELLED
   REFUNDED
+  OVERDUE
 }
 
 enum PaymentMethod {
@@ -537,24 +556,24 @@ enum PaymentMethod {
 
 // Reviews/Avis - belong to a tenant
 model Review {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  clientId    String
-  client      Client   @relation(fields: [clientId], references: [id])
-  
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+
   appointmentId String?
-  
-  rating      Int      // 1-5 stars
+
+  rating      Int // 1-5 stars
   comment     String?
   status      ReviewStatus @default(PENDING)
   moderatedBy String?
   moderatedAt DateTime?
-  metadata    Json?    // Store additional data (e.g., detailedRatings)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  metadata    Json? // Store additional data (e.g., detailedRatings)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -569,20 +588,20 @@ enum ReviewStatus {
 
 // Cash Transactions (Deposits/Withdrawals) - belong to a tenant
 model CashTransaction {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  type        CashTransactionType
-  amount      Float
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  type          CashTransactionType
+  amount        Float
   paymentMethod PaymentMethod
-  notes       String?
-  
+  notes         String?
+
   createdById String
-  createdBy   User     @relation("CashTransactionCreator", fields: [createdById], references: [id])
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdBy   User   @relation("CashTransactionCreator", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, createdAt])
@@ -590,32 +609,32 @@ model CashTransaction {
 }
 
 enum CashTransactionType {
-  DEPOSIT    // Dépôt
+  DEPOSIT // Dépôt
   WITHDRAWAL // Retrait
-  REFUND     // Remboursement (mouvement caisse, sans ligne service)
+  REFUND // Remboursement (mouvement caisse, sans ligne service)
 }
 
 // Notifications - belong to a tenant
 model Notification {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  userId      String?  // If null, notification is for all users in tenant
-  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  type        NotificationType
-  title       String
-  message     String
-  link        String?  // Optional link to related resource (e.g., /dashboard/clients/mes-avis/avis-a-moderer)
-  isRead      Boolean  @default(false)
-  readAt      DateTime?
-  
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId String? // If null, notification is for all users in tenant
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type    NotificationType
+  title   String
+  message String
+  link    String? // Optional link to related resource (e.g., /dashboard/clients/mes-avis/avis-a-moderer)
+  isRead  Boolean          @default(false)
+  readAt  DateTime?
+
   // Metadata for different notification types
-  metadata    Json?    // Store additional data (e.g., reviewId, appointmentId, etc.)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  metadata Json? // Store additional data (e.g., reviewId, appointmentId, etc.)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, isRead])
@@ -625,27 +644,27 @@ model Notification {
 }
 
 enum NotificationType {
-  REVIEW_PENDING      // New review needs moderation
-  REVIEW_APPROVED     // Review was approved
-  REVIEW_REJECTED     // Review was rejected
-  APPOINTMENT_NEW     // New appointment created
+  REVIEW_PENDING // New review needs moderation
+  REVIEW_APPROVED // Review was approved
+  REVIEW_REJECTED // Review was rejected
+  APPOINTMENT_NEW // New appointment created
   APPOINTMENT_CONFIRMED // Appointment confirmed by tenant
   APPOINTMENT_CANCELLED // Appointment cancelled
   APPOINTMENT_REMINDER // Appointment reminder
-  SYSTEM              // System notification
+  SYSTEM // System notification
 }
 
 // Early Access Signups - for "Rejoignez l'Avant-Première" forms
 model EarlyAccessSignup {
-  id            String   @id @default(cuid())
+  id            String              @id @default(cuid())
   fullName      String
   email         String
-  phone         String?  // Optional phone number
-  establishment String?  // Only for professionals
+  phone         String? // Optional phone number
+  establishment String? // Only for professionals
   city          String
   userType      EarlyAccessUserType
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
   @@index([email])
   @@index([userType])
@@ -653,8 +672,8 @@ model EarlyAccessSignup {
 }
 
 enum EarlyAccessUserType {
-  PROFESSIONAL  // Professionnel
-  CLIENT        // Client
+  PROFESSIONAL // Professionnel
+  CLIENT // Client
 }
 
 enum BookingGroupStatus {
@@ -664,36 +683,36 @@ enum BookingGroupStatus {
 }
 
 model BookingGroup {
-  id              String   @id @default(cuid())
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   bookerClientId  String?
-  bookerClient    Client?  @relation("BookingGroupBooker", fields: [bookerClientId], references: [id], onDelete: SetNull)
+  bookerClient    Client? @relation("BookingGroupBooker", fields: [bookerClientId], references: [id], onDelete: SetNull)
   bookerFirstName String
   bookerLastName  String
   bookerPhone     String
   bookerEmail     String?
 
-  startTime       DateTime
-  status          BookingGroupStatus @default(PENDING)
-  grandTotal      Float    @default(0)
-  pricingSummary  Json?
+  startTime      DateTime
+  status         BookingGroupStatus @default(PENDING)
+  grandTotal     Float              @default(0)
+  pricingSummary Json?
 
-  participants    BookingParticipant[]
-  appointments    Appointment[]
+  participants BookingParticipant[]
+  appointments Appointment[]
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId, startTime])
   @@map("booking_groups")
 }
 
 model BookingParticipant {
-  id              String   @id @default(cuid())
-  bookingGroupId  String
-  bookingGroup    BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  bookingGroupId String
+  bookingGroup   BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Cascade)
 
   displayName     String
   clientId        String?
@@ -703,13 +722,12 @@ model BookingParticipant {
   durationMinutes Int
   subtotal        Float    @default(0)
 
-  appointmentId   String?  @unique
-  appointment     Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  appointmentId String?      @unique
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([bookingGroupId])
   @@map("booking_participants")
 }
-

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { DollarSign, CreditCard, RefreshCcw, Download, Plus, Search, Filter, Calendar, Users, X, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Wallet, Receipt, Clock, BarChart3, PieChart, Eye, Printer, FileText, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { DollarSign, CreditCard, RefreshCcw, Download, Plus, Search, Filter, Calendar, Users, X, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Wallet, Receipt, Clock, BarChart3, PieChart, Eye, Printer, FileText, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { BarChart, Bar, PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 import { generateCaissePDF } from '@/components/CaissePrintDocument';
@@ -10,17 +10,26 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 
+interface TransactionItem {
+  serviceName: string;
+  price: number;
+  quantity: number;
+  employeeName?: string;
+  participantName?: string;
+}
+
 interface Transaction {
   id: string;
   type: 'Vente' | 'Remboursement' | 'Dépôt' | 'Retrait';
   amount: number;
-  method: 'Espèces' | 'Carte' | 'Virement' | 'Chèque';
+  method: string;
   client?: string;
   employee?: string;
   date: Date;
   note?: string;
   category?: string;
-  invoiceId?: string; // Link to invoice if applicable
+  invoiceId?: string;
+  items?: TransactionItem[];
 }
 
 // API Invoice type
@@ -48,6 +57,8 @@ type ApiInvoice = {
     serviceName: string;
     price: number;
     quantity: number;
+    /** Per-item employee — set when a manual caisse sale assigns an employee per service */
+    employee?: { firstName: string; lastName: string } | null;
   }>;
   appointment: {
     id: string;
@@ -59,6 +70,23 @@ type ApiInvoice = {
       firstName: string;
       lastName: string;
     } | null;
+    /** Per-service employee info from AppointmentServiceItem */
+    services?: Array<{
+      id: string;
+      serviceId: string | null;
+      serviceName: string;
+      employeeId: string | null;
+      employee?: { firstName: string; lastName: string } | null;
+    }>;
+    /** Participant display name for group-booked appointments */
+    bookingParticipant?: {
+      displayName: string;
+    } | null;
+  } | null;
+  /** Top-level employee — populated for manual caisse sales with an assigned employee (no appointment) */
+  employee?: {
+    firstName: string;
+    lastName: string;
   } | null;
 };
 
@@ -82,8 +110,10 @@ const PAYMENT_METHOD_TO_API: Record<string, 'CASH' | 'CARD' | 'BANK_TRANSFER' | 
 const emptySaleForm = () => ({
   serviceIds: [] as string[],
   amount: 0,
-  method: 'Espèces' as Transaction['method'],
+  method: 'Espèces',
   clientId: '',
+  /** Per-service employee assignments: serviceId -> employeeId (empty string = unassigned) */
+  serviceEmployees: {} as Record<string, string>,
   note: '',
   tenantId: '',
 });
@@ -91,13 +121,13 @@ const emptySaleForm = () => ({
 const emptyMovementForm = () => ({
   type: 'Dépôt' as 'Dépôt' | 'Retrait' | 'Remboursement',
   amount: 0,
-  method: 'Espèces' as Transaction['method'],
+  method: 'Espèces',
   note: '',
   tenantId: '',
 });
 
 interface CaissePageProps {
-  methodFilter?: 'all' | 'Espèces' | 'Carte' | 'Virement' | 'Chèque';
+  methodFilter?: string;
   typeFilter?: 'all' | 'Vente' | 'Remboursement' | 'Dépôt' | 'Retrait';
   selectedPeriod?: 'day' | 'week' | 'month' | 'all';
   setMethodFilter?: (filter: 'all' | 'Espèces' | 'Carte' | 'Virement' | 'Chèque') => void;
@@ -119,7 +149,7 @@ function CaissePageContent({
   const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
   
   // Initialize filters from URL params or props or default to 'all'
-  const [internalMethodFilter, setInternalMethodFilter] = useState<'all' | 'Espèces' | 'Carte' | 'Virement' | 'Chèque'>(() => {
+  const [internalMethodFilter, setInternalMethodFilter] = useState<string>(() => {
     return (searchParams?.get('method') as any) || 'all';
   });
   const [internalTypeFilter, setInternalTypeFilter] = useState<'all' | 'Vente' | 'Remboursement' | 'Dépôt' | 'Retrait'>(() => {
@@ -149,6 +179,7 @@ function CaissePageContent({
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [clients, setClients] = useState<Array<{ id: string; name: string; tenantId?: string }>>([]);
+  const [employees, setEmployees] = useState<Array<{ id: string; name: string }>>([]);
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -157,6 +188,8 @@ function CaissePageContent({
   const [saleForm, setSaleForm] = useState(emptySaleForm);
   const [movementForm, setMovementForm] = useState(emptyMovementForm);
   const [amountOverridden, setAmountOverridden] = useState(false);
+  const [acceptedPaymentMethods, setAcceptedPaymentMethods] = useState<string[]>(['Espèces', 'Carte', 'Virement', 'Chèque']);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const printRef = useRef<HTMLDivElement>(null);
 
   const servicePrice = (s: CatalogService) => s.price ?? s.priceFrom ?? 0;
@@ -189,7 +222,7 @@ function CaissePageContent({
 
   // Transform API invoice to Transaction
   const transformInvoiceToTransaction = (invoice: ApiInvoice): Transaction => {
-    const paymentMethodMap: Record<string, 'Espèces' | 'Carte' | 'Virement' | 'Chèque'> = {
+    const paymentMethodMap: Record<string, string> = {
       'CASH': 'Espèces',
       'CARD': 'Carte',
       'BANK_TRANSFER': 'Virement',
@@ -215,20 +248,68 @@ function CaissePageContent({
       clientName = `${firstName} ${lastName}`.trim() || undefined;
     }
 
+    // Build employee map from AppointmentServiceItem (per-service employee)
+    const serviceEmployeeMap = new Map<string, string>();
+    if (invoice.appointment?.services) {
+      for (const svc of invoice.appointment.services) {
+        if (svc.employee) {
+          const name = `${svc.employee.firstName?.trim() || ''} ${svc.employee.lastName?.trim() || ''}`.trim();
+          if (name) serviceEmployeeMap.set(svc.serviceName, name);
+        }
+      }
+    }
+
+    // Group booking participant name (shared across all line items for this appointment)
+    const groupParticipantName = invoice.appointment?.bookingParticipant?.displayName || undefined;
+
     let employeeName: string | undefined;
     if (invoice.appointment?.employee) {
       const firstName = invoice.appointment.employee.firstName?.trim() || '';
       const lastName = invoice.appointment.employee.lastName?.trim() || '';
       employeeName = `${firstName} ${lastName}`.trim() || undefined;
+    } else if (invoice.employee) {
+      // Manual sale with explicit employee assignment (no appointment)
+      const firstName = invoice.employee.firstName?.trim() || '';
+      const lastName = invoice.employee.lastName?.trim() || '';
+      employeeName = `${firstName} ${lastName}`.trim() || undefined;
     }
 
-    const itemNames = (invoice.items || [])
-      .map((item) => (item.quantity > 1 ? `${item.serviceName} x${item.quantity}` : item.serviceName))
-      .filter(Boolean);
+    const invoiceItems: TransactionItem[] = (invoice.items || [])
+      .map((item) => {
+        let itemEmployee: string | undefined;
+        // 1) Per-item employee from InvoiceItem (manual multi-employee sale — not currently persisted)
+        if (item.employee) {
+          itemEmployee = `${item.employee.firstName?.trim() || ''} ${item.employee.lastName?.trim() || ''}`.trim() || undefined;
+        }
+        // 2) Look up per-service employee from AppointmentServiceItem
+        if (!itemEmployee) {
+          itemEmployee = serviceEmployeeMap.get(item.serviceName);
+        }
+        // 3) Fallback to legacy appointment-level employee
+        if (!itemEmployee && invoice.appointment?.employee) {
+          itemEmployee = `${invoice.appointment.employee.firstName?.trim() || ''} ${invoice.appointment.employee.lastName?.trim() || ''}`.trim() || undefined;
+        }
+        return {
+          serviceName: item.serviceName,
+          price: item.price,
+          quantity: item.quantity,
+          employeeName: itemEmployee,
+          participantName: groupParticipantName,
+        };
+      });
+
+    const itemNames = invoiceItems.map((item) =>
+      item.quantity > 1 ? `${item.serviceName} x${item.quantity}` : item.serviceName
+    );
     const servicesLabel =
       itemNames.length > 0
         ? itemNames.join(', ')
         : invoice.appointment?.service?.name || undefined;
+
+    // Use paidAt (actual payment moment) then createdAt; guard against null/invalid
+    const rawDate = invoice.paidAt || invoice.createdAt;
+    const parsedDate = rawDate ? new Date(rawDate) : new Date();
+    const txDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
 
     return {
       id: invoice.id,
@@ -237,10 +318,11 @@ function CaissePageContent({
       method: invoice.paymentMethod ? paymentMethodMap[invoice.paymentMethod] || 'Espèces' : 'Espèces',
       client: clientName,
       employee: employeeName,
-      date: new Date(invoice.paidAt || invoice.createdAt),
+      date: txDate,
       note: invoice.notes || servicesLabel || undefined,
       category: servicesLabel,
-      invoiceId: invoice.id
+      invoiceId: invoice.id,
+      items: invoiceItems.length > 0 ? invoiceItems : undefined
     };
   };
 
@@ -281,7 +363,8 @@ function CaissePageContent({
       
       // Fetch invoices
       const invoicesResponse = await api.getInvoices({ 
-        limit: 1000 // Get all invoices for now
+        limit: 1000,
+        type: 'SALE' // Only sale invoices, exclude subscription invoices
       });
       const invoices = invoicesResponse.invoices || [];
       
@@ -395,10 +478,19 @@ function CaissePageContent({
         toast.success('Aucune transaction trouvée', { id: 'loading-transactions' });
       }
 
-      // Fetch clients + catalog services (for sale modal)
-      const [clientsResponse, servicesResponse] = await Promise.all([
+      // Fetch accepted payment methods
+      try {
+        const pmRes = await api.getAcceptedPaymentMethods();
+        if (pmRes.methods && pmRes.methods.length > 0) {
+          setAcceptedPaymentMethods(pmRes.methods);
+        }
+      } catch { /* use defaults */ }
+
+      // Fetch clients, catalog services, and employees (for sale modal)
+      const [clientsResponse, servicesResponse, employeesResponse] = await Promise.all([
         api.getClients(),
         api.getServices(),
+        api.getEmployees({ active: true }),
       ]);
       const clientsData = clientsResponse.clients || [];
       setClients(clientsData.map((c: any) => ({
@@ -415,6 +507,13 @@ function CaissePageContent({
           priceFrom: s.priceFrom ?? null,
           tenantId: s.tenantId,
         }))
+      );
+      const employeesData = (employeesResponse.employees || employeesResponse || []) as any[];
+      setEmployees(
+        employeesData.map((e: any) => ({
+          id: e.id,
+          name: `${e.firstName || ''} ${e.lastName || ''}`.trim(),
+        })).filter((e: { id: string; name: string }) => e.name)
       );
     } catch (err: any) {
       console.error('Error fetching caisse data:', err);
@@ -538,10 +637,14 @@ function CaissePageContent({
         const s = catalogServices.find((x) => x.id === id);
         return sum + (s ? servicePrice(s) : 0);
       }, 0);
+      // Clean up assignment for deselected service
+      const nextAssignments = { ...prev.serviceEmployees };
+      if (!nextIds.includes(serviceId)) delete nextAssignments[serviceId];
       return {
         ...prev,
         serviceIds: nextIds,
         amount: amountOverridden ? prev.amount : nextSum,
+        serviceEmployees: nextAssignments,
       };
     });
   };
@@ -574,7 +677,13 @@ function CaissePageContent({
           clientId: saleForm.clientId.trim(),
           items: saleForm.serviceIds.map((serviceId) => {
             const s = catalogServices.find((x) => x.id === serviceId);
-            return { serviceId, price: s ? servicePrice(s) : undefined };
+            const empId = saleForm.serviceEmployees[serviceId];
+            return {
+              serviceId,
+              price: s ? servicePrice(s) : undefined,
+              // Only send employeeId when explicitly assigned
+              ...(empId ? { employeeId: empId } : {}),
+            };
           }),
           amount: amountOverridden ? Number(saleForm.amount) : undefined,
           paymentMethod: PAYMENT_METHOD_TO_API[saleForm.method] || 'CASH',
@@ -781,7 +890,7 @@ function CaissePageContent({
       </div>
 
       {/* Search & Quick Actions */}
-      <div className="mb-6 animate-fadeIn">
+      <div className="mb-4 animate-fadeIn">
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -800,6 +909,52 @@ function CaissePageContent({
           >
             <Printer size={14} />
           </button>
+        </div>
+      </div>
+
+      {/* Filtres Caisse */}
+      <div className="mb-6 animate-fadeIn">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Filter size={14} className="text-gray-400" />
+            <span className="text-xs text-gray-500 font-medium">Filtres:</span>
+          </div>
+          {(() => {
+            const availableMethods = [...new Set(transactions.map(t => t.method).filter(Boolean))].sort();
+            return (
+            <select
+              value={methodFilter}
+              onChange={(e) => setMethodFilter(e.target.value as any)}
+              className="px-4 py-2 rounded-full bg-white border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent appearance-none cursor-pointer"
+            >
+              <option value="all">Tous les moyens</option>
+              {availableMethods.map((method) => (
+                <option key={method} value={method}>{method}</option>
+              ))}
+            </select>
+            );
+          })()}
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as any)}
+            className="px-4 py-2 rounded-full bg-white border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent appearance-none cursor-pointer"
+          >
+            <option value="all">Tous les types</option>
+            <option value="Vente">Vente</option>
+            <option value="Remboursement">Remboursement</option>
+            <option value="Dépôt">Dépôt</option>
+            <option value="Retrait">Retrait</option>
+          </select>
+          <select
+            value={selectedPeriod}
+            onChange={(e) => setSelectedPeriod(e.target.value as any)}
+            className="px-4 py-2 rounded-full bg-white border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent appearance-none cursor-pointer"
+          >
+            <option value="all">Toute période</option>
+            <option value="day">Aujourd'hui</option>
+            <option value="week">7 derniers jours</option>
+            <option value="month">30 derniers jours</option>
+          </select>
         </div>
       </div>
 
@@ -846,44 +1001,28 @@ function CaissePageContent({
             <Wallet className="text-gray-400" size={18} />
           </div>
           <div className="space-y-3">
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-600">Espèces</span>
-                <span className="text-sm font-medium text-gray-900">{totalCash} MAD</span>
-              </div>
-              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-emerald-500 rounded-full transition-all"
-                  style={{ width: `${(totalCash / totalSales) * 100}%` }}
-                />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-600">Carte</span>
-                <span className="text-sm font-medium text-gray-900">{totalCard} MAD</span>
-              </div>
-              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-blue-500 rounded-full transition-all"
-                  style={{ width: `${(totalCard / totalSales) * 100}%` }}
-                />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-600">Virement</span>
-                <span className="text-sm font-medium text-gray-900">
-                  {transactions.filter(t => t.method === 'Virement').reduce((sum, t) => sum + t.amount, 0)} MAD
-                </span>
-              </div>
-              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-purple-500 rounded-full transition-all"
-                  style={{ width: `${(transactions.filter(t => t.method === 'Virement').reduce((sum, t) => sum + t.amount, 0) / totalSales) * 100}%` }}
-                />
-              </div>
-            </div>
+            {acceptedPaymentMethods.map((method, idx) => {
+              const methodTotal = transactions
+                .filter(t => t.method === method && t.amount > 0)
+                .reduce((sum, t) => sum + t.amount, 0);
+              const barColors = ['bg-emerald-500', 'bg-blue-500', 'bg-purple-500', 'bg-amber-500'];
+              const barColor = barColors[idx % barColors.length];
+              const pct = totalSales > 0 ? (methodTotal / totalSales) * 100 : 0;
+              return (
+                <div key={method}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-gray-600">{method}</span>
+                    <span className="text-sm font-medium text-gray-900">{methodTotal} MAD</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${barColor} rounded-full transition-all`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -897,19 +1036,54 @@ function CaissePageContent({
           <table className="w-full min-w-full table-auto">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
+                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap w-10"></th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Type</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Montant</th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[160px]">Prestation</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Méthode</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[120px]">Client</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[120px]">Employé</th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[120px]">Client</th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Date</th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Note</th>
+                <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Montant</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredTransactions.length > 0 ? (
-                filteredTransactions.map(tx => (
-                  <tr key={tx.id} className="hover:bg-gray-50 transition-colors">
+                filteredTransactions.map(tx => {
+                  const isMultiService = tx.items && tx.items.length > 1;
+                  const isExpanded = expandedRows.has(tx.id);
+                  const hasItems = tx.items && tx.items.length > 0;
+                  const mainServiceLabel = tx.items && tx.items.length === 1
+                    ? tx.items[0].serviceName
+                    : (tx.items && tx.items.length > 1 ? 'Prestations multiples' : tx.note || undefined);
+                  const toggleExpand = () => {
+                    const next = new Set(expandedRows);
+                    if (isExpanded) next.delete(tx.id);
+                    else next.add(tx.id);
+                    setExpandedRows(next);
+                  };
+                  // Smart employee for main row: single → show, multiple same → show, multiple different → indicator
+                  const mainEmployee = (() => {
+                    const empNames = tx.items?.map(i => i.employeeName).filter(Boolean) as string[] | undefined;
+                    if (!empNames || empNames.length === 0) return tx.employee || undefined;
+                    if (empNames.length === 1) return empNames[0];
+                    const unique = [...new Set(empNames)];
+                    return unique.length === 1 ? unique[0] : 'Diff\u00e9rents employ\u00e9s';
+                  })();
+
+                  return (
+                  <Fragment key={tx.id}>
+                  <tr
+                    className={`hover:bg-gray-50 transition-colors cursor-pointer ${isExpanded ? 'bg-gray-50' : ''}`}
+                    onClick={toggleExpand}
+                  >
+                    <td className="px-4 py-4">
+                      {isMultiService && (
+                        <ChevronRight
+                          size={16}
+                          className={`text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                        />
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
                         tx.type === 'Vente' ? 'bg-emerald-50 text-emerald-700' :
@@ -919,42 +1093,64 @@ function CaissePageContent({
                         {tx.type}
                       </span>
                     </td>
-                    <td className={`px-6 py-4 font-light text-lg ${tx.amount < 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                      {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)} MAD
+                    <td className="px-6 py-4 text-sm text-gray-700 truncate max-w-[200px]">
+                      {mainServiceLabel ? <span>{mainServiceLabel}</span> : <span className="text-gray-400">-</span>}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        {tx.method === 'Espèces' && <Wallet size={14} className="text-gray-400" />}
-                        {tx.method === 'Carte' && <CreditCard size={14} className="text-gray-400" />}
                         <span className="text-sm text-gray-600">{tx.method}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
-                      {tx.client || <span className="text-gray-400">-</span>}
+                      {mainEmployee ? <span>{mainEmployee}</span> : <span className="text-gray-400">-</span>}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
-                      {tx.employee && tx.employee.trim() ? tx.employee : <span className="text-gray-400">-</span>}
+                      {tx.client || <span className="text-gray-400">-</span>}
                     </td>
                     <td className="px-6 py-4 text-xs text-gray-400">{tx.date.toLocaleString('fr-FR')}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs">
-                      {tx.category || tx.note ? (
-                        <div>
-                          {tx.category && (
-                            <div className="text-gray-800 truncate" title={tx.category}>{tx.category}</div>
-                          )}
-                          {tx.note && tx.note !== tx.category && (
-                            <div className="text-xs text-gray-400 truncate" title={tx.note}>{tx.note}</div>
-                          )}
-                        </div>
-                      ) : (
-                        '-'
-                      )}
+                    <td className={`px-6 py-4 text-right font-light text-lg ${tx.amount < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                      {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)} MAD
                     </td>
                   </tr>
-                ))
+                  {isExpanded && isMultiService && (
+                    <tr>
+                      <td colSpan={8} className="px-4 pb-4">
+                        <div className="bg-gray-50 rounded-lg border border-gray-100 overflow-hidden">
+                          <table className="w-full min-w-full">
+                            <thead>
+                              <tr className="border-b border-gray-100">
+                                <th className="px-4 py-2 text-left text-[10px] font-medium text-gray-400 uppercase tracking-wider">Prestation</th>
+                                <th className="px-4 py-2 text-left text-[10px] font-medium text-gray-400 uppercase tracking-wider">Employé</th>
+                                <th className="px-4 py-2 text-right text-[10px] font-medium text-gray-400 uppercase tracking-wider">Prix</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tx.items!.map((item, idx) => (
+                                <tr key={idx} className="border-b border-gray-50 last:border-b-0">
+                                  <td className="px-4 py-2 text-sm text-gray-700">
+                                    {item.serviceName}
+                                    {item.participantName && (
+                                      <span className="text-gray-400 text-xs ml-1">
+                                        &mdash; pour {item.participantName}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2 text-sm text-gray-500">{item.employeeName || '-'}</td>
+                                  <td className="px-4 py-2 text-sm text-gray-600 text-right">{item.price.toFixed(2)} MAD</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                )
+                })
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center">
+                  <td colSpan={8} className="px-6 py-12 text-center">
                     <Receipt className="mx-auto text-gray-300 mb-3" size={48} />
                     <p className="text-gray-500">Aucune transaction trouvée</p>
                     {transactions.length > 0 && (
@@ -1055,31 +1251,58 @@ function CaissePageContent({
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Services * <span className="text-gray-400 font-normal">({saleForm.serviceIds.length} sélectionné(s))</span>
                       </label>
-                      <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-100">
+                      <div className="max-h-[420px] overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 divide-y divide-gray-100">
                         {visibleCatalogServices.length === 0 ? (
                           <p className="px-4 py-6 text-sm text-gray-400 text-center">Aucun service dans le catalogue</p>
                         ) : (
                           visibleCatalogServices.map((service) => {
                             const checked = saleForm.serviceIds.includes(service.id);
                             const price = servicePrice(service);
+                            const empId = saleForm.serviceEmployees[service.id] || '__none__';
                             return (
-                              <label
-                                key={service.id}
-                                className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white transition-colors ${
-                                  checked ? 'bg-emerald-50/60' : ''
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleSaleService(service.id)}
-                                  className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-600"
-                                />
-                                <span className="flex-1 text-sm text-gray-800">{service.name}</span>
-                                <span className="text-sm text-gray-500 tabular-nums">
-                                  {price > 0 ? `${price.toFixed(2)} MAD` : '—'}
-                                </span>
-                              </label>
+                              <div key={service.id} className={`transition-colors ${checked ? 'bg-emerald-50/60' : ''}`}>
+                                {/* Service row */}
+                                <label className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/60 transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleSaleService(service.id)}
+                                    className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-600"
+                                  />
+                                  <span className="flex-1 text-sm text-gray-800">{service.name}</span>
+                                  <span className="text-sm text-gray-500 tabular-nums">
+                                    {price > 0 ? `${price.toFixed(2)} MAD` : '—'}
+                                  </span>
+                                </label>
+                                {/* Employee dropdown — only when checked */}
+                                {checked && (
+                                  <div className="px-4 pb-3 flex items-center gap-2">
+                                    <div className="w-4 h-4 shrink-0" />{/* aligns with checkbox */}
+                                    <Select
+                                      value={empId}
+                                      onValueChange={(v) =>
+                                        setSaleForm((prev) => ({
+                                          ...prev,
+                                          serviceEmployees: {
+                                            ...prev.serviceEmployees,
+                                            [service.id]: v === '__none__' ? '' : v,
+                                          },
+                                        }))
+                                      }
+                                    >
+                                      <SelectTrigger className="flex-1 px-3 py-1.5 rounded-full bg-white border border-gray-200 text-xs text-gray-600">
+                                        <SelectValue placeholder="Employé (optionnel)" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__none__">— Aucun employé</SelectItem>
+                                        {employees.map((emp) => (
+                                          <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                )}
+                              </div>
                             );
                           })
                         )}
@@ -1155,10 +1378,9 @@ function CaissePageContent({
                             <SelectValue placeholder="Méthode" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Espèces">Espèces</SelectItem>
-                            <SelectItem value="Carte">Carte</SelectItem>
-                            <SelectItem value="Virement">Virement</SelectItem>
-                            <SelectItem value="Chèque">Chèque</SelectItem>
+                            {acceptedPaymentMethods.map((method) => (
+                              <SelectItem key={method} value={method}>{method}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1195,6 +1417,7 @@ function CaissePageContent({
                         />
                       </div>
                     </div>
+
                   </>
                 ) : (
                   <>
@@ -1275,10 +1498,9 @@ function CaissePageContent({
                             <SelectValue placeholder="Méthode" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Espèces">Espèces</SelectItem>
-                            <SelectItem value="Carte">Carte</SelectItem>
-                            <SelectItem value="Virement">Virement</SelectItem>
-                            <SelectItem value="Chèque">Chèque</SelectItem>
+                            {acceptedPaymentMethods.map((method) => (
+                              <SelectItem key={method} value={method}>{method}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>

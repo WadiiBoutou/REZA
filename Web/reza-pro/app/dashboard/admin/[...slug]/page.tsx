@@ -19,6 +19,7 @@ const createDynamicPageLoader = (routePath: string) => {
     'param-etablissement/gestion-liste-attente': () => import('../param-etablissement/gestion-liste-attente/page'),
     'param-etablissement/gestion-message': () => import('../param-etablissement/gestion-message/page'),
     'param-etablissement/notifications-rdv-web': () => import('../param-etablissement/notifications-rdv-web/page'),
+    'param-etablissement/moyen-de-paiement': () => import('../param-etablissement/moyen-de-paiement/page'),
     
     // Paramétrage Agenda
     'param-agenda/gestion-de-prestations': () => import('../param-agenda/gestion-de-prestations/page'),
@@ -42,8 +43,8 @@ const createDynamicPageLoader = (routePath: string) => {
     'corbeille-rdv/rdv-annules': () => import('../corbeille-rdv/rdv-annules/page'),
     
     // Mes Factures
-    'mes-factures/moyen-de-paiement': () => import('../mes-factures/moyen-de-paiement/page'),
     'mes-factures/liste-des-factures': () => import('../mes-factures/liste-des-factures/page'),
+    'mes-factures/moyen-paiement-plateforme': () => import('../mes-factures/moyen-paiement-plateforme/page'),
     
     // Fiche Clients
     'fiche-clients/gestion-fiche-clients': () => import('../fiche-clients/gestion-fiche-clients/page'),
@@ -56,7 +57,7 @@ const createDynamicPageLoader = (routePath: string) => {
     'statistiques-rdv': 'statistiques-rdv/indicateurs-cles',
     'taux-occupation': 'taux-occupation/vue-ensemble',
     'corbeille-rdv': 'corbeille-rdv/rdv-annules',
-    'mes-factures': 'mes-factures/moyen-de-paiement',
+    'mes-factures': 'mes-factures/liste-des-factures',
     'fiche-clients': 'fiche-clients/gestion-fiche-clients',
   };
 
@@ -127,7 +128,7 @@ export default function DynamicAdminPage({ params }: { params: Promise<{ slug: s
           'statistiques-rdv': 'statistiques-rdv/indicateurs-cles',
           'taux-occupation': 'taux-occupation/vue-ensemble',
           'corbeille-rdv': 'corbeille-rdv/rdv-annules',
-          'mes-factures': 'mes-factures/moyen-de-paiement',
+          'mes-factures': 'mes-factures/liste-des-factures',
           'fiche-clients': 'fiche-clients/gestion-fiche-clients',
         };
 

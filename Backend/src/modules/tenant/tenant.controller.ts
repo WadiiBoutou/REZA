@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { tenantService } from './tenant.service';
 import { createTenantSchema } from './tenant.schema';
 import { isSalonRequiredError, resolveWriteTenantId } from '../../utils/salonScope';
+import { subscriptionInvoiceService } from '../subscription/subscription-invoice.service';
 
 export class TenantController {
   async getTenant(req: Request, res: Response, next: NextFunction) {
@@ -317,6 +318,90 @@ export class TenantController {
       const result = await tenantService.saveCoverImage(req.tenantId!, fileUrl);
       res.json(result);
     } catch (error) {
+      next(error);
+    }
+  }
+
+  async getAcceptedPaymentMethods(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await tenantService.getAcceptedPaymentMethods(req.tenantId!);
+      res.json(result);
+    } catch (error: any) {
+      if (error.status) return res.status(error.status).json({ error: error.error });
+      next(error);
+    }
+  }
+
+  async addAcceptedPaymentMethod(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { name } = req.body;
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ error: 'Validation error', message: 'Payment method name is required' });
+      }
+      const result = await tenantService.addAcceptedPaymentMethod(req.tenantId!, name.trim());
+      res.json(result);
+    } catch (error: any) {
+      if (error.status) return res.status(error.status).json({ error: error.error });
+      next(error);
+    }
+  }
+
+  async deleteAcceptedPaymentMethod(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { name } = req.params;
+      const result = await tenantService.deleteAcceptedPaymentMethod(req.tenantId!, name);
+      res.json(result);
+    } catch (error: any) {
+      if (error.status) return res.status(error.status).json({ error: error.error });
+      next(error);
+    }
+  }
+
+  async getAutoConfirmSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await tenantService.getAutoConfirmSettings(req.tenantId!);
+      res.json(result);
+    } catch (error: any) {
+      if (error.status) return res.status(error.status).json({ error: error.error });
+      next(error);
+    }
+  }
+
+  async updateAutoConfirmSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { enabled } = req.body;
+      const result = await tenantService.updateAutoConfirmSettings(req.tenantId!, enabled);
+      res.json(result);
+    } catch (error: any) {
+      if (error.status) return res.status(error.status).json({ error: error.error });
+      next(error);
+    }
+  }
+
+  async getSubscriptionInvoices(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await subscriptionInvoiceService.listForTenant(req.tenantId!);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getBillingPaymentMethod(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await subscriptionInvoiceService.getBillingPaymentMethod(req.tenantId!);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async setBillingPaymentMethod(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await subscriptionInvoiceService.setBillingPaymentMethod(req.tenantId!, req.body);
+      res.json(result);
+    } catch (error: any) {
+      if (error.status) return res.status(error.status).json({ error: error.error, message: error.message });
       next(error);
     }
   }

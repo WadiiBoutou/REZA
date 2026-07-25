@@ -4,8 +4,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { 
-  Calendar, 
-  Clock, 
   Plus,
   ChevronLeft,
   ChevronRight,
@@ -26,7 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import DatePickerDemo from '@/components/ui/datepicker';
+import { TimePicker } from '@/components/ui/time-picker';
+import { DatePicker } from '@/components/ui/date-picker';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -40,82 +39,50 @@ type DaySchedule = {
   breaks: Array<{ start: string; end: string }>;
 };
 
-type ExceptionalSchedule = {
-  id: number;
-  date: string;
-  isOpen: boolean;
-  openTime?: string;
-  closeTime?: string;
-  reason?: string;
-};
 
-// Move ExceptionalEditModal outside the main component to avoid re-creation
-const ExceptionalEditModal: React.FC<{ schedule: ExceptionalSchedule, onClose: () => void, onSave: (s: ExceptionalSchedule) => void }> = ({ schedule, onClose, onSave }) => {
-  const [date, setDate] = useState(schedule.date);
-  const [isOpen, setIsOpen] = useState(schedule.isOpen);
-  const [openTime, setOpenTime] = useState(schedule.openTime || '10:00');
-  const [closeTime, setCloseTime] = useState(schedule.closeTime || '20:00');
-  const [reason, setReason] = useState(schedule.reason || '');
 
-  useEffect(() => {
-    setDate(schedule.date);
-    setIsOpen(schedule.isOpen);
-    setOpenTime(schedule.openTime || '10:00');
-    setCloseTime(schedule.closeTime || '20:00');
-    setReason(schedule.reason || '');
-  }, [schedule]);
+// ── Shared delay-setting UI components ──────────────────────────
 
-  const handleSubmit = () => {
-    onSave({ ...schedule, date, isOpen, openTime, closeTime, reason });
-  };
-
+function DelayNumberSelect({ value, onChange, unit, onUnitChange, units, saving }: {
+  value: string; onChange: (v: string) => void;
+  unit: string; onUnitChange: (v: string) => void;
+  units: { value: string; label: string }[];
+  saving: boolean;
+}) {
   return (
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
-      <div className="bg-white rounded-lg shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto animate-slideUp">
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 z-40 flex items-center justify-between">
-          <h2 className="text-lg font-light text-gray-900">Modifier horaire exceptionnel</h2>
-          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-900 transition-colors">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="px-6 py-6 space-y-6">
-          <div className="space-y-2">
-            <Label>Date</Label>
-            <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="rounded-full" />
-          </div>
-          <div className="space-y-2">
-            <Label>Statut</Label>
-            <Select value={isOpen ? 'open' : 'closed'} onValueChange={v => setIsOpen(v === 'open')}>
-              <SelectTrigger className="rounded-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="open">Ouvert</SelectItem>
-                <SelectItem value="closed">Fermé</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {isOpen && (
-            <div className="flex items-center gap-3">
-              <Label>De</Label>
-              <DatePickerDemo value={openTime} onChange={setOpenTime} />
-              <span className="text-gray-400">à</span>
-              <DatePickerDemo value={closeTime} onChange={setCloseTime} />
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label>Motif</Label>
-            <Input type="text" value={reason} onChange={e => setReason(e.target.value)} className="rounded-full" />
-          </div>
-        </div>
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex gap-3">
-          <button onClick={onClose} className="flex-1 px-6 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">Annuler</button>
-          <button onClick={handleSubmit} className="flex-1 px-6 py-2.5 bg-[#002366] text-white text-sm font-medium rounded-full hover:bg-gray-800 transition-colors">Enregistrer</button>
-        </div>
-      </div>
+    <div className="flex items-center gap-3">
+      <Input type="number" value={value} onChange={e => onChange(e.target.value)}
+        className="w-20 rounded-full" min="1" disabled={saving} />
+      <Select value={unit} onValueChange={onUnitChange} disabled={saving}>
+        <SelectTrigger className="w-32 rounded-full"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {units.map(u => <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <span className="text-sm text-gray-700">avant le rendez-vous</span>
     </div>
   );
-};
+}
+
+function DelayRadio({ id, name, checked, onChange, saving, children }: {
+  id: string; name: string; checked: boolean; onChange: () => void; saving: boolean; children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="radio" id={id} name={name} checked={checked} onChange={onChange}
+          disabled={saving} className="w-4 h-4 accent-[#002366] disabled:opacity-50" />
+        <Label htmlFor={id} className="text-sm text-gray-700 cursor-pointer">{children}</Label>
+      </label>
+    </div>
+  );
+}
+
+function DelayExample({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs text-gray-500 mt-4 pl-7">{children}</p>;
+}
+
+// ── Main component ──────────────────────────────────────────────
 
 const GestionHoraires = () => {
   const pathname = usePathname();
@@ -124,7 +91,7 @@ const GestionHoraires = () => {
   const { salons, effectiveSalonIds } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [activeTab, setActiveTab] = useState<'establishment' | 'exceptional' | 'agenda' | 'delays'>('establishment');
+  const [activeTab, setActiveTab] = useState<'establishment' | 'agenda' | 'delays'>('establishment');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -165,21 +132,17 @@ const GestionHoraires = () => {
   // Establishment hours state
   const [schedules, setSchedules] = useState<DaySchedule[]>(defaultSchedules);
 
-  // Exceptional schedules state
-  const [exceptionalSchedules, setExceptionalSchedules] = useState<ExceptionalSchedule[]>([]);
-
   // Agenda display times
   const [agendaStart, setAgendaStart] = useState('08:00');
   const [agendaEnd, setAgendaEnd] = useState('23:55');
 
   // Booking delays
   const [bookingDelay, setBookingDelay] = useState({ value: '1', unit: 'jours', allowLastMoment: false });
-  const [cancellationDelay, setCancellationDelay] = useState({ value: '1', unit: 'jours', allowLastMoment: false });
   const [advanceBooking, setAdvanceBooking] = useState({ value: '1', unit: 'mois' });
 
-  // Modal state for editing exceptional schedules
-  const [showEditExceptionalModal, setShowEditExceptionalModal] = useState(false);
-  const [selectedExceptionalSchedule, setSelectedExceptionalSchedule] = useState<ExceptionalSchedule | null>(null);
+  // Blocked dates
+  const [blockedDates, setBlockedDates] = useState<string[]>([]);
+  const [newBlockedDate, setNewBlockedDate] = useState('');
 
   const fetchBusinessHours = useCallback(async () => {
     if (!scopedSalonId || !salonScope) return;
@@ -202,11 +165,24 @@ const GestionHoraires = () => {
       }
       
       setOnlineBooking(data.onlineBooking || 'open');
-      setExceptionalSchedules(data.exceptionalSchedules || []);
+
+      // ── Migrate legacy exceptionalSchedules into blockedDates ──────────────
+      const legacyExceptions: Array<{ date: string }> = (data.exceptionalSchedules || []) as Array<{ date: string }>;
+      const rawBlocked: string[] = (data.blockedDates || []) as string[];
+      if (legacyExceptions.length > 0) {
+        const merged = new Set(rawBlocked);
+        for (const ex of legacyExceptions) {
+          if (ex.date) merged.add(ex.date);
+        }
+        setBlockedDates([...merged]);
+      } else {
+        setBlockedDates(rawBlocked);
+      }
+      // ─────────────────────────────────────────────────────────────────────────
+
       setAgendaStart(data.agendaStart || '08:00');
       setAgendaEnd(data.agendaEnd || '23:55');
       setBookingDelay(data.bookingDelay || { value: '1', unit: 'jours', allowLastMoment: false });
-      setCancellationDelay(data.cancellationDelay || { value: '1', unit: 'jours', allowLastMoment: false });
       setAdvanceBooking(data.advanceBooking || { value: '1', unit: 'mois' });
     } catch (err: any) {
       console.error('Error fetching business hours:', err);
@@ -278,15 +254,16 @@ const GestionHoraires = () => {
       setSaving(true);
       const loadingToast = toast.loading('Enregistrement des horaires...');
       
+      // Send empty exceptionalSchedules to clear legacy data from the backend
       await api.updateBusinessHours({
         onlineBooking,
         schedules,
-        exceptionalSchedules,
+        exceptionalSchedules: [],
         agendaStart,
         agendaEnd,
         bookingDelay,
-        cancellationDelay,
-        advanceBooking
+        advanceBooking,
+        blockedDates
       }, salonScope);
       
       toast.dismiss(loadingToast);
@@ -333,91 +310,6 @@ const GestionHoraires = () => {
     setSchedules(newSchedules);
   };
 
-
-  const handleEditExceptional = (schedule: ExceptionalSchedule) => {
-    setSelectedExceptionalSchedule(schedule);
-    setShowEditExceptionalModal(true);
-  };
-
-  const handleSaveExceptional = async (updatedSchedule: ExceptionalSchedule) => {
-    if (!salonScope) return;
-    const updated = exceptionalSchedules.map(s => s.id === updatedSchedule.id ? updatedSchedule : s);
-    setExceptionalSchedules(updated);
-    setShowEditExceptionalModal(false);
-    setSelectedExceptionalSchedule(null);
-    
-    // Auto-save after update
-    try {
-      await api.updateBusinessHours({
-        onlineBooking,
-        schedules,
-        exceptionalSchedules: updated,
-        agendaStart,
-        agendaEnd,
-        bookingDelay,
-        cancellationDelay,
-        advanceBooking
-      }, salonScope);
-      toast.success('Horaire exceptionnel mis à jour');
-    } catch (err: any) {
-      toast.error(err.message || 'Erreur lors de la mise à jour');
-    }
-  };
-
-  const handleAddExceptionalSchedule = async () => {
-    if (!salonScope) return;
-    const newSchedule: ExceptionalSchedule = {
-      id: Date.now(),
-      date: new Date().toISOString().split('T')[0],
-      isOpen: true,
-      openTime: '10:00',
-      closeTime: '20:00'
-    };
-    const updated = [...exceptionalSchedules, newSchedule];
-    setExceptionalSchedules(updated);
-    
-    // Auto-save
-    try {
-      await api.updateBusinessHours({
-        onlineBooking,
-        schedules,
-        exceptionalSchedules: updated,
-        agendaStart,
-        agendaEnd,
-        bookingDelay,
-        cancellationDelay,
-        advanceBooking
-      }, salonScope);
-      toast.success('Horaire exceptionnel ajouté');
-    } catch (err: any) {
-      setExceptionalSchedules(exceptionalSchedules);
-      toast.error(err.message || 'Erreur lors de l\'ajout');
-    }
-  };
-
-  const handleDeleteExceptionalSchedule = async (id: number) => {
-    if (!salonScope) return;
-    const updated = exceptionalSchedules.filter(s => s.id !== id);
-    setExceptionalSchedules(updated);
-    
-    // Auto-save
-    try {
-      await api.updateBusinessHours({
-        onlineBooking,
-        schedules,
-        exceptionalSchedules: updated,
-        agendaStart,
-        agendaEnd,
-        bookingDelay,
-        cancellationDelay,
-        advanceBooking
-      }, salonScope);
-      toast.success('Horaire exceptionnel supprimé');
-    } catch (err: any) {
-      setExceptionalSchedules(exceptionalSchedules);
-      toast.error(err.message || 'Erreur lors de la suppression');
-    }
-  };
 
   if (!mounted || !scopedSalonId) {
     return (
@@ -530,21 +422,8 @@ const GestionHoraires = () => {
                 : 'text-gray-500 hover:text-gray-900'
             }`}
           >
-            Horaires de l'établissement
+            Horaires de l&apos;établissement
             {activeTab === 'establishment' && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#002366]"></div>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('exceptional')}
-            className={`px-6 py-3 text-sm font-medium transition-all relative ${
-              activeTab === 'exceptional'
-                ? 'text-[#002366]'
-                : 'text-gray-500 hover:text-gray-900'
-            }`}
-          >
-            Horaires exceptionnels de l'établissement
-            {activeTab === 'exceptional' && (
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#002366]"></div>
             )}
           </button>
@@ -556,7 +435,7 @@ const GestionHoraires = () => {
                 : 'text-gray-500 hover:text-gray-900'
             }`}
           >
-            Horaires affichés dans l'agenda
+            Horaires affichés dans l&apos;agenda
             {activeTab === 'agenda' && (
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#002366]"></div>
             )}
@@ -585,7 +464,7 @@ const GestionHoraires = () => {
             {/* Info Banner */}
             <div className="bg-gray-50 rounded-lg p-6 border border-gray-100">
               <p className="text-sm text-gray-600">
-                Gérez ici les horaires d'ouverture de votre établissement et la prise de RDV en ligne
+                Gérez ici les horaires d&apos;ouverture de votre établissement et la prise de RDV en ligne
               </p>
             </div>
 
@@ -621,7 +500,7 @@ const GestionHoraires = () => {
             {/* Day Selection */}
             <div className="">
               <Label className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4 block">
-                Merci de sélectionner les jours d'ouverture
+                Merci de sélectionner les jours d&apos;ouverture
               </Label>
               
               <div className="flex items-center gap-2 mb-8">
@@ -650,12 +529,12 @@ const GestionHoraires = () => {
                         {schedule.day}
                       </div>
                       <div className="flex items-center gap-2">
-                        <DatePickerDemo
+                        <TimePicker
                           value={schedule.openTime}
                           onChange={(value) => updateSchedule(originalIndex, 'openTime', value)}
                         />
                         <span className="text-gray-400">-</span>
-                        <DatePickerDemo
+                        <TimePicker
                           value={schedule.closeTime}
                           onChange={(value) => updateSchedule(originalIndex, 'closeTime', value)}
                         />
@@ -664,13 +543,13 @@ const GestionHoraires = () => {
                         onClick={() => addBreak(originalIndex)}
                         className="text-sm text-gray-500 hover:text-gray-900 underline ml-4"
                       >
-                        Ajouter une plage d'ouverture
+                        Ajouter une plage d&apos;ouverture
                       </button>
                       
                       {/* Breaks */}
                       {(schedule.breaks ?? []).map((breakTime, breakIndex) => (
                         <div key={breakIndex} className="flex items-center gap-2 ml-4">
-                          <DatePickerDemo
+                          <TimePicker
                             value={breakTime.start}
                             onChange={value => {
                               const newSchedules = [...schedules];
@@ -681,7 +560,7 @@ const GestionHoraires = () => {
                             }}
                           />
                           <span className="text-gray-400">-</span>
-                          <DatePickerDemo
+                          <TimePicker
                             value={breakTime.end}
                             onChange={value => {
                               const newSchedules = [...schedules];
@@ -708,108 +587,26 @@ const GestionHoraires = () => {
           </div>
         )}
 
-        {/* Exceptional Hours Tab */}
-        {activeTab === 'exceptional' && (
-          <div className="space-y-6">
-            {/* Info Banner */}
-            <div className="bg-gray-50 rounded-lg p-6 border border-gray-100">
-              <p className="text-sm text-gray-600">
-                Définissez ici les ouvertures et fermetures exceptionnelles de votre établissement
-              </p>
-            </div>
-
-            {/* Add Button */}
-            <div className="flex justify-start">
-              <button
-                onClick={handleAddExceptionalSchedule}
-                disabled={saving}
-                className="px-5 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-full hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-              >
-                <Plus size={16} />
-                Ajouter des horaires exceptionnels
-              </button>
-            </div>
-
-            {/* Exceptional Schedules List */}
-            <div className="space-y-3">
-              {exceptionalSchedules.map((schedule) => (
-                <div key={schedule.id} className="bg-white rounded-lg border border-gray-100 p-6 flex items-center justify-between hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Calendar size={16} className="text-gray-400" />
-                      <span className="font-medium">
-                        Le {new Date(schedule.date).toLocaleDateString('fr-FR', { 
-                          day: '2-digit', 
-                          month: '2-digit', 
-                          year: 'numeric' 
-                        })}
-                      </span>
-                    </div>
-                    {schedule.isOpen ? (
-                      <div className="flex items-center gap-2 text-sm text-emerald-600">
-                        <Clock size={16} />
-                        <span>{schedule.openTime} - {schedule.closeTime}</span>
-                      </div>
-                    ) : (
-                      <span className="px-3 py-1 bg-red-50 text-red-700 text-xs font-medium rounded-full">
-                        Fermé
-                      </span>
-                    )}
-                    {schedule.reason && (
-                      <span className="text-sm text-gray-500 italic">
-                        {schedule.reason}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button 
-                      disabled={saving}
-                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed underline" 
-                      onClick={() => handleEditExceptional(schedule)}
-                    >
-                      Modifier
-                    </button>
-                    <button 
-                      onClick={() => handleDeleteExceptionalSchedule(schedule.id)}
-                      disabled={saving}
-                      className="px-4 py-2 text-sm text-gray-600 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed underline"
-                    >
-                      Supprimer
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {showEditExceptionalModal && selectedExceptionalSchedule && (
-              <ExceptionalEditModal 
-                schedule={selectedExceptionalSchedule} 
-                onClose={() => { setShowEditExceptionalModal(false); setSelectedExceptionalSchedule(null); }} 
-                onSave={handleSaveExceptional}
-              />
-            )}
-          </div>
-        )}
-
         {/* Agenda Display Tab */}
         {activeTab === 'agenda' && (
           <div className="space-y-6">
             {/* Info Banner */}
             <div className="bg-gray-50 rounded-lg p-6 border border-gray-100">
               <p className="text-sm text-gray-600">
-                Définissez ici les horaires d'affichage de votre agenda Pro. Ces horaires n'apparaissent pas sur le portail et n'ont pas d'incidence sur la prise de RDV en ligne. Par défaut, ils vont du plus tôt au plus tard des horaires de l'établissement.
+                Définissez ici les horaires d&apos;affichage de votre agenda Pro. Ces horaires n&apos;apparaissent pas sur le portail et n&apos;ont pas d&apos;incidence sur la prise de RDV en ligne. Par défaut, ils vont du plus tôt au plus tard des horaires de l&apos;établissement.
               </p>
             </div>
             {/* Time Selection */}
             <div className="bg-white rounded-lg border border-gray-100 p-8">
               <div className="flex items-center gap-6">
-                <Label className="text-base font-medium text-gray-900">Afficher l'agenda de</Label>
+                <Label className="text-base font-medium text-gray-900">Afficher l&apos;agenda de</Label>
                 <div className="flex items-center gap-3">
-                  <DatePickerDemo
+                  <TimePicker
                     value={agendaStart}
                     onChange={(value) => setAgendaStart(value)}
                   />
                   <span className="text-gray-400">à</span>
-                  <DatePickerDemo
+                  <TimePicker
                     value={agendaEnd}
                     onChange={(value) => setAgendaEnd(value)}
                   />
@@ -849,180 +646,93 @@ const GestionHoraires = () => {
               </p>
             </div>
 
-            {/* Booking Delay */}
+            {/* 1. Booking Delay (minimum lead time) */}
             <div className="bg-white rounded-lg border border-gray-100 p-6">
               <Label className="text-base font-medium text-gray-900 mb-4 block">
                 Un client peut prendre RDV en ligne:
               </Label>
               <div className="space-y-4">
+                <DelayRadio id="last-moment" name="booking-delay"
+                  checked={bookingDelay.allowLastMoment}
+                  onChange={() => setBookingDelay({ ...bookingDelay, allowLastMoment: true })}
+                  saving={saving}>
+                  Jusqu&apos;au dernier moment avant son RDV
+                </DelayRadio>
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      id="last-moment"
-                      name="booking-delay"
-                      checked={bookingDelay.allowLastMoment}
-                      onChange={() => setBookingDelay({ ...bookingDelay, allowLastMoment: true })}
-                      disabled={saving}
-                      className="w-4 h-4 accent-[#002366] disabled:opacity-50"
-                    />
-                    <Label htmlFor="last-moment" className="text-sm text-gray-700 cursor-pointer">
-                      Jusqu'au dernier moment avant son RDV
-                    </Label>
-                  </label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      id="before-delay"
-                      name="booking-delay"
+                    <input type="radio" id="before-delay" name="booking-delay"
                       checked={!bookingDelay.allowLastMoment}
                       onChange={() => setBookingDelay({ ...bookingDelay, allowLastMoment: false })}
                       disabled={saving}
-                      className="w-4 h-4 accent-[#002366] disabled:opacity-50"
-                    />
-                    <Label htmlFor="before-delay" className="text-sm text-gray-700 cursor-pointer">
-                      Jusqu'à
-                    </Label>
-                    <Input
-                      type="number"
-                      value={bookingDelay.value}
-                      onChange={(e) => setBookingDelay({ ...bookingDelay, value: e.target.value })}
-                      className="w-20 rounded-full"
-                      min="1"
-                    />
-                    <Select 
-                      value={bookingDelay.unit} 
-                      onValueChange={(value) => setBookingDelay({ ...bookingDelay, unit: value })}
-                    >
-                      <SelectTrigger className="w-32 rounded-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="jours">jours</SelectItem>
-                        <SelectItem value="heures">heures</SelectItem>
-                        <SelectItem value="semaines">semaines</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <span className="text-sm text-gray-700">avant le rendez-vous</span>
+                      className="w-4 h-4 accent-[#002366] disabled:opacity-50" />
+                    <Label htmlFor="before-delay" className="text-sm text-gray-700 cursor-pointer">Jusqu&apos;à</Label>
                   </label>
+                  <DelayNumberSelect value={bookingDelay.value}
+                    onChange={(v) => setBookingDelay({ ...bookingDelay, value: v })}
+                    unit={bookingDelay.unit}
+                    onUnitChange={(v) => setBookingDelay({ ...bookingDelay, unit: v })}
+                    units={[{ value: 'jours', label: 'jours' }, { value: 'heures', label: 'heures' }, { value: 'semaines', label: 'semaines' }]}
+                    saving={saving} />
                 </div>
               </div>
-              <p className="text-xs text-gray-500 mt-4 pl-7">
-                Exemple: un client peut prendre RDV pour le 09 janvier jusqu'au 08 janvier à 20:00
-              </p>
+              <DelayExample>Exemple: un client peut prendre RDV pour le 09 janvier jusqu&apos;au 08 janvier à 20:00</DelayExample>
             </div>
-            {/* Cancellation Delay */}
+
+            {/* 2. Advance Booking (maximum advance window) */}
             <div className="bg-white rounded-lg border border-gray-100 p-6">
               <Label className="text-base font-medium text-gray-900 mb-4 block">
-                Un client peut annuler son RDV en ligne:
+                Les clients peuvent prendre RDV jusqu&apos;à l&apos;avance:
               </Label>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      id="cancel-last-moment"
-                      name="cancel-delay"
-                      checked={cancellationDelay.allowLastMoment}
-                      onChange={() => setCancellationDelay({ ...cancellationDelay, allowLastMoment: true })}
-                      disabled={saving}
-                      className="w-4 h-4 accent-[#002366] disabled:opacity-50"
-                    />
-                    <Label htmlFor="cancel-last-moment" className="text-sm text-gray-700 cursor-pointer">
-                      Jusqu'au dernier moment avant son RDV
-                    </Label>
-                  </label>
-                </div>
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      id="cancel-before-delay"
-                      name="cancel-delay"
-                      checked={!cancellationDelay.allowLastMoment}
-                      onChange={() => setCancellationDelay({ ...cancellationDelay, allowLastMoment: false })}
-                      disabled={saving}
-                      className="w-4 h-4 accent-[#002366] disabled:opacity-50"
-                    />
-                    <Label htmlFor="cancel-before-delay" className="text-sm text-gray-700 cursor-pointer">
-                      Jusqu'à
-                    </Label>
-                    <Input
-                      type="number"
-                      value={cancellationDelay.value}
-                      onChange={(e) => setCancellationDelay({ ...cancellationDelay, value: e.target.value })}
-                      className="w-20 rounded-full"
-                      min="1"
-                    />
-                    <Select 
-                      value={cancellationDelay.unit} 
-                      onValueChange={(value) => setCancellationDelay({ ...cancellationDelay, unit: value })}
-                    >
-                      <SelectTrigger className="w-32 rounded-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="jours">jours</SelectItem>
-                        <SelectItem value="heures">heures</SelectItem>
-                        <SelectItem value="semaines">semaines</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <span className="text-sm text-gray-700">avant le rendez-vous</span>
-                  </label>
-                </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" id="advance-booking" name="advance-booking" checked={true}
+                    onChange={() => {}} className="w-4 h-4 accent-[#002366]" />
+                  <Label htmlFor="advance-booking" className="text-sm text-gray-700 cursor-pointer">À partir de</Label>
+                </label>
+                <DelayNumberSelect value={advanceBooking.value}
+                  onChange={(v) => setAdvanceBooking({ ...advanceBooking, value: v })}
+                  unit={advanceBooking.unit}
+                  onUnitChange={(v) => setAdvanceBooking({ ...advanceBooking, unit: v })}
+                  units={[{ value: 'mois', label: 'mois' }, { value: 'semaines', label: 'semaines' }, { value: 'jours', label: 'jours' }]}
+                  saving={saving} />
               </div>
-              <p className="text-xs text-gray-500 mt-4 pl-7">
-                Exemple: un client peut annuler son RDV pour le 09 janvier jusqu'au 08 janvier à 20:00
-              </p>
+              <DelayExample>Exemple: un client peut prendre RDV pour le 09 janvier à partir du 10 décembre à 20:00</DelayExample>
             </div>
-            {/* Advance Booking */}
+
+            {/* 3. Blocked Dates */}
             <div className="bg-white rounded-lg border border-gray-100 p-6">
               <Label className="text-base font-medium text-gray-900 mb-4 block">
-                Un client peut prendre RDV en ligne:
+                Jours bloqués (fermeture exceptionnelle)
               </Label>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      id="advance-booking"
-                      name="advance-booking"
-                      checked={true}
-                      onChange={() => {}}
-                      className="w-4 h-4 accent-[#002366]"
-                    />
-                    <Label htmlFor="advance-booking" className="text-sm text-gray-700 cursor-pointer">
-                      À partir de
-                    </Label>
-                    <Input
-                      type="number"
-                      value={advanceBooking.value}
-                      onChange={(e) => setAdvanceBooking({ ...advanceBooking, value: e.target.value })}
-                      className="w-20 rounded-full"
-                      min="1"
-                    />
-                    <Select 
-                      value={advanceBooking.unit} 
-                      onValueChange={(value) => setAdvanceBooking({ ...advanceBooking, unit: value })}
-                    >
-                      <SelectTrigger className="w-32 rounded-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="mois">mois</SelectItem>
-                        <SelectItem value="semaines">semaines</SelectItem>
-                        <SelectItem value="jours">jours</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <span className="text-sm text-gray-700">avant le rendez-vous</span>
-                  </label>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-4 pl-7">
-                Exemple: un client peut prendre RDV pour le 09 janvier à partir du 10 décembre à 20:00
+              <p className="text-xs text-gray-500 mb-4">
+                Les clients ne pourront pas réserver en ligne ces jours-là. Les administrateurs peuvent toujours créer des rendez-vous.
               </p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {blockedDates.map((date: string) => (
+                  <span key={date}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-full text-sm text-red-700"
+                  >
+                    {new Date(date + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    <button type="button" onClick={() => setBlockedDates(blockedDates.filter((d: string) => d !== date))}
+                      disabled={saving} className="text-red-400 hover:text-red-600 disabled:opacity-50">
+                      <X size={14} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <DatePicker
+                  value={newBlockedDate ? new Date(newBlockedDate + 'T12:00:00') : undefined}
+                  onChange={(d) => { if (d) { const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,'0'); const day = String(d.getDate()).padStart(2,'0'); setNewBlockedDate(`${y}-${m}-${day}`); } }}
+                />
+                <button type="button"
+                  onClick={() => { if (newBlockedDate && !blockedDates.includes(newBlockedDate)) { setBlockedDates([...blockedDates, newBlockedDate]); setNewBlockedDate(''); } }}
+                  disabled={saving || !newBlockedDate}
+                  className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-full hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center gap-1"
+                >
+                  <Plus size={16} /> Bloquer
+                </button>
+              </div>
             </div>
 
             {/* Save Button */}

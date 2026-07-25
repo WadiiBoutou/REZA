@@ -67,6 +67,7 @@ type BookingModalProps = {
   slotsLoading?: boolean;
   slotsError?: string | null;
   lastUpdated?: Date | null;
+  blockedDates?: string[];
 };
 
 // Utility to sum durations
@@ -134,6 +135,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
   slotsLoading = false,
   slotsError = null,
   lastUpdated = null,
+  blockedDates = [],
 }) => {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
@@ -518,7 +520,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
     const today = getMoroccoToday();
     const checkDate = new Date(date);
     checkDate.setHours(0, 0, 0, 0);
-    return checkDate < today;
+    if (checkDate < today) return true;
+    // Check blocked dates
+    const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+    if (blockedDates.includes(dateStr)) return true;
+    return false;
   };
 
   const isSameDay = (date1: Date, date2: Date) => {
@@ -1219,7 +1225,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
     // Filter employees from props or availability
     const allEmployeesList = employees.length > 0
       ? employees
-      : availabilities.map(a => ({ id: a.id, firstName: a.firstName, lastName: a.lastName, role: '' }));
+      : availabilities.map(a => ({ id: a.id, firstName: a.firstName, lastName: a.lastName, role: '', avatar: undefined }));
 
     const filteredList = employeeIdFilter && employeeIdFilter.length > 0
       ? allEmployeesList.filter(emp => employeeIdFilter.includes(emp.id))
@@ -1328,6 +1334,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 if (reason === 'BREAK') statusLabel = 'En pause';
                 else if (reason === 'BOOKED') statusLabel = 'Déjà réservé';
                 else if (reason === 'OUTSIDE_HOURS') statusLabel = 'En dehors des horaires';
+                else if (reason === 'INACTIF') statusLabel = 'Employé inactif';
+                else if (reason === 'VACATION') statusLabel = 'En vacances';
                 else statusLabel = 'Indisponible';
               } else if (isRecommended) {
                 statusLabel = 'Recommandé';
@@ -1538,6 +1546,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
                     {Array.from({ length: daysInMonth(currentMonth).days }).map((_, i) => {
                       const dayNum = i + 1;
                       const dateObj = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), dayNum);
+                      const isBlocked = blockedDates.includes(
+                        `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`
+                      );
                       const disabled = isDateDisabled(dateObj);
                       const isSelected = selectedDate && isSameDay(dateObj, selectedDate);
 
@@ -1546,7 +1557,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
                           key={dayNum}
                           onClick={() => handleDateSelect(dateObj)}
                           disabled={disabled}
-                          className={`py-3 rounded-2xl text-sm font-bold transition-all ${
+                          title={isBlocked ? 'Fermé' : undefined}
+                          className={`py-3 rounded-2xl text-sm font-bold transition-all relative ${
                             isSelected
                               ? 'bg-black text-white shadow-md'
                               : disabled
@@ -1554,7 +1566,12 @@ const BookingModal: React.FC<BookingModalProps> = ({
                               : 'hover:bg-gray-100 text-gray-800'
                           }`}
                         >
-                          {dayNum}
+                          <span>{dayNum}</span>
+                          {isBlocked && (
+                            <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 text-[7px] text-gray-400 font-normal">
+                              Fermé
+                            </span>
+                          )}
                         </button>
                       );
                     })}

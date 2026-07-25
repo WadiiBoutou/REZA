@@ -12,7 +12,7 @@ import { SalonFilterControl } from '@/components/SalonFilterControl';
 
 const menuItems = [
 	{ name: 'Agenda', href: '/dashboard/rendez-vous', icon: Home },
-	{ name: 'Salons', href: '/dashboard/mes-salons', icon: Building },
+	{ name: 'Personnels', href: '/dashboard/clients/personels', icon: UserCheck },
 	{ name: 'Clients', href: '/dashboard/clients/fichier-client/gestion', icon: Users },
 	{ name: 'Caisse', href: '/dashboard/caisse', icon: CreditCard },
 	{ name: 'Admin', href: '/dashboard/admin/param-agenda/gestion-de-prestations', icon: Settings2 },
@@ -517,7 +517,6 @@ const AdminSidebar = () => {
 
 	const paramAgendaLinks = [
 	    { label: 'Gestion de prestations', path: '/dashboard/admin/param-agenda/gestion-de-prestations' },
-		{ label: 'Gestion des agendas', path: '/dashboard/admin/param-agenda/gestion-des-agendas' },
 		{ label: 'Gestion affichage RDV', path: '/dashboard/admin/param-agenda/gestion-affichage-rdv' },
 	];
 
@@ -528,6 +527,7 @@ const AdminSidebar = () => {
 		{ label: 'Gestion liste d\'attente', path: '/dashboard/admin/param-etablissement/gestion-liste-attente' },
 		{ label: 'Gestion messages', path: '/dashboard/admin/param-etablissement/gestion-message' },
 		{ label: 'Notifications RDV Web', path: '/dashboard/admin/param-etablissement/notifications-rdv-web' },
+		{ label: 'Moyen de paiement', path: '/dashboard/admin/param-etablissement/moyen-de-paiement' },
 	];
 
 	const statistiquesRDVLinks = [
@@ -756,23 +756,23 @@ const AdminSidebar = () => {
 					>
 						<h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2 group-hover:text-gray-900 transition-colors">
 							<File size={14} />
-							Mes factures
+							Abonnement &amp; Factures
 						</h3>
 						<ChevronDown size={14} className={`text-gray-500 transition-transform ${showMesFactures ? 'rotate-180' : ''}`} />
 					</button>
 					{showMesFactures && (
 						<div className="space-y-1 animate-fadeIn">
 							<Link
-								href="/dashboard/admin/mes-factures/moyen-de-paiement"
-								className={`block w-full px-3 py-2 text-left text-sm rounded-full transition-all ${pathname === '/dashboard/admin/mes-factures/moyen-de-paiement' ? 'bg-[#002366] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-							>
-								Moyen de paiement
-							</Link>
-							<Link
 								href="/dashboard/admin/mes-factures/liste-des-factures"
 								className={`block w-full px-3 py-2 text-left text-sm rounded-full transition-all ${pathname === '/dashboard/admin/mes-factures/liste-des-factures' ? 'bg-[#002366] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
 							>
 								Liste des factures
+							</Link>
+							<Link
+								href="/dashboard/admin/mes-factures/moyen-paiement-plateforme"
+								className={`block w-full px-3 py-2 text-left text-sm rounded-full transition-all ${pathname === '/dashboard/admin/mes-factures/moyen-paiement-plateforme' ? 'bg-[#002366] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+							>
+								Moyen de paiement plateforme
 							</Link>
 						</div>
 					)}
@@ -1085,7 +1085,7 @@ export default function Sidebar() {
 							// Make 'Clients' active for all /dashboard/clients routes
 							// Make 'Salons' active for horaires (nested under Mes salons)
 							const isActive = item.href === '/dashboard/clients/fichier-client/gestion'
-							  ? pathname?.startsWith('/dashboard/clients')
+							  ? pathname?.startsWith('/dashboard/clients') && !pathname?.startsWith('/dashboard/clients/personels')
 							  : item.href === '/dashboard/mes-salons'
 							  ? pathname === item.href ||
 							    pathname?.startsWith('/dashboard/admin/param-etablissement/gestion-horaires-delais')
