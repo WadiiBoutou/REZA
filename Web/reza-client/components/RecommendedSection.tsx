@@ -1,49 +1,49 @@
 'use client';
 
-import React from 'react';
-import { Star, MapPin, Heart } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Star, Heart, ArrowRight, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
 const MOCK_RECOMMENDED = [
   {
     id: '1',
-    name: 'Maison de Beauté Rive Droite',
+    name: 'Be You Beauty Concept',
     rating: 4.9,
-    reviews: 842,
-    location: 'Maarif, Casablanca',
-    distance: '1.2 km',
+    reviews: 242,
+    location: 'Rua Costa Pinto 152B, Alcabideche',
+    category: 'Salon de manucure',
     image: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=800&auto=format&fit=crop',
-    tags: ['Coupe', 'Coloration', 'Soin Visage']
+    featured: true,
   },
   {
     id: '2',
-    name: 'L\'Atelier du Barbier',
-    rating: 4.8,
-    reviews: 1205,
-    location: 'Gauthier, Casablanca',
-    distance: '0.8 km',
+    name: 'The Top Colours Centro Médico Estético',
+    rating: 5.0,
+    reviews: 1768,
+    location: 'Santa Cruz de Tenerife, Calle General Serra...',
+    category: 'Spa médical',
     image: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?q=80&w=800&auto=format&fit=crop',
-    tags: ['Barbe', 'Coupe Homme']
+    featured: true,
   },
   {
     id: '3',
-    name: 'Oasis Spa & Bien-être',
+    name: 'SALÓN 224 - Albacete - Torres Quevedo 8',
     rating: 5.0,
-    reviews: 430,
-    location: 'Racine, Casablanca',
-    distance: '2.5 km',
+    reviews: 1409,
+    location: 'Calle Torres Quevedo 8, Albacete',
+    category: 'Salon de coiffure',
     image: 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?q=80&w=800&auto=format&fit=crop',
-    tags: ['Massage', 'Hammam', 'Spa']
+    featured: true,
   },
   {
     id: '4',
-    name: 'Nail Bar Signature',
-    rating: 4.7,
-    reviews: 650,
-    location: 'Bourgogne, Casablanca',
-    distance: '3.1 km',
+    name: 'Arco a São Mamede - Dez Studio Nail & Lash Bar',
+    rating: 4.9,
+    reviews: 2118,
+    location: 'Rua do Arco a São Mamede 103, Lisboa',
+    category: 'Salon de manucure',
     image: 'https://images.unsplash.com/photo-1515377905703-c4788e51af15?q=80&w=800&auto=format&fit=crop',
-    tags: ['Manucure', 'Pédicure']
+    featured: true,
   },
   {
     id: '5',
@@ -51,68 +51,122 @@ const MOCK_RECOMMENDED = [
     rating: 4.9,
     reviews: 320,
     location: 'Anfa, Casablanca',
-    distance: '4.0 km',
+    category: 'Soin Visage',
     image: 'https://images.unsplash.com/photo-1600334129128-685c5582fd35?q=80&w=800&auto=format&fit=crop',
-    tags: ['Épilation', 'Soin Visage']
+    featured: true,
   }
 ];
 
 export default function RecommendedSection() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showLeftArrow, setShowLeftArrow] = useState(false);
+  const [showRightArrow, setShowRightArrow] = useState(true);
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+      setShowLeftArrow(scrollLeft > 0);
+      setShowRightArrow(scrollLeft < scrollWidth - clientWidth - 5);
+    }
+  };
+
+  useEffect(() => {
+    handleScroll();
+    window.addEventListener('resize', handleScroll);
+    return () => window.removeEventListener('resize', handleScroll);
+  }, []);
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollRef.current) {
+      const { current } = scrollRef;
+      // Scroll by roughly the width of one card + gap, or full container width
+      const scrollAmount = direction === 'left' ? -current.offsetWidth / 2 : current.offsetWidth / 2;
+      current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
   return (
-    <section className="py-12 bg-white dark:bg-black w-full">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section className="py-12 bg-white dark:bg-black w-full relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
         <div className="flex justify-between items-end mb-6">
           <div>
             <h2 className="text-2xl md:text-3xl font-extrabold text-[#2F2E2C] dark:text-white mb-2">Recommandés</h2>
-            <p className="text-gray-600 dark:text-gray-400">Les meilleurs salons et spas sélectionnés pour vous</p>
           </div>
           <Link href="/search-results" className="text-sm font-semibold text-[#0a0f2c] dark:text-gray-300 hover:underline hidden sm:block">
             Voir tout
           </Link>
         </div>
 
+        {/* Scroll Buttons */}
+        {showLeftArrow && (
+          <button 
+            onClick={() => scroll('left')}
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center border border-gray-100 hover:scale-105 transition-transform"
+            aria-label="Défiler vers la gauche"
+          >
+            <ArrowLeft className="w-5 h-5 text-gray-800" />
+          </button>
+        )}
+        
+        {showRightArrow && (
+          <button 
+            onClick={() => scroll('right')}
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center border border-gray-100 hover:scale-105 transition-transform"
+            aria-label="Défiler vers la droite"
+          >
+            <ArrowRight className="w-5 h-5 text-gray-800" />
+          </button>
+        )}
+
         {/* Horizontal Scroll Container */}
-        <div className="flex overflow-x-auto pb-6 -mx-4 px-4 sm:mx-0 sm:px-0 gap-6 custom-scrollbar snap-x snap-mandatory">
+        <div 
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="flex overflow-x-auto pb-6 -mx-4 px-4 sm:mx-0 sm:px-0 gap-6 no-scrollbar snap-x snap-mandatory"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
           {MOCK_RECOMMENDED.map((salon) => (
-            <div key={salon.id} className="min-w-[280px] md:min-w-[320px] max-w-[320px] flex-shrink-0 snap-start bg-white dark:bg-[#1a1a1a] rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group cursor-pointer border border-gray-100 dark:border-gray-800">
+            <div key={salon.id} className="min-w-[280px] md:min-w-[320px] max-w-[320px] flex-shrink-0 snap-start bg-transparent group cursor-pointer">
               {/* Image Container */}
-              <div className="relative h-48 w-full overflow-hidden">
+              <div className="relative h-48 w-full overflow-hidden rounded-xl mb-3">
                 <img 
                   src={salon.image} 
                   alt={salon.name}
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
-                <button className="absolute top-3 right-3 p-2 bg-white/80 dark:bg-black/50 backdrop-blur-sm rounded-full hover:bg-white transition-colors">
-                  <Heart className="w-4 h-4 text-gray-700 dark:text-gray-300" />
-                </button>
+                
+                {/* Badges Overlay */}
+                <div className="absolute inset-0 p-3 flex justify-between items-start">
+                  {salon.featured && (
+                    <span className="px-3 py-1 bg-white/90 backdrop-blur-sm text-gray-800 text-xs font-semibold rounded-full shadow-sm">
+                      À la une
+                    </span>
+                  )}
+                  <button className="p-2 bg-black/20 backdrop-blur-sm rounded-full hover:bg-black/40 transition-colors ml-auto">
+                    <Heart className="w-4 h-4 text-white" />
+                  </button>
+                </div>
               </div>
 
               {/* Content */}
-              <div className="p-4">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate mb-1">
-                  {salon.name}
-                </h3>
+              <div>
+                <div className="flex justify-between items-start mb-1">
+                  <h3 className="text-[15px] font-bold text-gray-900 dark:text-white line-clamp-1 pr-2">
+                    {salon.name}
+                  </h3>
+                  <div className="flex items-center text-[13px] font-semibold text-gray-900 dark:text-white shrink-0">
+                    <Star className="w-3.5 h-3.5 fill-[#FFB800] text-[#FFB800] mr-1" />
+                    {salon.rating.toFixed(1).replace('.', ',')}
+                  </div>
+                </div>
                 
-                <div className="flex items-center text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  <span className="font-bold text-gray-900 dark:text-white flex items-center gap-1">
-                    {salon.rating} <Star className="w-3.5 h-3.5 fill-current text-[#0a0f2c] dark:text-white" />
-                  </span>
-                  <span className="mx-1.5">•</span>
-                  <span>{salon.reviews.toLocaleString()} avis</span>
-                </div>
-
-                <div className="flex items-center text-sm text-gray-500 mb-4 truncate">
-                  <MapPin className="w-4 h-4 mr-1 flex-shrink-0" />
-                  <span className="truncate">{salon.distance} • {salon.location}</span>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {salon.tags.map(tag => (
-                    <span key={tag} className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium rounded-md">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
+                <p className="text-[14px] text-gray-500 dark:text-gray-400 truncate mb-0.5">
+                  {salon.location}
+                </p>
+                
+                <p className="text-[13px] text-gray-500 dark:text-gray-400">
+                  {salon.category} • {salon.reviews} avis
+                </p>
               </div>
             </div>
           ))}

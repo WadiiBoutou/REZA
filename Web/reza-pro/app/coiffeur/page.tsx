@@ -348,7 +348,7 @@ export default function CoiffeurPage() {
               </div>
               <div>
                 <p className="text-lg text-gray-700 leading-relaxed mb-6">
-                  Pour découvrir comment Planity peut vous aider à gérer vos rendez-vous, attirer 
+                  Pour découvrir comment REZA peut vous aider à gérer vos rendez-vous, attirer 
                   de nouveaux clients et développer votre activité à Casablanca ou Marrakech, rendez-vous sur notre espace 
                   dédié aux pros.
                 </p>

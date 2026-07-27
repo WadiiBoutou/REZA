@@ -441,7 +441,7 @@ export default function BarbierPage() {
               </div>
               <div>
                 <p className="text-lg text-gray-700 leading-relaxed mb-6">
-                  Découvrez comment Planity peut transformer la gestion de votre salon de barbier. 
+                  Découvrez comment REZA peut transformer la gestion de votre salon de barbier. 
                   Simplifiez vos prises de rendez-vous, attirez une nouvelle clientèle et boostez votre 
                   activité à Casablanca ou Marrakech grâce à notre plateforme dédiée aux professionnels 
                   de la barberie.
