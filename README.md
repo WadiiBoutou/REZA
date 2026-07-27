@@ -1,8 +1,8 @@
 # README - Plateforme REZA (Web & Mobile)
 
-Bienvenue dans la documentation officielle de la plateforme **REZA** . REZA est une solution SaaS multi-tenant globale dédiée à la gestion d'établissements de beauté et de bien-être (salons de coiffure, instituts de beauté, spas, barbiers, etc.) ainsi qu'à la réservation de prestations en ligne par les clients.
+Bienvenue dans la documentation officielle de la plateforme **REZA**. REZA est une solution SaaS multi-tenant globale dédiée à la gestion d'établissements de beauté et de bien-être (salons de coiffure, instituts de beauté, spas, barbiers, etc.) ainsi qu'à la réservation de prestations en ligne par les clients.
 
----
+> 
 
 ## Sommaire
 
@@ -24,12 +24,11 @@ REZA ambitionne de digitaliser l'écosystème de la beauté et du bien-être en 
 La plateforme permet aux professionnels de piloter intégralement leur établissement (agenda, collaborateurs, caisse, facturation, abonnement SaaS) et offre aux clients finaux une expérience fluide et intuitive de prise de rendez-vous en ligne via Web et Mobile.
 
 ### Écosystème Global
-La plateforme REZA se compose de 6 piliers applicatifs majeurs :
+La plateforme REZA se compose de 5 piliers applicatifs majeurs :
 
 * **REZA Backend (API REST Core)** : Serveur central Node.js / Express / Prisma ORM / PostgreSQL.
 * **REZA Web Pro** : Application Next.js dédiée à la gestion du salon par le professionnel et son équipe.
 * **REZA Web Client** : Application Next.js de réservation et portail client Web.
-* **REZA Landing Page** : Site vitrine Next.js de présentation commerciale et capture d'inscriptions avant-première.
 * **REZA Mobile Pro** : Application mobile Flutter pour les professionnels (iOS & Android).
 * **REZA Mobile Client** : Application mobile Flutter pour les clients finaux (iOS & Android).
 
@@ -39,12 +38,13 @@ La plateforme REZA se compose de 6 piliers applicatifs majeurs :
 
 ### 1. Gestion Multi-Tenant & Abonnements
 * **Isolation des données** : Chaque établissement constitue un Tenant distinct avec ses propres règles, monnaie, fuseau horaire, prestations et employés.
-* **Comptes & Salons multiples** : Un propriétaire (Account Owner) peut détenir et gérer plusieurs salons.
+* **Comptes & Salons multiples** : Un propriétaire (Account Owner) peut détenir et gérer plusieurs salons via le module multi-salon. Il peut basculer entre ses salons sans se déconnecter et administrer l'ensemble de son réseau depuis un même compte.
 * **Gestion des plans SaaS** : Facturation d'abonnements professionnels intégrée via Stripe (limites par nombre de salons, fonctionnalités premium, récurrence annuelle/mensuelle).
 
 ### 2. Prise de Rendez-vous & Réservations (Booking System)
 * **Réservations individuelles et multi-prestations** : Choix du service, sélection ou attribution automatique du collaborateur, sélection du créneau de disponibilité en temps réel.
-* **Réservations de groupe / Famille** : Possibilité de réserver pour des proches (Family Members) ou d'effectuer des réservations groupées (Booking Groups).
+* **Réservations de groupe / Famille** : Possibilité de réserver pour des proches (Family Members) ou d'effectuer des réservations groupées (Booking Groups) avec résolution automatique des conflits de planning.
+* **Chaînage de services** : Réservation de plusieurs services à la suite pour un même client (ex: coupe + brushing) avec coordination automatique des créneaux.
 * **Gestion du statut des RDV** : En attente (`PENDING`), Confirmé (`CONFIRMED`), En cours (`IN_PROGRESS`), Terminé (`COMPLETED`), Annulé (`CANCELLED`), Non honoré (`NO_SHOW`).
 
 ### 3. Caisse, Facturation & Mouvements de Caisse
@@ -85,7 +85,7 @@ La plateforme REZA se compose de 6 piliers applicatifs majeurs :
 +-------------------------------------------------------------------------+
 |                               CLIENTS                                   |
 |   +-------------------+  +-------------------+  +--------------------+  |
-|   |  Web Client / Pro |  | Mobile Client/Pro |  |  Landing Page      |  |
+|   |      Web Client / Pro      |  |      Mobile Client/Pro       |  |
 |   |  (Next.js 15/16)  |  |  (Flutter / Dart) |  |  (Next.js 15)      |  |
 |   +---------+---------+  +---------+---------+  +---------+----------+  |
 +-------------|----------------------|----------------------|-------------+
@@ -97,7 +97,7 @@ La plateforme REZA se compose de 6 piliers applicatifs majeurs :
 |                         BACKEND API (Node.js / TS)                      |
 |                                Express.js                               |
 |  +-------------------------------------------------------------------+  |
-|  | Middlewares: Auth (JWT), Tenant Isolation, Helmet, CORS, RateLimit  |  |
+|  | Middlewares: Auth (JWT), Tenant Isolation, Helmet, CORS             |  |
 |  +-------------------------------------------------------------------+  |
 |  | Modules: Auth, Tenant, Client, Employee, Service, Appointment...  |  |
 |  +-------------------------------------------------------------------+  |
@@ -123,13 +123,13 @@ REZA/
 │   │   ├── middleware/      # Auth JWT, Tenant Middleware, Error Handling
 │   │   ├── modules/         # Modules métier (Auth, Salon, RDV, Caisse, etc.)
 │   │   └── server.ts        # Point d'entrée du serveur Express
-│   ├── Dockerfile           # Build Docker de production
-│   └── docker-compose.yml   # Orchestration locale
+│   ├── public/uploads/      # Fichiers statiques (photos uploadées)
+│   ├── seed/                # Script de démonstration / seed base
+│   └── render.yaml          # Configuration de déploiement Render.com
 │
 ├── Web/                     # Applications Web Frontend (Next.js)
-│   ├── reza-client/         # Espace Client & Réservation Web
-│   ├── reza-pro/            # Dashboard Gestion Pro & SaaS Admin
-│   └── reza-landing/        # Site vitrine commercial REZA
+│   ├── reza-client/         # Portail Client Web (réservation + vitrine)
+│   └── reza-pro/            # Dashboard Gestion Pro & SaaS Admin
 │
 └── Mobile/                  # Applications Mobiles (Flutter)
     ├── reza_client_mobile/  # App Mobile Client (iOS / Android)
@@ -153,13 +153,42 @@ L'API REZA est une API REST JSON exposée par défaut sur `/api`.
 ### Authentification & Accès Public
 * `POST /api/auth/register` - Inscription nouvel utilisateur / salon.
 * `POST /api/auth/login` - Connexion et génération du token JWT.
-* `GET /api/public/salons` - Recherche publique de salons (filtres ville, catégorie, nom).
-* `GET /api/public/salons/:id` - Détails d'un salon et ses services bookables.
-* `GET /api/public/availability` - Vérification des créneaux de disponibilité en temps réel.
+* `GET /api/public/tenants` - Recherche publique de salons (filtres ville, catégorie, nom).
+* `GET /api/public/tenant/:identifier` - Détails d'un salon et ses services bookables.
+* `GET /api/public/tenant/:tenantId/available-slots` - Créneaux de disponibilité en temps réel.
+* `GET /api/public/availability/stream` - Streaming SSE des disponibilités (mise à jour temps réel).
+
+### Client Authentication (Public)
+* `POST /api/public/auth/client-register` - Inscription d'un client final.
+* `POST /api/public/auth/client-login` - Connexion client et génération du token JWT.
+
+### Booking System (Public)
+* `POST /api/public/bookings` - Créer une réservation (individuelle, groupe, chaîne de services).
+* `POST /api/public/tenant/:tenantId/available-slots` - Vérifier les créneaux (avec paramètres dans le body).
+* `GET /api/public/tenant/:tenantId/employee-availability` - Disponibilités par collaborateur.
+* `POST /api/public/tenant/:tenantId/resolve-conflicts` - Résolution de conflits pour les réservations de groupe.
+* `PUT /api/public/appointments/:id/cancel` - Annulation d'un rendez-vous par le client.
+* `GET /api/public/client/:email/appointments` - Rendez-vous d'un client.
+
+### Client Profile & Favoris (Public)
+* `GET /api/public/client/:email/favorites` - Liste des salons favoris.
+* `POST /api/public/favorites` - Ajouter un favori.
+* `DELETE /api/public/favorites/:id` - Supprimer un favori.
+* `PUT /api/public/client/:email` - Mettre à jour le profil client.
+* `PUT /api/public/client/:email/change-password` - Changer le mot de passe.
 
 ### Salons & Paramètres Tenant (Protégés)
-* `GET /api/tenant/current` - Récupérer les informations du tenant actif.
+* `GET /api/tenant` - Récupérer les informations du tenant actif.
+* `PUT /api/tenant` - Mettre à jour les informations du tenant.
+* `GET /api/tenant/settings` - Récupérer les paramètres.
 * `PUT /api/tenant/settings` - Mettre à jour les paramètres de l'établissement.
+
+### Multi-Salon (Protégé)
+* `POST /api/auth/switch-salon` - Basculer vers un autre salon du même compte (ré-émet un JWT).
+* `GET /api/salons` - Lister les salons du compte propriétaire.
+* `POST /api/salons` - Créer un nouveau salon.
+* `PATCH /api/salons/:id` - Modifier un salon.
+* `DELETE /api/salons/:id` - Désactiver un salon.
 
 ### Clients & Proches (Staff & Admin)
 * `GET /api/clients` - Liste des clients du salon (pagination, recherche).
@@ -168,13 +197,13 @@ L'API REZA est une API REST JSON exposée par défaut sur `/api`.
 
 ### Prestations & Collaborateurs
 * `GET /api/services` - Liste des services.
-* `POST /api/services` - Ajouter/modifier une prestation.
+* `POST /api/services` - Ajouter une prestation.
 * `GET /api/employees` - Liste des collaborateurs et agendas.
 
-### Rendez-vous & Invoices
+### Rendez-vous & Factures
 * `GET /api/appointments` - Planning des rendez-vous.
 * `POST /api/appointments` - Créer un RDV (unique ou multi-prestations).
-* `PATCH /api/appointments/:id/status` - Mettre à jour le statut du RDV.
+* `PUT /api/appointments/:id` - Mettre à jour un RDV.
 * `GET /api/invoices` - Consulter les factures.
 * `POST /api/cash-transactions` - Enregistrer un mouvement de caisse.
 
@@ -183,6 +212,9 @@ L'API REZA est une API REST JSON exposée par défaut sur `/api`.
 * `GET /api/stats` - Reporting du chiffre d'affaires et fréquentation.
 * `POST /api/subscription/checkout` - Session de paiement Stripe pour abonnement SaaS.
 * `POST /api/webhooks/stripe` - Webhook de traitement asynchrone des paiements Stripe.
+
+### Health
+* `GET /health` - Vérification de l'état du serveur (utilisé par le healthcheck Docker).
 
 ---
 
@@ -197,7 +229,7 @@ L'API REZA est une API REST JSON exposée par défaut sur `/api`.
 
 3. **Protection Réseau & En-têtes HTTP**
    * En-têtes de sécurité renforcés via **Helmet**.
-   * Configuration **CORS** stricte limitant les requêtes cross-origin aux seuls domaines frontend autorisés (`FRONTEND_URL`, `SAAS_URL`, `CLIENT_APP_URL`).
+   * Configuration **CORS** stricte limitant les requêtes cross-origin aux seuls domaines frontend autorisés (`FRONTEND_URL`, `PRO_APP_URL`, `CLIENT_APP_URL`).
    * Vérification des signatures cryptographiques sur les Webhooks Stripe.
 
 4. **Sécurité des Données & Mots de Passe**
@@ -212,29 +244,52 @@ L'API REZA est une API REST JSON exposée par défaut sur `/api`.
 ```env
 PORT=5000
 NODE_ENV=production
+
 DATABASE_URL="postgresql://user:password@localhost:5432/reza_db?schema=public"
+
 JWT_SECRET="votre_cle_secrete_jwt_robuste"
-STRIPE_SECRET_KEY="sk_live_..."
-STRIPE_WEBHOOK_SECRET="whsec_..."
-FRONTEND_URL="https://pro.reza.ma"
-SAAS_URL="https://admin.reza.ma"
-CLIENT_APP_URL="https://client.reza.ma"
+JWT_EXPIRES_IN=7d
+
+# URLs des applications frontend (utilisées pour la configuration CORS)
+FRONTEND_URL="http://localhost:3000"
+PRO_APP_URL="http://localhost:3001"
+CLIENT_APP_URL="http://localhost:3002"
+# Stripe
+STRIPE_SECRET_KEY="sk_test_xxx"
+STRIPE_WEBHOOK_SECRET="whsec_xxx"
 ```
 
-### 2. Déploiement Backend (Render / Docker)
-* **Docker** : Un `Dockerfile` optimisé multi-stage build est disponible dans le dossier `Backend/`.
-* **Prisma Migration** :
-  ```bash
-  npm run db:generate
-  npm run db:migrate:deploy
-  ```
-* **Lancement du serveur** :
+### 2. Configuration de la Base de Données
+Le projet utilise **Prisma ORM** avec `prisma.config.ts`. Génération du client et migrations :
+```bash
+npm run db:generate    # Génère le client Prisma (obligatoire avant les migrations)
+npm run db:migrate:deploy  # Applique les migrations en production
+```
+
+### 3. Données de Démonstration (Seed)
+Un script de seed est disponible pour initialiser la base avec des données de démonstration :
+```bash
+npm run seed
+```
+**Attention** : La commande supprime toutes les données existantes avant d'insérer les données de démo.
+
+Comptes de démonstration après seed :
+
+| Rôle | Email | Mot de passe | Application |
+|------|-------|-------------|-------------|
+| Pro admin (2 salons) | `admin@spa-royal.ma` | `password123` | reza-pro |
+| SuperAdmin | `superadmin@gmail.com` | `123456` | reza-pro → `/superadmin` |
+| Client B2C | `client1@gmail.com` | `123456` | reza-client |
+
+### 4. Déploiement Backend (Render / Manuel)
+* **Render.com** : Un fichier `render.yaml` est disponible pour le déploiement via Render Blueprint. La commande `preDeployCommand` exécute `npx prisma migrate deploy` automatiquement.
+* **Manuel** :
   ```bash
   npm run build
   npm start
   ```
 
-### 3. Déploiement Frontend (Web Next.js)
+### 5. Déploiement Frontend (Web Next.js)
 * **Commandes de Build (dans chaque dossier Next.js)** :
   ```bash
   npm install
@@ -242,7 +297,7 @@ CLIENT_APP_URL="https://client.reza.ma"
   npm start
   ```
 
-### 4. Déploiement Mobile (Flutter)
+### 6. Déploiement Mobile (Flutter)
 * **Configuration IP LAN automatique** (En mode développement, le script backend met à jour automatiquement `auto_ip.dart`).
 * **Build de Production Android / iOS** :
   ```bash
