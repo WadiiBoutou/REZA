@@ -334,7 +334,7 @@ export default function ProOnboardingPage() {
                     <div>
                       <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Reza Pro</p>
                       <div className="flex items-end gap-2">
-                        <span className="text-5xl font-extrabold text-white">300</span>
+                        <span className="text-5xl font-extrabold text-white">900</span>
                         <span className="text-2xl font-bold text-gray-400 mb-1">DH</span>
                         <span className="text-gray-400 mb-1">/mois</span>
                       </div>
@@ -361,7 +361,7 @@ export default function ProOnboardingPage() {
                       onClick={() => setStep(1)}
                       className="w-full py-4 bg-white rounded-2xl font-bold text-black hover:bg-gray-100 transition-all duration-200 flex items-center justify-center gap-2"
                     >
-                      S'inscrire — 300 DH/mois
+                      S'inscrire — 900 DH/mois
                       <ArrowRight className="w-5 h-5" />
                     </button>
                   </div>
