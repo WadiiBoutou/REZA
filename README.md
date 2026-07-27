@@ -2,7 +2,7 @@
 
 Bienvenue dans la documentation officielle de la plateforme **REZA**. REZA est une solution SaaS multi-tenant globale dédiée à la gestion d'établissements de beauté et de bien-être (salons de coiffure, instituts de beauté, spas, barbiers, etc.) ainsi qu'à la réservation de prestations en ligne par les clients.
 
-> 
+---
 
 ## Sommaire
 
@@ -45,11 +45,12 @@ La plateforme REZA se compose de 5 piliers applicatifs majeurs :
 * **Réservations individuelles et multi-prestations** : Choix du service, sélection ou attribution automatique du collaborateur, sélection du créneau de disponibilité en temps réel.
 * **Réservations de groupe / Famille** : Possibilité de réserver pour des proches (Family Members) ou d'effectuer des réservations groupées (Booking Groups) avec résolution automatique des conflits de planning.
 * **Chaînage de services** : Réservation de plusieurs services à la suite pour un même client (ex: coupe + brushing) avec coordination automatique des créneaux.
-* **Gestion du statut des RDV** : En attente (`PENDING`), Confirmé (`CONFIRMED`), En cours (`IN_PROGRESS`), Terminé (`COMPLETED`), Annulé (`CANCELLED`), Non honoré (`NO_SHOW`).
+* **Gestion du statut des RDV** : En attente (`PENDING`), Confirmé (`CONFIRMED`), En cours (`IN_PROGRESS`), Terminé (`COMPLETED`), Annulé (`CANCELLED`), Absent (`NO_SHOW`).
 
-### 3. Caisse, Facturation & Mouvements de Caisse
-* **Génération automatique de factures** : Conversion directe des RDV terminés en factures (`SALE` ou `SUBSCRIPTION`).
-* **Gestion de Caisse** : Suivi des transactions espèces/carte/virement, gestion des dépôts (`DEPOSIT`), retraits (`WITHDRAWAL`) et remboursements (`REFUND`).
+### 3. Facturation Client & Abonnement Plateforme
+* **Factures de vente (SALE)** : Générées automatiquement à partir des RDV terminés. Documentent ce que le client paie au salon pour les prestations reçues.
+* **Abonnements Plateforme (SUBSCRIPTION)** : Factures récurrentes que le propriétaire du salon paie à REZA pour l'utilisation de la plateforme (gérées via Stripe).
+* **Mouvements de Caisse** : Enregistrement des dépôts (`DEPOSIT`), retraits (`WITHDRAWAL`) et remboursements (`REFUND`) pour le suivi de caisse quotidien.
 
 ### 4. Avis Clients & Modération
 * **Évaluation post-prestation** : Notes de 1 à 5 étoiles et commentaires laissés par les clients.
