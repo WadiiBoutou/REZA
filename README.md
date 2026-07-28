@@ -1,4 +1,4 @@
-# README - Plateforme REZA (Web & Mobile)
+# Documentation - Plateforme REZA (Web & Mobile)
 
 Bienvenue dans la documentation officielle de la plateforme **REZA**. REZA est une solution SaaS multi-tenant globale dédiée à la gestion d'établissements de beauté et de bien-être (salons de coiffure, instituts de beauté, spas, barbiers, etc.) ainsi qu'à la réservation de prestations en ligne par les clients.
 
