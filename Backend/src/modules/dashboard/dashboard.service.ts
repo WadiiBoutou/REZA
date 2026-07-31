@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma';
+import * as log from '../../utils/logger';
 
 export class DashboardService {
   async getApprovedReviews(tenantId: string) {
@@ -34,7 +35,7 @@ export class DashboardService {
               }
             });
           } catch (error) {
-            console.error('Error fetching appointment for review:', error);
+            log.error('Error fetching appointment for review:', error);
           }
         }
         return { ...review, appointment };
@@ -76,7 +77,7 @@ export class DashboardService {
               }
             });
           } catch (error) {
-            console.error('Error fetching appointment for review:', error);
+            log.error('Error fetching appointment for review:', error);
           }
         }
         return { ...review, appointment };

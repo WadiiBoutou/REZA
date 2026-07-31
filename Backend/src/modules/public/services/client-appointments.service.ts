@@ -2,6 +2,7 @@ import { prisma } from '../../../lib/prisma';
 import { formatDateTimeForAPI } from '../../../utils/dateTime';
 import { transformImageUrl } from '../../../utils/imageUrl';
 import { fail } from '../utils/http';
+import * as log from '../../../utils/logger';
 
 export class ClientAppointmentsService {
   async getClientAppointments(email: string, query: Record<string, unknown>) {
@@ -43,7 +44,7 @@ export class ClientAppointmentsService {
     
     // Log avatar for debugging - check if avatar exists in the client object
     const avatarValue: string | null = client.avatar;
-    console.log('[getClientAppointments] Client avatar from Prisma findMany:', avatarValue ? `present (type: ${typeof avatarValue}, length: ${avatarValue.length || 0})` : 'null');
+    log.log('[getClientAppointments] Client avatar from Prisma findMany:', avatarValue ? `present (type: ${typeof avatarValue}, length: ${avatarValue.length || 0})` : 'null');
     
     // Always query the database directly to ensure we get the avatar
     // This is necessary because Prisma findMany might not return very large strings correctly
@@ -55,9 +56,9 @@ export class ClientAppointmentsService {
       });
       if (directClient && directClient.avatar) {
         verifiedAvatar = typeof directClient.avatar === 'string' ? directClient.avatar : null;
-        console.log('[getClientAppointments] Direct DB query avatar:', verifiedAvatar ? `present (length: ${verifiedAvatar.length})` : 'null');
+        log.log('[getClientAppointments] Direct DB query avatar:', verifiedAvatar ? `present (length: ${verifiedAvatar.length})` : 'null');
       } else {
-        console.log('[getClientAppointments] Direct DB query avatar: null');
+        log.log('[getClientAppointments] Direct DB query avatar: null');
       }
     }
 
@@ -122,6 +123,12 @@ export class ClientAppointmentsService {
             coverImage: true,
             address: true,
             city: true
+          }
+        },
+        bookingParticipant: {
+          select: {
+            displayName: true,
+            isBooker: true
           }
         }
       }
@@ -244,7 +251,6 @@ export class ClientAppointmentsService {
         salonId: apt.tenantId,
         tenantId: apt.tenantId,
         service: serviceName,
-        serviceId: apt.serviceId,
         services: detailedServices,
         date: dateStr,
         time: timeStr,
@@ -252,7 +258,6 @@ export class ClientAppointmentsService {
         price: totalPrice,
         duration: durationFormatted,
         professional: professionalName,
-        employeeId: apt.employeeId,
         image: transformImageUrl(apt.tenant?.coverImage || apt.tenant?.logo || null),
         address: apt.tenant?.address || apt.tenant?.city || null,
         notes: apt.notes,
@@ -261,7 +266,8 @@ export class ClientAppointmentsService {
         clientLastName: client.lastName,
         clientEmail: client.email,
         clientPhone: client.phone,
-        startTime: apt.startTime.toISOString()
+        startTime: apt.startTime.toISOString(),
+        bookedFor: (apt as any).bookingParticipant?.displayName || null,
       };
     }));
 
@@ -269,7 +275,7 @@ export class ClientAppointmentsService {
     // Use the verified avatar from the direct DB query
     const clientAvatar = verifiedAvatar;
     
-    console.log('[getClientAppointments] Returning client avatar:', clientAvatar ? `present (length: ${clientAvatar.length})` : 'null');
+    log.log('[getClientAppointments] Returning client avatar:', clientAvatar ? `present (length: ${clientAvatar.length})` : 'null');
     
     const clientResponse = {
       id: client.id,
@@ -283,7 +289,7 @@ export class ClientAppointmentsService {
     
     // Log the response size to check if it's being truncated
     const responseSize = JSON.stringify(clientResponse).length;
-    console.log('[getClientAppointments] Client response size:', responseSize, 'bytes');
+    log.log('[getClientAppointments] Client response size:', responseSize, 'bytes');
     
     return {
       appointments: formattedAppointments,

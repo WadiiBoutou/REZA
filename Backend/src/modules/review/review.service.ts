@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { CreateReviewInput, UpdateReviewStatusInput } from './review.schema';
+import * as log from '../../utils/logger';
 
 export class ReviewService {
   async getReviews(tenantId: string, status?: string, clientId?: string, page: number = 1, limit: number = 50) {
@@ -127,7 +128,7 @@ export class ReviewService {
         });
       }
     } catch (notificationError) {
-      console.error('Error creating notification for review:', notificationError);
+      log.error('Error creating notification for review:', notificationError);
     }
 
     return { review };

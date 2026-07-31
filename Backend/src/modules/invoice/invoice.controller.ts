@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { invoiceService } from './invoice.service';
-import { createInvoiceSchema, createSaleSchema, updateInvoiceSchema } from './invoice.schema';
+import { createInvoiceSchema, createSaleSchema, createGroupSaleSchema, separateGroupSaleSchema, updateInvoiceSchema, CreateSaleInput, CreateGroupSaleInput } from './invoice.schema';
 import { isSalonRequiredError, resolveWriteTenantId } from '../../utils/salonScope';
 
 export class InvoiceController {
@@ -70,9 +70,10 @@ export class InvoiceController {
   async createSale(req: Request, res: Response, next: NextFunction) {
     try {
       const data = createSaleSchema.parse(req.body);
-      const tenantId = resolveWriteTenantId(req, data.tenantId);
-      const salonIds = req.salonIds || [tenantId];
-      const invoice = await invoiceService.createSale(tenantId, data, salonIds);
+      // The appointment (if linked) carries its salon: the service resolves the
+      // write target itself when the caller's scope is ambiguous.
+      const salonIds = req.salonIds || (req.tenantId ? [req.tenantId] : []);
+      const invoice = await invoiceService.createSale(salonIds, data as CreateSaleInput);
       res.status(201).json({ invoice });
     } catch (error: any) {
       if (isSalonRequiredError(error)) {
@@ -123,6 +124,119 @@ export class InvoiceController {
           message: 'Une vente est déjà liée à ce rendez-vous.'
         });
       }
+      next(error);
+    }
+  }
+
+  async createGroupSale(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = createGroupSaleSchema.parse(req.body);
+      // The booking group carries its salon: the service resolves the write
+      // target itself when the caller's scope is ambiguous.
+      const salonIds = req.salonIds || (req.tenantId ? [req.tenantId] : []);
+      const invoice = await invoiceService.createGroupSale(
+        salonIds,
+        data as CreateGroupSaleInput,
+      );
+      res.status(201).json({ invoice });
+    } catch (error: any) {
+      if (isSalonRequiredError(error)) {
+        return res.status(400).json({ error: 'Salon required', message: error.message });
+      }
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: 'Validation error', message: error.errors[0].message });
+      }
+      if (error.message === 'BOOKING_GROUP_NOT_FOUND') {
+        return res.status(404).json({ error: 'Booking group not found' });
+      }
+      if (error.message === 'NOT_A_GROUP') {
+        return res.status(400).json({
+          error: 'Not a group',
+          message: 'Ce groupe n\'a pas assez de participants pour une facturation groupée.'
+        });
+      }
+      if (error.message === 'PAYER_NOT_IN_GROUP') {
+        return res.status(400).json({
+          error: 'Payer not in group',
+          message: 'Le client sélectionné pour payer ne fait pas partie de ce groupe.'
+        });
+      }
+      if (error.message === 'GROUP_ALREADY_INVOICED') {
+        return res.status(409).json({
+          error: 'Group already invoiced',
+          message: 'Une facture de groupe existe déjà pour cette réservation.'
+        });
+      }
+      if (error.message === 'APPOINTMENT_ALREADY_INVOICED') {
+        return res.status(409).json({
+          error: 'Appointment already invoiced',
+          message: 'Un ou plusieurs rendez-vous de ce groupe sont déjà facturés.'
+        });
+      }
+      if (error.message === 'NO_SERVICES_TO_BILL') {
+        return res.status(400).json({ error: 'No services to bill in this group' });
+      }
+      if (error.message === 'INVALID_AMOUNT') {
+        return res.status(400).json({ error: 'Invalid amount' });
+      }
+      next(error);
+    }
+  }
+
+  async separateGroupSale(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = separateGroupSaleSchema.parse(req.body);
+      // The booking group itself carries its salon: let the service resolve the
+      // write target from the group when the caller's scope is ambiguous.
+      const salonIds = req.salonIds || (req.tenantId ? [req.tenantId] : []);
+      const invoices = await invoiceService.separateGroupSale(
+        salonIds,
+        data as { bookingGroupId: string; paymentMethod: string; tax?: number; tenantId?: string },
+      );
+      res.status(201).json({ invoices });
+    } catch (error: any) {
+      if (error.message === 'BOOKING_GROUP_NOT_FOUND') {
+        return res.status(404).json({ error: 'Booking group not found' });
+      }
+      if (error.message === 'NOT_A_GROUP') {
+        return res.status(400).json({ error: 'Not a group booking' });
+      }
+      if (error.message === 'GROUP_ALREADY_INVOICED') {
+        return res.status(409).json({
+          error: 'Group already invoiced',
+          message: 'Une facture de groupe existe déjà pour cette réservation.'
+        });
+      }
+      if (error.message === 'APPOINTMENT_ALREADY_INVOICED') {
+        return res.status(409).json({
+          error: 'Appointment already invoiced',
+          message: 'Un ou plusieurs rendez-vous de ce groupe sont déjà facturés.'
+        });
+      }
+      next(error);
+    }
+  }
+
+  async getGroupDetails(req: Request, res: Response, next: NextFunction) {
+    try {
+      const tenantId = req.tenantId!;
+      const { groupId } = req.params;
+      const details = await invoiceService.getGroupDetails(tenantId, groupId);
+      res.json({ group: details });
+    } catch (error: any) {
+      if (error.message === 'BOOKING_GROUP_NOT_FOUND') {
+        return res.status(404).json({ error: 'Booking group not found' });
+      }
+      next(error);
+    }
+  }
+
+  async getPendingGroups(req: Request, res: Response, next: NextFunction) {
+    try {
+      const tenantId = req.tenantId!;
+      const groups = await invoiceService.getPendingGroups(tenantId);
+      res.json({ groups });
+    } catch (error) {
       next(error);
     }
   }

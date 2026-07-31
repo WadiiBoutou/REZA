@@ -28,11 +28,17 @@ router.post('/bookings', (req, res, next) => publicController.createBooking(req,
 router.get('/tenant/:tenantId/available-slots', (req, res, next) =>
   publicController.getAvailableSlots(req, res, next)
 );
+router.post('/tenant/:tenantId/available-slots', (req, res, next) =>
+  publicController.checkAvailableSlots(req, res, next)
+);
 router.get('/tenant/:tenantId/employee-availability', (req, res, next) =>
   publicController.getEmployeeAvailability(req, res, next)
 );
-router.post('/tenant/:tenantId/resolve-conflicts', (req, res, next) =>
-  publicController.resolveParticipantConflicts(req, res, next)
+router.get('/tenant/:tenantId/available-days', (req, res, next) =>
+  publicController.getAvailableDays(req, res, next)
+);
+router.post('/tenant/:tenantId/validate-participant', (req, res, next) =>
+  publicController.validateParticipantAddition(req, res, next)
 );
 router.get('/client/:email/appointments', (req, res, next) =>
   publicController.getClientAppointments(req, res, next)
@@ -68,12 +74,6 @@ router.post('/auth/client-register', (req, res, next) =>
 );
 router.post('/auth/client-login', (req, res, next) =>
   publicController.loginClient(req, res, next)
-);
-router.get('/auth/google/url', (req, res, next) =>
-  publicController.getGoogleAuthUrl(req, res, next)
-);
-router.get('/auth/google/callback', (req, res, next) =>
-  publicController.handleGoogleCallback(req, res, next)
 );
 router.get('/client/:email/favorites', (req, res, next) =>
   publicController.getClientFavorites(req, res, next)

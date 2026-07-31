@@ -3,6 +3,7 @@ import { hashPassword, comparePassword } from '../../utils/password';
 import { generateToken } from '../../utils/jwt';
 import { LoginInput, RegisterInput } from './auth.schema';
 import { accountService } from '../account/account.service';
+import * as log from '../../utils/logger';
 
 export class AuthService {
   async login(input: LoginInput) {
@@ -149,7 +150,7 @@ export class AuthService {
         isActive: newTenant.isActive
       };
 
-      console.log(`[Register] ✅ Auto-generated tenant ID: ${tenantId} for organization: ${input.tenantName}`);
+      log.log(`[Register] ✅ Auto-generated tenant ID: ${tenantId} for organization: ${input.tenantName}`);
     } else if (input.tenantId) {
       tenantId = input.tenantId;
 
@@ -306,7 +307,7 @@ export class AuthService {
   }
 
   async getCurrentUser(userId: string, activeTenantId?: string) {
-    console.log('[Auth Service /me] Fetching user:', userId);
+    log.log('[Auth Service /me] Fetching user:', userId);
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -322,7 +323,7 @@ export class AuthService {
     });
 
     if (!user) {
-      console.error('[Auth Service /me] User not found for userId:', userId);
+      log.error('[Auth Service /me] User not found for userId:', userId);
       throw {
         status: 404,
         error: 'User not found'
@@ -347,12 +348,12 @@ export class AuthService {
           }
         });
       } catch (tenantError: any) {
-        console.error('[Auth Service /me] Error fetching tenant:', tenantError);
+        log.error('[Auth Service /me] Error fetching tenant:', tenantError);
       }
     }
 
     if (!tenant && user.role !== 'SUPER_ADMIN') {
-      console.error('[Auth Service /me] User tenant not found for tenantId:', user.tenantId);
+      log.error('[Auth Service /me] User tenant not found for tenantId:', user.tenantId);
       throw {
         status: 500,
         error: 'Invalid user data',
@@ -392,7 +393,7 @@ export class AuthService {
       };
     }
 
-    console.log('[Auth Service Google] Searching for user with email:', email.toLowerCase());
+    log.log('[Auth Service Google] Searching for user with email:', email.toLowerCase());
     let user = await prisma.user.findFirst({
       where: {
         email: email.toLowerCase()
@@ -408,7 +409,7 @@ export class AuthService {
       }
     });
 
-    console.log('[Auth Service Google] User lookup result:', { found: !!user, userId: user?.id });
+    log.log('[Auth Service Google] User lookup result:', { found: !!user, userId: user?.id });
 
     if (!user) {
       throw {
@@ -436,7 +437,7 @@ export class AuthService {
     }
 
     if (picture && !user.avatar) {
-      console.log('[Auth Service Google] Updating user avatar');
+      log.log('[Auth Service Google] Updating user avatar');
       await prisma.user.update({
         where: { id: user.id },
         data: { avatar: picture }
@@ -470,34 +471,6 @@ export class AuthService {
     };
   }
 
-  getGoogleRedirectUri() {
-    let redirectUri: string;
-
-    if (process.env.GOOGLE_REDIRECT_URI_SAAS) {
-      redirectUri = process.env.GOOGLE_REDIRECT_URI_SAAS;
-    } else if (process.env.SAAS_URL) {
-      redirectUri = `${process.env.SAAS_URL}/auth/google/callback`;
-    } else {
-      redirectUri = 'https://pro.wellbe.ma/auth/google/callback';
-    }
-
-    redirectUri = redirectUri.trim().replace(/\/$/, '');
-
-    console.log('[Auth Service Google] getGoogleRedirectUri result:', {
-      normalized: redirectUri,
-      length: redirectUri.length
-    });
-
-    return redirectUri;
-  }
-
-  getBackendUrl() {
-    return process.env.BACKEND_URL || 'https://api.wellbe.ma';
-  }
-
-  getSaasUrl() {
-    return process.env.SAAS_URL || 'https://pro.wellbe.ma';
-  }
 }
 
 export const authService = new AuthService();

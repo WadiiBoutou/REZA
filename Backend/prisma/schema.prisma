@@ -484,6 +484,10 @@ model Invoice {
   appointmentId String?      @unique
   appointment   Appointment? @relation(fields: [appointmentId], references: [id])
 
+  // Group billing — links to the BookingGroup that owns this invoice
+  bookingGroupId String?
+  bookingGroup   BookingGroup? @relation(fields: [bookingGroupId], references: [id], onDelete: SetNull)
+
   // SUBSCRIPTION invoices link to an account (not client/appointment)
   accountId String?
 
@@ -530,6 +534,9 @@ model InvoiceItem {
   serviceName String
   price       Float
   quantity    Int    @default(1)
+
+  // Group billing — which participant this line item belongs to
+  participantName String?
 
   createdAt DateTime @default(now())
 
@@ -701,6 +708,7 @@ model BookingGroup {
 
   participants BookingParticipant[]
   appointments Appointment[]
+  invoices     Invoice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

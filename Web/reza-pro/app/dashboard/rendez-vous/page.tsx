@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Calendar, Clock, User, Phone, Mail, X, ChevronLeft, ChevronRight, MoreVertical, Plus, CalendarIcon, MapPin, Image as ImageIcon, Check, UserX, Flag, AlertTriangle, XCircle } from 'lucide-react';
+import { Calendar, Clock, User, Phone, Mail, X, ChevronLeft, ChevronRight, MoreVertical, Plus, CalendarIcon, MapPin, Image as ImageIcon, Check, UserX, Flag, AlertTriangle, XCircle, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -32,8 +32,6 @@ type ApiAppointment = {
   id: string;
   tenantId: string;
   clientId: string;
-  serviceId: string;
-  employeeId: string | null;
   startTime: string;
   endTime: string;
   duration: number;
@@ -59,18 +57,18 @@ type ApiAppointment = {
     email: string | null;
     phone: string | null;
   };
-  service: {
-    id: string;
-    name: string;
-    color?: string;
-    duration: number;
-    price?: number | null;
-    priceFrom?: number | null;
-  };
   employee: {
     id: string;
     firstName: string;
     lastName: string;
+  } | null;
+  bookingParticipant?: {
+    displayName: string;
+    clientId?: string | null;
+  } | null;
+  bookingGroup?: {
+    id: string;
+    _count?: { participants: number };
   } | null;
 };
 
@@ -89,6 +87,7 @@ type Appointment = {
     employee?: { id: string; firstName: string; lastName: string } | null;
   }>;
   time: string;
+  endTime: string;
   duration: number;
   status: 'confirmed' | 'pending' | 'cancelled' | 'in_progress' | 'completed' | 'no_show' | string;
   employee: string;
@@ -110,6 +109,10 @@ type Appointment = {
   totalPrice?: number;
   /** Per-service employee assignments for creation */
   servicesPayload?: Array<{ serviceId: string; employeeId: string | null }>;
+  /** Booking group ID for group bookings */
+  bookingGroupId?: string;
+  /** Number of participants in the booking group (from _count.participants) */
+  bookingGroupParticipantCount?: number;
 };
 
 type FinalizePaymentMethod = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'CHECK';
@@ -118,6 +121,36 @@ type FinalizeModalState = {
   appointment: Appointment;
   paymentMethod: FinalizePaymentMethod;
   loading: boolean;
+  /** Group billing is off the table once any participant was invoiced individually. */
+  groupAlreadyInvoiced?: boolean;
+};
+
+type GroupReviewParticipant = {
+  participantId: string;
+  clientId: string | null;
+  displayName: string;
+  isBooker: boolean;
+  services: Array<{
+    serviceId: string | null;
+    serviceName: string;
+    price: number;
+    duration: number | null;
+    employee: { id: string; firstName: string; lastName: string } | null;
+  }>;
+  subtotal: number;
+};
+
+type GroupReviewModalState = {
+  bookingGroupId: string;
+  bookerClientId: string;
+  participants: GroupReviewParticipant[];
+  total: number;
+  paymentMethod: FinalizePaymentMethod;
+  selectedPayerClientId: string;
+  loading: boolean;
+  loadingMode: 'combined' | 'separate' | null;
+  /** Any participant appointment already individually invoiced → group billing blocked. */
+  hasInvoicedAppointment?: boolean;
 };
 
 type Client = {
@@ -160,6 +193,13 @@ const transformApiAppointment = (apiApt: ApiAppointment): Appointment => {
   
   const time = `${moroccoHours.toString().padStart(2, '0')}:${moroccoMinutes.toString().padStart(2, '0')}`;
   
+  // Compute end time from start time + duration for display
+  const durationMinutes = apiApt.totalDuration ?? apiApt.duration ?? 0;
+  const endTotalMinutes = moroccoHours * 60 + moroccoMinutes + durationMinutes;
+  const endHours = Math.floor(endTotalMinutes / 60) % 24;
+  const endMinutes = endTotalMinutes % 60;
+  const endTime = `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+  
   // Create date object using UTC components to avoid timezone conversion issues
   // This ensures the date picker shows the correct date regardless of browser timezone
   const date = new Date(Date.UTC(utcYear, utcMonth, utcDay));
@@ -187,11 +227,12 @@ const transformApiAppointment = (apiApt: ApiAppointment): Appointment => {
 
   return {
     id: apiApt.id,
-    clientName: `${apiApt.client.firstName} ${apiApt.client.lastName}`,
-    service: services.length > 0 ? services[0].name : apiApt.service.name,
+    clientName: apiApt.bookingParticipant?.displayName || `${apiApt.client.firstName} ${apiApt.client.lastName}`,
+    service: services.length > 0 ? services[0].name : 'Service',
     services,
     serviceIds: services.map((service) => service.serviceId ?? service.id ?? '').filter(Boolean),
     time,
+    endTime,
     duration: apiApt.totalDuration ?? apiApt.duration,
     status: statusMap[apiApt.status] || apiApt.status.toLowerCase(),
     employee: apiApt.employee ? `${apiApt.employee.firstName} ${apiApt.employee.lastName}` : 'Non assigné',
@@ -201,12 +242,14 @@ const transformApiAppointment = (apiApt: ApiAppointment): Appointment => {
     notes: apiApt.notes || undefined,
     cancelledByClient: apiApt.cancelledBy === apiApt.clientId,
     clientId: apiApt.clientId,
-    serviceId: apiApt.serviceId,
-    employeeId: apiApt.employeeId,
+    serviceId: services.length > 0 ? (services[0].serviceId ?? services[0].id ?? '') : '',
+    employeeId: services.length > 0 ? (services[0].employee?.id ?? null) : (apiApt.employee?.id ?? null),
     tenantId: apiApt.tenantId,
-    servicePrice: apiApt.service.price ?? apiApt.service.priceFrom ?? null,
+    servicePrice: services.length > 0 ? services[0].price : null,
     totalDuration: apiApt.totalDuration ?? apiApt.duration,
-    totalPrice: apiApt.totalPrice ?? (apiApt.service.price ?? apiApt.service.priceFrom ?? null),
+    totalPrice: apiApt.totalPrice ?? (services.length > 0 ? services[0].price : null),
+    bookingGroupId: apiApt.bookingGroup?.id,
+    bookingGroupParticipantCount: apiApt.bookingGroup?._count?.participants ?? 0,
   };
 };
 
@@ -595,11 +638,17 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
       ? employees.find((e) => e.id === firstEmployeeId)?.name || 'Non assigné'
       : 'Non assigné';
 
+    // Compute end time from normalizedTime + totalDuration
+    const [ntH, ntM] = normalizedTime.split(':').map(Number);
+    const endTotalMin = ntH * 60 + ntM + totalDuration;
+    const computedEndTime = `${String(Math.floor(endTotalMin / 60) % 24).padStart(2, '0')}:${String(endTotalMin % 60).padStart(2, '0')}`;
+
     const newAppointment: Appointment = {
       id: '',
       clientName: selectedClient.name,
       service: serviceName,
       time: normalizedTime,
+      endTime: computedEndTime,
       duration: totalDuration,
       status: 'pending',
       employee: firstEmployeeName,
@@ -1088,8 +1137,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
                                       {emp.recommended && (
                                         <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">Recommandé</span>
                                       )}
-                                      {!emp.available && emp.reason && (
-                                        <span className="text-[10px] text-amber-500">{emp.reason}</span>
+                                      {!emp.available && (
+                                        <span className="text-[10px] text-amber-500">Indisponible</span>
                                       )}
                                     </div>
                                   </SelectItem>
@@ -1310,9 +1359,9 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
     switch (field.id) {
       case 'hours':
         return (
-          <div key={field.id} className="flex items-center gap-1.5 text-xs opacity-60">
-            <Clock size={11} />
-            <span>{apt.time} · {apt.duration}min</span>
+          <div key={field.id} className="flex items-center gap-2 text-xs opacity-60">
+            <Clock size={13} />
+            <span>{apt.time} → {apt.endTime}</span>
           </div>
         );
       case 'clientName':
@@ -1340,7 +1389,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
     <div
       draggable
       onDragStart={(e) => onDragStart && onDragStart(e, apt)}
-      className={`${getStatusBg(apt.status)} rounded-lg p-3 cursor-move hover:shadow-md transition-all border ${
+      className={`${getStatusBg(apt.status)} rounded-lg p-3.5 cursor-move hover:shadow-md transition-all border ${
         isCompact ? 'text-xs' : 'text-sm'
       }`}
       style={showColorInRDV ? getLightColorStyle(color) : {}}
@@ -1349,8 +1398,8 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
         <div className="flex-1 min-w-0">
           {visibleFields.map(field => renderField(field))}
           {apt.status === 'cancelled' && apt.cancelledByClient && (
-            <div className="mt-1.5 text-xs text-red-600 font-medium flex items-center gap-1">
-              <X size={11} />
+            <div className="mt-1.5 text-xs text-red-600 font-medium flex items-center gap-1.5">
+              <X size={13} />
               <span>Annulé par le client</span>
             </div>
           )}
@@ -1442,8 +1491,8 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
       </div>
       {!isCompact && (
         <div className="mt-2 pt-2 border-t border-current/10 text-xs opacity-60">
-          <div className="flex items-center gap-1">
-            <User size={11} />
+          <div className="flex items-center gap-1.5">
+            <User size={13} />
             <span className="truncate break-words w-full">{getAppointmentEmployeeLabel(apt)}</span>
           </div>
         </div>
@@ -1467,9 +1516,15 @@ const RendezVousPage = () => {
   const [newRdvInitialDate, setNewRdvInitialDate] = useState<Date | undefined>(undefined);
   const [newRdvInitialTime, setNewRdvInitialTime] = useState<string>('');
   const [draggedEvent, setDraggedEvent] = useState<Appointment | null>(null);
+  const [moveConfirm, setMoveConfirm] = useState<{
+    id: string;
+    data: any;
+    conflicts: string[];
+  } | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [finalizeModal, setFinalizeModal] = useState<FinalizeModalState | null>(null);
+  const [groupReviewModal, setGroupReviewModal] = useState<GroupReviewModalState | null>(null);
   const [filterStatus, setFilterStatus] = useState('all');
   const [selectedEmployee, setSelectedEmployee] = useState('all');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -1705,7 +1760,7 @@ const RendezVousPage = () => {
       window.removeEventListener('statusFilterChange', handleStatusFilter as EventListener);
       window.removeEventListener('sidebarDateChange', handleSidebarDateChange as EventListener);
     };
-  }, [employeeAgendas]);
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 0);
@@ -1724,7 +1779,14 @@ const RendezVousPage = () => {
   // Appointments state - fetched from API
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
-  
+
+  // Stable string key for currentDate to use as useEffect dependency
+  // (Date objects get new references on every `new Date(...)` call, even with the same value)
+  const currentDateKey = useMemo(
+    () => `${currentDate.getFullYear()}-${currentDate.getMonth()}-${currentDate.getDate()}`,
+    [currentDate]
+  );
+
   // Fetch appointments from API based on current view date range
   const fetchAppointments = async () => {
     if (!isAuthenticated) return;
@@ -1783,7 +1845,7 @@ const RendezVousPage = () => {
   // Fetch appointments when view, date, or salon filter changes
   useEffect(() => {
     fetchAppointments();
-  }, [isAuthenticated, view, currentDate, salonFilterKey]);
+  }, [isAuthenticated, view, currentDateKey, salonFilterKey]);
 
   // Filter appointments based on selected employee
   const getFilteredAppointments = () => {
@@ -1880,6 +1942,22 @@ const RendezVousPage = () => {
     return slots;
   }, [agendaStart, agendaEnd]);
 
+  // Map an appointment time to its containing 30-min slot's time string.
+  // e.g. "15:45" → "15:30", "16:00" → "16:00"
+  const aptToSlotTime = (aptTime: string): string => {
+    const [h, m] = aptTime.split(':').map(Number);
+    const totalMin = h * 60 + m;
+    const slotStart = Math.floor(totalMin / 30) * 30;
+    return `${Math.floor(slotStart / 60).toString().padStart(2, '0')}:${(slotStart % 60).toString().padStart(2, '0')}`;
+  };
+
+  // How many minutes into the 30-min slot this appointment starts.
+  // e.g. "15:45" → 15 (15 min into the 15:30 slot), "16:00" → 0
+  const aptSlotOffset = (aptTime: string): number => {
+    const [h, m] = aptTime.split(':').map(Number);
+    return (h * 60 + m) % 30;
+  };
+
   // Get week days - normalized
   const getWeekDays = () => {
     const start = new Date(currentDate);
@@ -1948,24 +2026,65 @@ const RendezVousPage = () => {
     e.preventDefault();
     if (!draggedEvent) return;
     
+    const normalizedDate = new Date(
+      newDate.getFullYear(),
+      newDate.getMonth(),
+      newDate.getDate()
+    );
+    normalizedDate.setHours(0, 0, 0, 0);
+    
+    const moveTimeData = transformToApiAppointment(draggedEvent, normalizedDate, newTime);
+
+    // A drag-drop move only changes the start time — services and employee
+    // assignments are carried over as-is. Sending only identity + time fields
+    // keeps the backend from re-validating employee-service compatibility
+    // (which would wrongly fail for multi-service appointments that have
+    // per-service employees: one employee can't serve all the services).
+    const updateData = {
+      clientId: moveTimeData.clientId,
+      startTime: moveTimeData.startTime,
+      status: moveTimeData.status,
+      ...(moveTimeData.notes !== undefined ? { notes: moveTimeData.notes } : {}),
+      ...(moveTimeData.tenantId ? { tenantId: moveTimeData.tenantId } : {}),
+    };
+
+    // Phase 1: dry-run validation — nothing is persisted here. The backend
+    // checks client double-bookings, per-employee windows and business hours,
+    // returning ALL conflicts. The move is only applied when the user confirms.
     try {
-      const normalizedDate = new Date(
-        newDate.getFullYear(),
-        newDate.getMonth(),
-        newDate.getDate()
-      );
-      normalizedDate.setHours(0, 0, 0, 0);
-      
-      const updateData = transformToApiAppointment(draggedEvent, normalizedDate, newTime);
-      await api.updateAppointment(draggedEvent.id, updateData);
-      
-      await fetchAppointments();
+      const result = await api.validateMove(draggedEvent.id, {
+        startTime: updateData.startTime,
+        ...(updateData.tenantId ? { tenantId: updateData.tenantId } : {}),
+      });
+      setMoveConfirm({
+        id: draggedEvent.id,
+        data: updateData,
+        conflicts: result?.conflicts ?? [],
+      });
       setDraggedEvent(null);
-    } catch (err) {
-      console.error('Error updating appointment:', err);
-      toast.error(getApiErrorMessage(err, 'Erreur lors de la mise à jour du rendez-vous'));
+    } catch (err: any) {
+      toast.error(getApiErrorMessage(err, 'Erreur lors de la vérification du déplacement'));
       setDraggedEvent(null);
     }
+  };
+
+  const confirmMove = async () => {
+    if (!moveConfirm) return;
+    try {
+      await api.updateAppointment(moveConfirm.id, { ...moveConfirm.data, source: 'ADMIN' });
+      setMoveConfirm(null);
+      setDraggedEvent(null);
+      await fetchAppointments();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Erreur lors de la mise à jour du rendez-vous'));
+      setMoveConfirm(null);
+      setDraggedEvent(null);
+    }
+  };
+
+  const cancelMove = () => {
+    setMoveConfirm(null);
+    setDraggedEvent(null);
   };
   
   const handleCreateAppointment = async (appointment: Appointment) => {
@@ -1993,6 +2112,28 @@ const RendezVousPage = () => {
         paymentMethod: 'CASH',
         loading: false,
       });
+      // Group appointments: check asynchronously whether any participant was
+      // already individually invoiced — then "Facturer le groupe" is disabled
+      // and only individual encaissement remains (everyone blue).
+      if (appointment.bookingGroupId) {
+        api
+          .getGroupDetails(appointment.bookingGroupId)
+          .then((res: any) => {
+            const g = res?.group;
+            if (!g) return;
+            setFinalizeModal((prev) =>
+              prev && prev.appointment.id === appointment.id
+                ? {
+                    ...prev,
+                    groupAlreadyInvoiced: !!(g.alreadyInvoiced || g.hasInvoicedAppointment),
+                  }
+                : prev,
+            );
+          })
+          .catch(() => {
+            /* non-blocking: backend still rejects if really invoiced */
+          });
+      }
       return;
     }
 
@@ -2058,7 +2199,7 @@ const RendezVousPage = () => {
       return;
     }
 
-    const servicesForSale = (apt.services && apt.services.length > 0 ? apt.services : apt.serviceId ? [{ serviceId: apt.serviceId, name: apt.service, duration: apt.duration, price: apt.servicePrice ?? 0, sortOrder: 0 }] : []);
+    const servicesForSale = (apt.services && apt.services.length > 0 ? apt.services : []);
     if (servicesForSale.length === 0) {
       toast.error('Service manquant — impossible d’ajouter à la caisse');
       return;
@@ -2112,6 +2253,94 @@ const RendezVousPage = () => {
       console.error(err);
       toast.error('Erreur lors de la mise à jour du statut');
       setFinalizeModal((prev) => (prev ? { ...prev, loading: false } : null));
+    }
+  };
+
+  const handleFinalizeGroupSale = async () => {
+    if (!finalizeModal) return;
+    const apt = finalizeModal.appointment;
+    if (!apt.bookingGroupId) return;
+
+    setFinalizeModal({ ...finalizeModal, loading: true });
+    try {
+      const res = await api.getGroupDetails(apt.bookingGroupId);
+      const g = res.group;
+      if (!g || !g.participants || g.participants.length === 0) {
+        toast.error('Aucun participant trouvé pour ce groupe');
+        setFinalizeModal((prev) => (prev ? { ...prev, loading: false } : null));
+        return;
+      }
+      setFinalizeModal(null);
+      setGroupReviewModal({
+        bookingGroupId: g.groupId,
+        bookerClientId: g.bookerClientId,
+        participants: g.participants,
+        total: g.total,
+        paymentMethod: finalizeModal.paymentMethod,
+        selectedPayerClientId: g.bookerClientId || apt.clientId || '',
+        loading: false,
+        loadingMode: null,
+        hasInvoicedAppointment: !!g.hasInvoicedAppointment,
+      });
+    } catch (err: any) {
+      console.error('Error loading group details:', err);
+      toast.error(getApiErrorMessage(err, 'Erreur lors du chargement du groupe'));
+      setFinalizeModal((prev) => (prev ? { ...prev, loading: false } : null));
+    }
+  };
+
+  const handleGroupReviewConfirmCombined = async () => {
+    if (!groupReviewModal) return;
+    setGroupReviewModal({ ...groupReviewModal, loading: true, loadingMode: 'combined' });
+    try {
+      await api.createGroupSale({
+        bookingGroupId: groupReviewModal.bookingGroupId,
+        payerClientId: groupReviewModal.selectedPayerClientId,
+        paymentMethod: groupReviewModal.paymentMethod,
+      });
+      toast.success('Groupe facturé et ajouté à la caisse');
+      setGroupReviewModal(null);
+      setShowDetailsModal(false);
+      setSelectedAppointment(null);
+      // The group billing marks every participant appointment COMPLETED on the
+      // backend — refresh the agenda so no card keeps showing "Terminé". A
+      // refresh failure must not surface as a false encaissement error.
+      try {
+        await fetchAppointments();
+      } catch (refreshErr: any) {
+        console.error('Agenda refresh after combined group sale:', refreshErr);
+      }
+    } catch (err: any) {
+      console.error('Error group combined sale:', err);
+      toast.error(getApiErrorMessage(err, "Erreur lors de l'encaissement du groupe"));
+      setGroupReviewModal((prev) => (prev ? { ...prev, loading: false, loadingMode: null } : null));
+    }
+  };
+
+  const handleGroupReviewSeparate = async () => {
+    if (!groupReviewModal) return;
+    setGroupReviewModal({ ...groupReviewModal, loading: true, loadingMode: 'separate' });
+    try {
+      await api.separateGroupSale({
+        bookingGroupId: groupReviewModal.bookingGroupId,
+        paymentMethod: groupReviewModal.paymentMethod,
+      });
+      toast.success('Chaque participant a été facturé séparément');
+      setGroupReviewModal(null);
+      setShowDetailsModal(false);
+      setSelectedAppointment(null);
+      // Separate billing also marks every participant appointment COMPLETED —
+      // refresh the agenda so the cards show the updated status immediately. A
+      // refresh failure must not surface as a false billing error.
+      try {
+        await fetchAppointments();
+      } catch (refreshErr: any) {
+        console.error('Agenda refresh after separate group sale:', refreshErr);
+      }
+    } catch (err: any) {
+      console.error('Error group separate sale:', err);
+      toast.error(getApiErrorMessage(err, "Erreur lors de la facturation séparée"));
+      setGroupReviewModal((prev) => (prev ? { ...prev, loading: false, loadingMode: null } : null));
     }
   };
 
@@ -2444,14 +2673,17 @@ const RendezVousPage = () => {
                           const compareDate = new Date(date);
                           compareDate.setHours(0, 0, 0, 0);
                           return aptDate.getTime() === compareDate.getTime() && 
-                            apt.time === time &&
+                            aptToSlotTime(apt.time) === time &&
                             (filterStatus === 'all' || apt.status === filterStatus);
                         })
                         .map(apt => {
                           const employeeColor = employeeAgendas.find(e => e.name === getPrimaryEmployeeName(apt))?.color;
-                          const serviceColor = services.find(s => s.name === apt.service)?.color;
+                          const serviceColor = '#3B82F6';
+                          const offsetMin = aptSlotOffset(apt.time);
+                          // min-h-20 = 5rem for the 30-min slot; scale offset proportionally
+                          const offsetRem = offsetMin > 0 ? (offsetMin / 30) * 5 : 0;
                           return (
-                            <div key={apt.id} className="mb-1 last:mb-0">
+                            <div key={apt.id} className="mb-1 last:mb-0" style={offsetRem > 0 ? { marginTop: `${offsetRem}rem` } : undefined}>
                               <AppointmentCard 
                                 apt={apt}
                                 isCompact
@@ -2525,7 +2757,7 @@ const RendezVousPage = () => {
                         compareDate.setHours(0, 0, 0, 0);
                         
                         const matches = aptDate.getTime() === compareDate.getTime() && 
-                          apt.time === time &&
+                          aptToSlotTime(apt.time) === time &&
                           (filterStatus === 'all' || apt.status === filterStatus);
                         
                         
@@ -2533,19 +2765,22 @@ const RendezVousPage = () => {
                       })
                       .map(apt => {
                         const employeeColor = employeeAgendas.find(e => e.name === getPrimaryEmployeeName(apt))?.color;
-                        const serviceColor = services.find(s => s.name === apt.service)?.color;
+                        const serviceColor = '#3B82F6';
+                        const offsetMin = aptSlotOffset(apt.time);
+                        const offsetRem = offsetMin > 0 ? (offsetMin / 30) * 5 : 0;
                         return (
-                          <AppointmentCard 
-                            key={apt.id} 
-                            apt={apt}
-                            onDragStart={handleDragStart}
-                            onStatusUpdate={handleUpdateAppointmentStatus}
-                            onShowDetails={handleShowDetails}
-                            employeeColor={employeeColor}
-                            serviceColor={serviceColor}
-                            showColorInRDV={displaySettings.showColorInRDV}
-                            displayFields={displaySettings.fields}
-                          />
+                          <div key={apt.id} style={offsetRem > 0 ? { marginTop: `${offsetRem}rem` } : undefined}>
+                            <AppointmentCard 
+                              apt={apt}
+                              onDragStart={handleDragStart}
+                              onStatusUpdate={handleUpdateAppointmentStatus}
+                              onShowDetails={handleShowDetails}
+                              employeeColor={employeeColor}
+                              serviceColor={serviceColor}
+                              showColorInRDV={displaySettings.showColorInRDV}
+                              displayFields={displaySettings.fields}
+                            />
+                          </div>
                         );
                       })
                     }
@@ -2640,7 +2875,7 @@ const RendezVousPage = () => {
                     <div className="space-y-1">
                       {dayAppointments.slice(0, 3).map(apt => {
                         const employeeColor = employeeAgendas.find(e => e.name === getPrimaryEmployeeName(apt))?.color;
-                        const serviceColor = services.find(s => s.name === apt.service)?.color;
+                        const serviceColor = '#3B82F6';
                         return (
                           <AppointmentCard 
                             key={apt.id} 
@@ -2754,7 +2989,7 @@ const RendezVousPage = () => {
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Clock size={16} />
-                    <span>{selectedAppointment.time} · {selectedAppointment.duration} min</span>
+                    <span>{selectedAppointment.time} → {selectedAppointment.endTime}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <User size={16} />
@@ -2927,6 +3162,20 @@ const RendezVousPage = () => {
               </select>
             </div>
             <div className="px-6 pb-6 flex flex-col gap-2">
+              {finalizeModal.appointment.bookingGroupId && (finalizeModal.appointment.bookingGroupParticipantCount ?? 0) > 1 && (
+                <button
+                  type="button"
+                  disabled={finalizeModal.loading || finalizeModal.groupAlreadyInvoiced}
+                  onClick={handleFinalizeGroupSale}
+                  className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                >
+                  {finalizeModal.loading
+                    ? 'Traitement…'
+                    : finalizeModal.groupAlreadyInvoiced
+                      ? 'Facturer le groupe indisponible — encaissement individuel'
+                      : 'Facturer le groupe'}
+                </button>
+              )}
               <button
                 type="button"
                 disabled={finalizeModal.loading}
@@ -2952,6 +3201,205 @@ const RendezVousPage = () => {
                 Annuler
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group Review Modal */}
+      {groupReviewModal && (
+        <div
+          className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4"
+          onClick={() => { if (!groupReviewModal.loading) setGroupReviewModal(null); }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-5 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-lg font-semibold text-gray-900">Facturer le groupe</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Vérifiez les prestations de chaque participant avant de facturer.
+              </p>
+            </div>
+
+            <div className="px-6 py-4 overflow-y-auto flex-1">
+              {groupReviewModal.participants.map((p, idx) => (
+                <div key={p.participantId} className={`${idx > 0 ? 'mt-4 pt-4 border-t border-gray-100' : ''}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold">
+                        {idx + 1}
+                      </span>
+                      <span className="text-sm font-medium text-gray-900">{p.displayName}</span>
+                      {p.isBooker && (
+                        <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full">Organisateur</span>
+                      )}
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900">{p.subtotal.toFixed(2)} MAD</span>
+                  </div>
+                  {p.services.map((svc, sIdx) => (
+                    <div key={sIdx} className="flex items-center justify-between text-xs text-gray-600 pl-8 py-0.5">
+                      <span>{svc.serviceName}{svc.employee ? ` — ${svc.employee.firstName} ${svc.employee.lastName}` : ''}</span>
+                      <span>{svc.price.toFixed(2)} MAD</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+              <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-900">Total</span>
+                <span className="text-base font-bold text-gray-900">{groupReviewModal.total.toFixed(2)} MAD</span>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <label className="block text-xs font-medium text-gray-500 mb-2">
+                  Qui paie la facture ?
+                </label>
+                <div className="space-y-2">
+                  {groupReviewModal.participants.filter(p => p.clientId).map((p) => (
+                    <label
+                      key={p.participantId}
+                      className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                        groupReviewModal.selectedPayerClientId === p.clientId
+                          ? 'border-purple-500 bg-purple-50'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="group-payer"
+                        checked={groupReviewModal.selectedPayerClientId === p.clientId}
+                        disabled={groupReviewModal.loading}
+                        onChange={() => setGroupReviewModal((prev) => prev ? { ...prev, selectedPayerClientId: p.clientId! } : null)}
+                        className="w-4 h-4 text-purple-600"
+                      />
+                      <span className="text-sm text-gray-900">{p.displayName}</span>
+                      {p.isBooker && <span className="text-[10px] text-gray-400">(organisateur)</span>}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                  Mode de paiement
+                </label>
+                <select
+                  value={groupReviewModal.paymentMethod}
+                  disabled={groupReviewModal.loading}
+                  onChange={(e) =>
+                    setGroupReviewModal((prev) => prev ? { ...prev, paymentMethod: e.target.value as FinalizePaymentMethod } : null)
+                  }
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {acceptedPaymentMethods.map((method) => (
+                    <option key={method} value={API_PAYMENT_KEY[method] || 'CASH'}>
+                      {method}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="px-6 pb-6 flex flex-col gap-2 flex-shrink-0">
+              {groupReviewModal.hasInvoicedAppointment && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Un participant a déjà été encaissé individuellement : la facturation
+                  du groupe n'est plus possible, encaissez chaque participant un par un.
+                </p>
+              )}
+              <button
+                type="button"
+                disabled={groupReviewModal.loading || !groupReviewModal.selectedPayerClientId || groupReviewModal.hasInvoicedAppointment}
+                onClick={handleGroupReviewConfirmCombined}
+                className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 transition-colors"
+              >
+                {groupReviewModal.loadingMode === 'combined' ? 'Traitement…' : 'Confirmer — facturer au participant sélectionné'}
+              </button>
+              <button
+                type="button"
+                disabled={groupReviewModal.loading || groupReviewModal.hasInvoicedAppointment}
+                onClick={handleGroupReviewSeparate}
+                className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors"
+              >
+                {groupReviewModal.loadingMode === 'separate' ? 'Traitement…' : 'Facturer séparément (chaque participant)'}
+              </button>
+              <button
+                type="button"
+                disabled={groupReviewModal.loading}
+                onClick={() => setGroupReviewModal(null)}
+                className="w-full px-4 py-2.5 rounded-full text-sm font-medium text-gray-500 hover:text-gray-800 disabled:opacity-50 transition-colors"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Move confirmation dialog */}
+      {moveConfirm && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6 space-y-4">
+            {moveConfirm.conflicts.length === 0 ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="w-6 h-6 text-green-500" />
+                  <h3 className="text-base font-semibold text-gray-900">Pas de conflit</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Ce créneau est disponible. Confirmer la mise à jour du rendez-vous&nbsp;?
+                </p>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={cancelMove}
+                    className="flex-1 px-4 py-2.5 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={confirmMove}
+                    className="flex-1 px-4 py-2.5 rounded-full text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-colors"
+                  >
+                    Confirmer la mise à jour
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="w-6 h-6 text-amber-500" />
+                  <h3 className="text-base font-semibold text-gray-900">Conflit détecté</h3>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-600">
+                    Déplacer ce rendez-vous vers ce créneau créera un conflit&nbsp;:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+                    {moveConfirm.conflicts.map((reason, i) => (
+                      <li key={i}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="text-sm text-gray-500">
+                  Êtes-vous sûr de vouloir continuer&nbsp;?
+                </p>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={cancelMove}
+                    className="flex-1 px-4 py-2.5 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+                  >
+                    Non, annuler
+                  </button>
+                  <button
+                    onClick={confirmMove}
+                    className="flex-1 px-4 py-2.5 rounded-full text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 transition-colors"
+                  >
+                    Oui, déplacer quand même
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

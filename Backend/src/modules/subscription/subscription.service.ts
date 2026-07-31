@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { prisma } from '../../lib/prisma';
 import { accountService } from '../account/account.service';
 import { getStripe } from './stripe';
+import * as log from '../../utils/logger';
 
 export class SubscriptionService {
   /** Current subscription + plan + salon limit for the owner's account. */
@@ -58,7 +59,7 @@ export class SubscriptionService {
       customerId = customer.id;
     }
 
-    const frontendUrl = (process.env.SAAS_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const frontendUrl = (process.env.PRO_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
 
     const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = plan.stripePriceId
       ? { price: plan.stripePriceId, quantity: 1 }
@@ -112,7 +113,7 @@ export class SubscriptionService {
     const accountId = session.metadata?.accountId;
     const planId = session.metadata?.planId;
     if (!accountId || !planId) {
-      console.warn('[Stripe] checkout.session.completed without account/plan metadata');
+      log.warn('[Stripe] checkout.session.completed without account/plan metadata');
       return;
     }
 
@@ -128,7 +129,7 @@ export class SubscriptionService {
         const endUnix = stripeSub.items.data[0]?.current_period_end;
         if (endUnix) currentPeriodEnd = new Date(endUnix * 1000);
       } catch (e) {
-        console.warn('[Stripe] Could not retrieve subscription for period end:', e);
+        log.warn('[Stripe] Could not retrieve subscription for period end:', e);
       }
     }
 
@@ -152,7 +153,7 @@ export class SubscriptionService {
     });
 
     await accountService.syncTenantsVisibility(accountId, true);
-    console.log(`[Stripe] Subscription activated for account ${accountId}`);
+    log.log(`[Stripe] Subscription activated for account ${accountId}`);
   }
 
   /** customer.subscription.updated / .deleted → sync status + visibility. */
@@ -161,7 +162,7 @@ export class SubscriptionService {
       where: { stripeSubscriptionId: stripeSub.id },
     });
     if (!sub) {
-      console.warn(`[Stripe] Unknown subscription ${stripeSub.id} — ignored`);
+      log.warn(`[Stripe] Unknown subscription ${stripeSub.id} — ignored`);
       return;
     }
 
@@ -177,7 +178,7 @@ export class SubscriptionService {
     });
 
     await accountService.syncTenantsVisibility(sub.accountId, status === 'ACTIVE');
-    console.log(`[Stripe] Subscription ${stripeSub.id} -> ${status} (account ${sub.accountId})`);
+    log.log(`[Stripe] Subscription ${stripeSub.id} -> ${status} (account ${sub.accountId})`);
   }
 }
 

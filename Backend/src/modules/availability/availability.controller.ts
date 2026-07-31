@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { availabilityService } from './availability.service';
+import * as log from '../../utils/logger';
 
 export class AvailabilityController {
   async stream(req: Request, res: Response, next: NextFunction) {
@@ -57,7 +58,7 @@ export class AvailabilityController {
             res.write(`data: ${JSON.stringify({ slots, timestamp: new Date().toISOString() })}\n\n`);
           }
         } catch (error) {
-          console.error('[SSE] Error calculating slots:', error);
+          log.error('[SSE] Error calculating slots:', error);
           res.write(`data: ${JSON.stringify({ error: 'Failed to calculate slots' })}\n\n`);
         }
       }, 30000);
@@ -76,7 +77,7 @@ export class AvailabilityController {
       });
 
     } catch (error) {
-      console.error('[SSE] Error:', error);
+      log.error('[SSE] Error:', error);
       res.write(`data: ${JSON.stringify({ error: 'Internal server error' })}\n\n`);
       res.end();
     }

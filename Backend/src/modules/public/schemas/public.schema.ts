@@ -45,6 +45,9 @@ export const bookingParticipantSchema = z.object({
   /** Per-service employee assignment (when "Même employé" is unchecked). */
   serviceEmployees: z.array(serviceEmployeeItemSchema).optional(),
   startTime: z.string().optional(),
+  /** Guest contact — used to create a lightweight Client record for proche participants. */
+  phone: z.string().optional(),
+  email: z.string().optional(),
 });
 
 export const createPublicBookingSchema = z.object({

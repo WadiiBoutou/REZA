@@ -3,6 +3,7 @@ import { prisma } from '../../../lib/prisma';
 import { createPublicReviewSchema } from '../schemas/public.schema';
 import { transformImageUrl } from '../../../utils/imageUrl';
 import { fail } from '../utils/http';
+import * as log from '../../../utils/logger';
 
 export class ClientReviewsService {
   async createReview(body: unknown) {
@@ -169,7 +170,7 @@ export class ClientReviewsService {
       }
     } catch (notificationError) {
       // Log error but don't fail the review creation
-      console.error('Error creating notification for review:', notificationError);
+      log.error('Error creating notification for review:', notificationError);
     }
 
     fail(201, {

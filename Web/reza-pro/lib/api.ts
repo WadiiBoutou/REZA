@@ -844,6 +844,18 @@ class ApiClient {
     });
   }
 
+  /**
+   * Dry-run validation for a drag-drop move. Checks client double-bookings,
+   * per-employee windows and business hours WITHOUT writing anything.
+   * Returns { conflicts: string[] } — empty array = safe to move.
+   */
+  async validateMove(id: string, data: { startTime: string; tenantId?: string }) {
+    return this.request<{ conflicts: string[] }>(`/appointments/${id}/validate-move`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async deleteAppointment(id: string) {
     return this.request<any>(`/appointments/${id}`, {
       method: 'DELETE',
@@ -903,6 +915,40 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(saleData),
     });
+  }
+
+  async createGroupSale(data: {
+    bookingGroupId: string;
+    payerClientId: string;
+    paymentMethod: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'CHECK' | 'ONLINE';
+    tax?: number;
+    notes?: string;
+    tenantId?: string;
+  }) {
+    return this.request<any>('/invoices/group-sale', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async separateGroupSale(data: {
+    bookingGroupId: string;
+    paymentMethod: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'CHECK' | 'ONLINE';
+    tax?: number;
+    tenantId?: string;
+  }) {
+    return this.request<any>('/invoices/separate-group-sale', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getGroupDetails(groupId: string) {
+    return this.request<any>(`/invoices/group-details/${groupId}`);
+  }
+
+  async getPendingGroups() {
+    return this.request<any>('/invoices/pending-groups');
   }
 
   async updateInvoice(id: string, invoiceData: any) {

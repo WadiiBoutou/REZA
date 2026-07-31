@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import * as log from './logger';
 
 function resolveJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -8,7 +9,7 @@ function resolveJwtSecret(): string {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('JWT_SECRET environment variable is required in production');
   }
-  console.warn('[JWT] JWT_SECRET not set — using insecure dev-only fallback');
+  log.warn('[JWT] JWT_SECRET not set — using insecure dev-only fallback');
   return 'dev-only-insecure-jwt-secret';
 }
 

@@ -138,21 +138,11 @@ export function sumReservationPrice(services: ReservationServiceLine[]) {
 
 export function serializeAppointmentWithServices<T extends AppointmentLike>(appointment: T) {
   const services = normalizeAppointmentServices(appointment);
-  const primaryService = services[0];
+  // Remove legacy top-level fields superseded by services[]:
+  //   serviceId, service object, employeeId — these are no longer part of the API response.
+  const { serviceId: _sid, service: _svc, employeeId: _eid, ...rest } = appointment as any;
   return {
-    ...appointment,
-    serviceId: primaryService?.serviceId ?? appointment.serviceId ?? null,
-    service: primaryService
-      ? {
-          id: primaryService.serviceId ?? appointment.service?.id ?? '',
-          name: primaryService.name,
-          duration: primaryService.duration,
-          price: primaryService.price,
-          priceFrom: primaryService.price,
-          color: appointment.service?.color ?? null,
-          onQuote: false,
-        }
-      : appointment.service ?? null,
+    ...rest,
     notes: stripGeneratedServicesNotes(appointment.notes),
     services,
     totalDuration: sumReservationDuration(services),

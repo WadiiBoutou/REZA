@@ -18,6 +18,11 @@ const nextConfig = {
         destination: `${baseBackendUrl}/api/:path*`,
       },
       {
+        // API client uses /backend-api as base URL — proxy to backend
+        source: '/backend-api/:path*',
+        destination: `${baseBackendUrl}/api/:path*`,
+      },
+      {
         source: '/uploads/:path*',
         destination: `${baseBackendUrl}/uploads/:path*`,
       },
