@@ -15,3 +15,7 @@ coverage/
 .turbo/
 
 .cursor/
+
+# Local agent workspace (never commit)
+.freebuff/
+.opencode/
