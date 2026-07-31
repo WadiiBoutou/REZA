@@ -1172,15 +1172,6 @@ function ReviewForm({ tenantId, user, onReviewSubmitted }: { tenantId?: string; 
       const firstName = user.firstName || nameParts[0] || 'Client';
       const lastName = user.lastName || nameParts.slice(1).join(' ') || '';
 
-      console.log('Submitting review with data:', {
-        tenantId,
-        firstName,
-        lastName,
-        email: user.email,
-        rating,
-        hasComment: !!comment.trim()
-      });
-
       const response = await api.createReview({
         tenantId,
         firstName,
@@ -1191,7 +1182,6 @@ function ReviewForm({ tenantId, user, onReviewSubmitted }: { tenantId?: string; 
         comment: comment.trim() || undefined,
       });
 
-      console.log('Review submitted successfully:', response);
       toast.success('Votre avis a été soumis avec succès');
       setRating(0);
       setComment('');

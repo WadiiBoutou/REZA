@@ -86,17 +86,11 @@ class ApiClient {
   }
 
   setToken(token: string | null) {
-    console.log('[API] setToken called:', { hasToken: !!token, tokenLength: token?.length });
     this.token = token;
     if (token && typeof window !== 'undefined') {
       localStorage.setItem('token', token);
-      console.log('[API] Token saved to localStorage');
-      // Verify it was saved
-      const saved = localStorage.getItem('token');
-      console.log('[API] Verification - token in localStorage:', !!saved, saved?.substring(0, 20));
     } else if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
-      console.log('[API] Token removed from localStorage');
     }
   }
 
@@ -145,21 +139,6 @@ class ApiClient {
       currentToken = this.token;
     }
     
-    // Debug: Log token status for first few requests
-    if (typeof window !== 'undefined' && !endpoint.includes('/auth/')) {
-      const debugKey = '__api_debug_count';
-      const count = (window as any)[debugKey] || 0;
-      if (count < 3) {
-        console.log(`[API Debug ${count + 1}] Request to ${endpoint}:`, {
-          hasToken: !!currentToken,
-          tokenLength: currentToken?.length || 0,
-          localStorageHasToken: !!localStorage.getItem('token'),
-          instanceHasToken: !!this.token
-        });
-        (window as any)[debugKey] = count + 1;
-      }
-    }
-      
     if (currentToken) {
       headers['Authorization'] = `Bearer ${currentToken}`;
     } else {
@@ -280,16 +259,13 @@ class ApiClient {
 
   // Auth endpoints
   async login(email: string, password: string) {
-    console.log('[API] Login called for:', email);
     try {
       const data = await this.request<{ token: string; user: any }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
-      console.log('[API] Login response received:', { hasToken: !!data.token, hasUser: !!data.user });
       if (data.token) {
         this.setToken(data.token);
-        console.log('[API] Token set after login, verifying:', localStorage.getItem('token') ? 'Token exists' : 'Token missing');
       } else {
         console.error('[API] No token in login response!', data);
       }
@@ -1060,7 +1036,6 @@ class ApiClient {
   }
 
   async uploadHeaderImage(file: File): Promise<{ headerImage: string }> {
-    console.log('[API] uploadHeaderImage called:', { fileName: file.name, fileSize: file.size, fileType: file.type });
     const formData = new FormData();
     formData.append('headerImage', file);
 
@@ -1071,19 +1046,15 @@ class ApiClient {
     const currentToken = this.token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
     if (currentToken) {
       headers['Authorization'] = `Bearer ${currentToken}`;
-      console.log('[API] Token found for header image upload');
     } else {
       console.error('[API] No token found for header image upload!');
     }
 
-    console.log('[API] Uploading to:', url);
     const response = await fetch(url, {
       method: 'POST',
       headers,
       body: formData,
     });
-
-    console.log('[API] Upload response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -1101,25 +1072,16 @@ class ApiClient {
     }
 
     const result = await response.json();
-    console.log('[API] Upload successful, result:', result);
     return result;
   }
 
   async getHeaderImage(): Promise<{ headerImage: string | null }> {
-    console.log('[API] ========== getHeaderImage called ==========');
-    console.log('[API] getHeaderImage - baseURL:', this.baseURL);
-    console.log('[API] getHeaderImage - endpoint: /tenant/header-image');
-    console.log('[API] getHeaderImage - full URL will be:', `${this.baseURL}/tenant/header-image`);
     try {
       // Use query parameter to prevent caching instead of headers (to avoid CORS issues)
       const cacheBuster = `?t=${Date.now()}`;
       const response = await this.request<{ headerImage: string | null }>(`/tenant/header-image${cacheBuster}`, {
         method: 'GET'
       });
-      console.log('[API] getHeaderImage response received:', response);
-      console.log('[API] getHeaderImage - response type:', typeof response);
-      console.log('[API] getHeaderImage - headerImage value:', response.headerImage);
-      console.log('[API] getHeaderImage - headerImage type:', typeof response.headerImage);
       return response;
     } catch (error) {
       console.error('[API] getHeaderImage error:', error);

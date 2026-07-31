@@ -18,8 +18,6 @@ const OverviewTab = ({ userData, familyMembers, appointments, favoritesCount, no
   const router = useRouter();
   
   // Debug: Log notifications to verify they're being passed
-  console.log('[OverviewTab] Received notifications:', notifications);
-  console.log('[OverviewTab] Unread count:', unreadNotificationsCount);
   
   return (
   <div className="space-y-12 sm:space-y-16 animate-fadeIn pb-24">

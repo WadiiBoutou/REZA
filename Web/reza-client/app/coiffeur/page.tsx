@@ -29,7 +29,6 @@ export default function CoiffeurPage() {
         
         // Fetch tenants for Coiffeur category to count salons per city
         const coiffeurResponse = await api.searchTenants(undefined, 'Coiffeur', undefined, 10000);
-        console.log('[Coiffeur] Total tenants from API:', coiffeurResponse.tenants?.length || 0);
         
         // For city counting, we only need category and city fields
         // Filter tenants that have at least category and city (required for counting)
@@ -37,7 +36,6 @@ export default function CoiffeurPage() {
           return tenant.category && tenant.category.trim() && 
                  tenant.city && tenant.city.trim();
         });
-        console.log('[Coiffeur] Tenants with category and city:', tenantsWithCityAndCategory.length);
         
         // Count tenants per city for Coiffeur category
         const cityCountMap = new Map<string, number>();
@@ -55,7 +53,6 @@ export default function CoiffeurPage() {
           }
         });
         
-        console.log('[Coiffeur] Cities with counts:', Array.from(cityCountMap.entries()));
         
         // Map city images (use available images or default)
         const cityImageMap: Record<string, string> = {

@@ -27,6 +27,9 @@ export type FamilyMemberOption = {
   firstName?: string;
   lastName?: string;
   relationship?: string;
+  /** Phone — used as the reliable duplicate signal when a proche matches a
+   *  guest created on the fly during this booking session. */
+  phone?: string;
 };
 
 type FlatService = {

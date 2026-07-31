@@ -32,7 +32,7 @@ Map<String, dynamic> buildAppointmentSubmissionPayload({
   }).toList();
 
   final firstEmpId = servicesPayload
-      .map((p) => p['employeeId'] as String?)
+      .map((p) => p['employeeId'])
       .firstWhere((e) => e != null && e.isNotEmpty, orElse: () => null);
 
   return {
@@ -295,8 +295,6 @@ class _NewAppointmentModalState extends State<NewAppointmentModal> {
     return auth.isSalonFilterMulti &&
         (_createTenantId == null || _createTenantId!.isEmpty);
   }
-
-  bool get _canProceed => !_needsSalonSelection;
 
   List<Map<String, dynamic>> get _enrichedClients {
     if (_clientAlerts.isEmpty) return _clients;
@@ -730,14 +728,6 @@ class _NewAppointmentModalState extends State<NewAppointmentModal> {
       setState(() => _planLoading = true);
       _loadClientAlerts();
       try {
-        final parts = _selectedTime.split(':');
-        final startLocal = DateTime(
-          widget.selectedDate.year,
-          widget.selectedDate.month,
-          widget.selectedDate.day,
-          int.parse(parts[0]),
-          int.parse(parts[1]),
-        );
         final tenantId = _createTenantId;
         final payload = {
           'serviceIds':

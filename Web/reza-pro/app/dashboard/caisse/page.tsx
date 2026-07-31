@@ -493,30 +493,11 @@ function CaissePageContent({
       const invoices = invoicesResponse.invoices || [];
       
       // Transform invoices to transactions
-      let sampleLogged = false;
       const invoiceTransactions = invoices
         .filter((inv: ApiInvoice) => inv.status === 'PAID' || inv.status === 'REFUNDED')
         .map((inv: ApiInvoice) => {
           try {
             const tx = transformInvoiceToTransaction(inv);
-            // Debug log for first transaction to check data
-            if (!sampleLogged && invoices.length > 0) {
-              console.log('Sample invoice transformation:', {
-                invoiceId: inv.id,
-                hasClient: !!inv.client,
-                client: inv.client,
-                hasAppointment: !!inv.appointment,
-                appointment: inv.appointment,
-                hasEmployee: !!inv.appointment?.employee,
-                employee: inv.appointment?.employee,
-                employeeFirstName: inv.appointment?.employee?.firstName,
-                employeeLastName: inv.appointment?.employee?.lastName,
-                transformedClient: tx.client,
-                transformedEmployee: tx.employee,
-                employeeValue: tx.employee || 'NULL/UNDEFINED'
-              });
-              sampleLogged = true;
-            }
             return tx;
           } catch (err) {
             console.error('Error transforming invoice to transaction:', err, inv);
@@ -586,13 +567,6 @@ function CaissePageContent({
         .filter(tx => tx !== null && tx !== undefined); // Ensure no null transactions
       allTransactions.sort((a, b) => b.date.getTime() - a.date.getTime());
       
-      console.log('Fetched transactions:', {
-        invoices: invoices.length,
-        invoiceTransactions: invoiceTransactions.length,
-        cashTransactions: cashTransactions.length,
-        transformedCashTransactions: transformedCashTransactions.length,
-        totalTransactions: allTransactions.length
-      });
       
       setTransactions(allTransactions);
       
@@ -711,17 +685,6 @@ function CaissePageContent({
     
     return matchesSearch && matchesMethod && matchesType && matchesPeriod;
   });
-
-  // Debug logging
-  useEffect(() => {
-    if (transactions.length > 0) {
-      console.log('Transactions state:', {
-        total: transactions.length,
-        filtered: filteredTransactions.length,
-        filters: { methodFilter, typeFilter, selectedPeriod, searchTerm }
-      });
-    }
-  }, [transactions, filteredTransactions, methodFilter, typeFilter, selectedPeriod, searchTerm]);
 
   // Stats - use all transactions for overall stats, filtered for display
   const totalSales = transactions.filter(t => t.type === 'Vente').reduce((sum, t) => sum + t.amount, 0);

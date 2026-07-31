@@ -1,9 +1,0 @@
-{
-  "tenantId": "tenant-2",
-  "firstName": "Guest",
-  "lastName": "Booker",
-  "phone": "+212600000099",
-  "serviceIds": ["cmqcamtrn000bh0wmfouyu2dn"],
-  "startTime": "2026-07-06T10:00:00.000Z",
-  "notes": "Guest booking tenant-2 via curl seed"
-}

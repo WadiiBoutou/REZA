@@ -172,14 +172,6 @@ export default function ProOnboardingPage() {
         throw new Error(responseData.message || responseData.error || 'Erreur lors de la création du compte');
       }
 
-      // Log success
-      console.log('[Pro-Info] Registration successful:', {
-        userId: responseData.user?.id,
-        email: responseData.user?.email,
-        tenantId: responseData.user?.tenantId,
-        tenantName: responseData.user?.tenant?.name
-      });
-
       // Show success step (no need to show password since user already knows it)
       setLoading(false);
       setStep(5); // Move to success step

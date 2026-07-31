@@ -59,6 +59,10 @@ export const WEEKDAY_SCHEDULES = [
 export const TENANT_BUSINESS_HOURS = {
   schedules: WEEKDAY_SCHEDULES,
   ...BUSINESS_HOURS_BY_DAY,
+  // Minimum booking lead time: bookings must start at least 1 day ahead
+  // (allowLastMoment: false = the delay is enforced). Matches the admin panel's
+  // bookingDelay shape ({ value, unit, allowLastMoment }).
+  bookingDelay: { value: '1', unit: 'jours', allowLastMoment: false },
 };
 
 export const EMPLOYEE_WORKING_HOURS = [

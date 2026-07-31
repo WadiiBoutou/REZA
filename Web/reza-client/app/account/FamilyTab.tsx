@@ -57,7 +57,6 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   }, [familyMembersProp]);
 
   const startEditing = (member: FamilyMember) => {
-    console.log('[FamilyTab] startEditing called for member:', member.id, member.name);
     setEditingMember(member.id);
     setIsAddingNew(false);
     setFormData({
@@ -68,7 +67,6 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
       profileImage: member.profileImage || member.avatar || null
     });
     setPreviewImage(member.profileImage || member.avatar || null);
-    console.log('[FamilyTab] Editing state set, editingMember:', member.id);
   };
 
   const startAddingNew = () => {
@@ -588,7 +586,6 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          console.log('[FamilyTab] Edit button clicked for member:', member.id);
                           startEditing(member);
                         }}
                         className="w-8 h-8 hover:bg-gray-100 hover:rounded-full flex items-center justify-center transition-all rounded-full cursor-pointer"

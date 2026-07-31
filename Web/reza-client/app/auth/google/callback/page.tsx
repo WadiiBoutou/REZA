@@ -46,7 +46,6 @@ function GoogleCallbackPageContent() {
             }
             retries--;
             if (retries > 0) {
-              console.log(`[Google Callback] Login failed, retrying... (${retries} attempts left)`);
               await new Promise(resolve => setTimeout(resolve, 1000));
             }
           }

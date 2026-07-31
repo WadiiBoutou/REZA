@@ -146,6 +146,19 @@ function addMinutes(start: string, mins: number): string {
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
+/**
+ * Normalize a Moroccan/local phone number to a comparable national form:
+ * "+212612345678", "00212612345678" and "0612345678" all become "612345678".
+ * Shared by the guest-form and proche-picker duplicate checks.
+ */
+function normalizePhone(p?: string): string {
+  let d = (p || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('212') && d.length > 9) d = d.slice(3);
+  if (d.startsWith('0')) d = d.slice(1);
+  return d;
+}
+
 type EmployeeAvailabilityStatus = {
   id: string;
   firstName: string;
@@ -333,6 +346,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
             firstName: member.firstName,
             lastName: member.lastName,
             relationship: member.relationship,
+            phone: member.phone || undefined,
           })
         );
         setFamilyMembers(formatted);
@@ -1038,16 +1052,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
     // A one-time guest is a duplicate when BOTH normalized name and phone match
     // an already-added participant, the person currently being configured, or
     // the booker themselves. Phone is the reliable signal; name alone is too loose.
-    // Normalize to a comparable form: digits only, then map the local phone
-    // formats to the same national shape so "+212612345678", "00212612345678"
-    // and "0612345678" all compare equal.
-    const normPhone = (p?: string) => {
-      let d = (p || '').replace(/\D/g, '');
-      if (d.startsWith('00')) d = d.slice(2);
-      if (d.startsWith('212') && d.length > 9) d = d.slice(3);
-      if (d.startsWith('0')) d = d.slice(1);
-      return d;
-    };
+    const normPhone = normalizePhone;
     const normName = (n?: string) => (n || '').trim().toLowerCase();
     const gName = normName(name);
     const gPhone = normPhone(phone);
@@ -2034,7 +2039,14 @@ const BookingModal: React.FC<BookingModalProps> = ({
                               // is the person currently being configured, or matches
                               // the booker by name — so the booker can't be added as
                               // an extra participant from their own proches list.
+                              // ALSO matches by normalized name+phone: a guest created
+                              // on the fly during THIS session and saved to "Mes
+                              // proches" has no familyMemberId on its savedPeople
+                              // entry, so id-only matching would let the same person
+                              // be added twice (mobile already compares name+phone).
+                              const normPhone = normalizePhone;
                               const memberName = (member.name || '').trim().toLowerCase();
+                              const memberPhone = normPhone(member.phone);
                               // Stable booker identity (set at step 4 / from the
                               // profile) — NOT the current in-progress person, whose
                               // name changes per guest. Protects the booker from being
@@ -2049,9 +2061,22 @@ const BookingModal: React.FC<BookingModalProps> = ({
                                   ? `${user.firstName || ''} ${user.lastName || ''}`
                                   : ''
                               ).trim().toLowerCase();
+                              const sameByContact = (name?: string, phone?: string) =>
+                                memberName !== '' &&
+                                memberPhone !== '' &&
+                                (name || '').trim().toLowerCase() === memberName &&
+                                normPhone(phone) === memberPhone;
                               const alreadyAdded =
                                 savedPeople.some(p => p.familyMemberId === member.id) ||
+                                savedPeople.some(p => sameByContact(p.name, p.phone)) ||
                                 currentFamilyMemberId === member.id ||
+                                // The person currently being configured (guest X
+                                // saved to Mes proches mid-session) — not yet in
+                                // savedPeople, but still the same person.
+                                sameByContact(
+                                  `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim(),
+                                  bookingData.phone,
+                                ) ||
                                 (memberName !== '' && memberName === bookerName);
                               return (
                                 <button
@@ -2152,12 +2177,13 @@ const BookingModal: React.FC<BookingModalProps> = ({
                                           firstName: m.firstName,
                                           lastName: m.lastName,
                                           relationship: m.relationship,
+                                          phone: m.phone || undefined,
                                         })));
                                       }
                                     } catch (err) {
                                       console.error('Failed to save proche:', err);
                                     }
-                                    addPersonToGroup({ name: guestName });
+                                    addPersonToGroup({ name: guestName, phone: guestPhone, email: guestEmail });
                                     resetGuestForm();
                                     setShowPersonSelector(false);
                                   }}
