@@ -136,7 +136,7 @@ class _HomeScreenState extends State<_HomeScreenBody> {
         children: [
           _buildHomeBody(),
           SearchResultsScreen(onGoToBookings: () => setState(() => _navIndex = 2)),
-          BookingsScreen(),
+          BookingsScreen(navIndex: _navIndex),
           ProchesScreen(onExplore: () => setState(() => _navIndex = 1)),
           const ProfileScreen(),
         ],
@@ -150,11 +150,18 @@ class _HomeScreenState extends State<_HomeScreenBody> {
 
   Widget _buildHomeBody() {
     final list = _filteredVenues;
-    final recommended = list.take(3).toList();
-    final recent = list.length > 3 ? list.skip(3).take(2).toList() : list.take(2).toList();
-    final nouveaux = list.length > 1
-        ? [list.last, list[list.length > 1 ? 1 : 0]]
-        : list;
+    // Nearest first — GPS actif : l'API trie déjà par distance, ce tri local est un filet de sécurité.
+    final nearest = [...list]..sort((a, b) => _distanceKm(a).compareTo(_distanceKm(b)));
+    // Recommandés = les mieux notés (le plus d'avis), dans un rayon de 10 km (appliqué côté API quand GPS actif).
+    final recommended = [...nearest]..sort((a, b) => b.reviews.compareTo(a.reviews));
+    final recTop = recommended.take(3).toList();
+    // Récemment consulté — sans reprendre les salons déjà affichés dans Recommandés.
+    var recent = list.where((v) => !recTop.contains(v)).take(2).toList();
+    if (recent.isEmpty && list.isNotEmpty) recent = list.take(2).toList();
+    // Salons à proximité — les plus proches en premier (sans reprendre ceux déjà affichés).
+    final shownIds = {...recTop.map((v) => v.id), ...recent.map((v) => v.id)};
+    var nearby = nearest.where((v) => !shownIds.contains(v.id)).take(2).toList();
+    if (nearby.isEmpty && nearest.isNotEmpty) nearby = nearest.take(2).toList();
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -396,8 +403,8 @@ class _HomeScreenState extends State<_HomeScreenBody> {
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: recommended.length,
-                  itemBuilder: (context, index) => _buildRecommandeCard(recommended[index]),
+                  itemCount: recTop.length,
+                  itemBuilder: (context, index) => _buildRecommandeCard(recTop[index]),
                 ),
               ),
               const SizedBox(height: 28),
@@ -413,39 +420,16 @@ class _HomeScreenState extends State<_HomeScreenBody> {
                 ),
               ),
               const SizedBox(height: 28),
-              _buildSectionHeader('Nouveaux sur Reza', 'Voir tout'),
+              _buildSectionHeader('Salons à proximité', 'Voir tout'),
               const SizedBox(height: 14),
               SizedBox(
                 height: 230,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: nouveaux.length.clamp(0, 2),
-                  itemBuilder: (context, index) => _buildNouveauCard(nouveaux[index]),
+                  itemCount: nearby.length.clamp(0, 2),
+                  itemBuilder: (context, index) => _buildNearbyCard(nearby[index]),
                 ),
-              ),
-              const SizedBox(height: 28),
-              _buildSectionHeader('Professionnels à proximité', 'Tout voir'),
-              const SizedBox(height: 14),
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: list.take(4).length,
-                itemBuilder: (context, index) {
-                  final v = list[index];
-                  return GestureDetector(
-                    onTap: () => _openVenue(v),
-                    child: _buildProfessionalCard(
-                      ProfessionalItem(
-                        name: v.name,
-                        distance: v.distance,
-                        role: v.category,
-                        avatarUrl: v.image,
-                      ),
-                    ),
-                  );
-                },
               ),
               const SizedBox(height: 40),
             ],
@@ -481,35 +465,19 @@ class _HomeScreenState extends State<_HomeScreenBody> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Image.network(
-                    venue.image,
-                    height: 150,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      height: 150,
-                      color: AppColors.surface,
-                      child: const Icon(Icons.image_rounded, color: AppColors.textLight, size: 40),
-                    ),
-                  ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.network(
+                venue.image,
+                height: 150,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  height: 150,
+                  color: AppColors.surface,
+                  child: const Icon(Icons.image_rounded, color: AppColors.textLight, size: 40),
                 ),
-                Positioned(
-                  top: 12,
-                  left: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text('À la une', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textDark)),
-                  ),
-                ),
-              ],
+              ),
             ),
             const SizedBox(height: 8),
             Row(
@@ -551,35 +519,19 @@ class _HomeScreenState extends State<_HomeScreenBody> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Image.network(
-                    venue.image,
-                    height: 150,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      height: 150,
-                      color: AppColors.surface,
-                      child: const Icon(Icons.image_rounded, color: AppColors.textLight, size: 40),
-                    ),
-                  ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.network(
+                venue.image,
+                height: 150,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  height: 150,
+                  color: AppColors.surface,
+                  child: const Icon(Icons.image_rounded, color: AppColors.textLight, size: 40),
                 ),
-                Positioned(
-                  top: 12,
-                  left: 12,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text('À la une', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textDark)),
-                  ),
-                ),
-              ],
+              ),
             ),
             const SizedBox(height: 8),
             Row(
@@ -614,7 +566,7 @@ class _HomeScreenState extends State<_HomeScreenBody> {
     );
   }
 
-  Widget _buildNouveauCard(VenueItem venue) {
+  Widget _buildNearbyCard(VenueItem venue) {
     return GestureDetector(
       onTap: () => _openVenue(venue),
       child: Container(
@@ -668,73 +620,10 @@ class _HomeScreenState extends State<_HomeScreenBody> {
     );
   }
 
-  Widget _buildProfessionalCard(ProfessionalItem prof) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: ClipOval(
-              child: prof.avatarUrl.startsWith('http')
-                  ? Image.network(
-                      prof.avatarUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        final fallbackText = prof.name.trim().isNotEmpty ? prof.name.trim()[0].toUpperCase() : '?';
-                        return Center(
-                          child: Text(
-                            fallbackText,
-                            style: GoogleFonts.inter(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        );
-                      },
-                    )
-                  : Center(
-                      child: Text(
-                        prof.avatarUrl,
-                        style: GoogleFonts.inter(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(prof.name, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textDark)),
-                const SizedBox(height: 4),
-                Text(
-                  prof.distance.isNotEmpty ? '${prof.distance} · ${prof.role}' : prof.role,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+  /// Parses '1.2 km' → 1.2 ; empty/unparseable → infinity (sorts last).
+  double _distanceKm(VenueItem v) {
+    final m = RegExp(r'([\d.,]+)\s*km').firstMatch(v.distance);
+    if (m == null) return double.infinity;
+    return double.tryParse(m.group(1)!.replaceAll(',', '.')) ?? double.infinity;
   }
 }

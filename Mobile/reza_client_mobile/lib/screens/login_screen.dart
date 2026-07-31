@@ -6,7 +6,12 @@ import '../viewmodels/auth_viewmodel.dart';
 import '../services/api_client.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.returnResultOnSuccess = false});
+
+  /// When true, a successful login/sign-up pops this screen with `true`
+  /// instead of navigating to the home screen — used by the group-booking
+  /// gate so a guest can log in and immediately resume their booking.
+  final bool returnResultOnSuccess;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -90,8 +95,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             _passwordController.text,
           );
       if (!mounted) return;
+      if (widget.returnResultOnSuccess) {
+        // Dismiss the loading dialog first, then return to the caller.
+        Navigator.pop(context);
+        Navigator.pop(context, true);
+        return;
+      }
       Navigator.pop(context);
       Navigator.pushNamedAndRemoveUntil(context, '/', (r) => false);
+
     } on ApiException catch (e) {
       if (mounted) {
         Navigator.pop(context);
@@ -127,8 +139,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             password: _passwordController.text,
           );
       if (!mounted) return;
+      if (widget.returnResultOnSuccess) {
+        // Dismiss the loading dialog first, then return to the caller.
+        Navigator.pop(context);
+        Navigator.pop(context, true);
+        return;
+      }
       Navigator.pop(context);
       Navigator.pushNamedAndRemoveUntil(context, '/', (r) => false);
+
     } on ApiException catch (e) {
       if (mounted) {
         Navigator.pop(context);

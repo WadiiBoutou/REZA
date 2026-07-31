@@ -9,21 +9,29 @@ import '../viewmodels/auth_viewmodel.dart';
 import '../services/account_service.dart';
 import '../services/api_client.dart';
 import '../services/discovery_service.dart';
-import 'booking_screen.dart';
+import 'booking_summary_screen.dart';
 import 'login_screen.dart';
 
 class VenueDetailScreen extends StatefulWidget {
   final String tenantId;
-  final ServiceItem? preselectedService;
-  /// When provided, forwarded through BookingScreen → BookingConfirmationScreen
+  /// When provided, forwarded through BookingSummaryScreen → BookingConfirmationScreen
   /// so "Voir mes réservations" navigates to the Mes RDV tab.
   final VoidCallback? onGoToBookings;
+  /// When true, automatically opens the group booking flow on mount
+  /// (used when adding another person to an existing group booking).
+  final bool autoStartGroupBooking;
+  /// Accumulated participants for group bookings (deferred single-call flow).
+  final List<Map<String, dynamic>> accumulatedParticipants;
+  /// Pre-fill participant data from person picker.
+  final Map<String, dynamic>? prefillParticipant;
 
   const VenueDetailScreen({
     super.key,
     required this.tenantId,
-    this.preselectedService,
     this.onGoToBookings,
+    this.autoStartGroupBooking = false,
+    this.accumulatedParticipants = const [],
+    this.prefillParticipant,
   });
 
   @override
@@ -45,7 +53,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   List<Map<String, dynamic>> _employees = [];
   List<Map<String, dynamic>> _reviews = [];
   String _description = '';
-  List<VenueItem> _nearby = [];
+  Map<String, dynamic>? _businessHours;
 
   static const _tabs = ['À propos', 'Prestations', 'Équipe', 'Avis', 'Autres'];
   final _keys = List.generate(5, (_) => GlobalKey());
@@ -67,17 +75,26 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
         discoveryService.getServices(widget.tenantId),
         discoveryService.getEmployees(widget.tenantId),
         discoveryService.getReviews(widget.tenantId),
-        discoveryService.searchTenants(limit: 8),
       ]);
 
       final tenant = results[0] as Map<String, dynamic>;
       final servicesRaw = results[1] as List<Map<String, dynamic>>;
       final employees = results[2] as List<Map<String, dynamic>>;
       final reviews = results[3] as List<Map<String, dynamic>>;
-      final nearbyRaw = results[4] as List<Map<String, dynamic>>;
 
       final services = servicesRaw.map(serviceFromApi).toList();
       final venue = tenantToVenueItem(tenant, services: services);
+
+      // Real data from DB — settings.businessHours is day-keyed:
+      // { lundi: { open: '09:00', close: '19:00' }, ... } (absent day = closed).
+      // Description lives in settings.description (fallback shortDescription).
+      final tenantSettings = tenant['settings'];
+      Map<String, dynamic>? businessHours;
+      if (tenantSettings is Map && tenantSettings['businessHours'] is Map) {
+        businessHours = Map<String, dynamic>.from(tenantSettings['businessHours'] as Map);
+      }
+      var desc = (tenantSettings is Map ? (tenantSettings['description'] ?? '') : '').toString().trim();
+      if (desc.isEmpty) desc = (tenant['shortDescription'] ?? '').toString().trim();
 
       String? favId;
       bool liked = false;
@@ -102,21 +119,36 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
         _services = services;
         _employees = employees;
         _reviews = reviews;
-        _description = (tenant['description'] ?? '').toString();
+        _description = desc;
         if (_description.isEmpty) {
           _description =
               'This is a beautifully designed beauty and wellness establishment. '
               'Stunning private treatment rooms with vaulted ceilings, restful treatments and world-class service.';
         }
-        _nearby = nearbyRaw
-            .map((t) => tenantToVenueItem(t))
-            .where((v) => v.id != widget.tenantId)
-            .take(6)
-            .toList();
+        _businessHours = businessHours;
         _isLiked = liked;
         _favoriteId = favId;
         _loading = false;
       });
+
+      // Auto-start group booking flow when returning from "Ajouter quelqu'un"
+      if (widget.autoStartGroupBooking) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) return;
+          // Safety: verify login (should already be verified by caller)
+          final auth = context.read<AuthViewModel>();
+          if (!auth.isAuthenticated) {
+            final ok = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const LoginScreen(returnResultOnSuccess: true),
+              ),
+            );
+            if (ok != true || !mounted) return;
+          }
+          _navigateToSummary(true);
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -164,18 +196,98 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   void _openBooking() {
     final venue = _venue;
     if (venue == null) return;
-    final allSelected = _stagedServiceIds.isEmpty
-        ? <ServiceItem>[]
-        : _services.where((s) => _stagedServiceIds.contains(s.id.isNotEmpty ? s.id : s.name)).toList();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Pour qui réservez-vous ?',
+                style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textDark),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Choisissez le type de réservation',
+                style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray),
+              ),
+              const SizedBox(height: 24),
+              _BookingChoiceCard(
+                icon: Icons.person_rounded,
+                title: 'Pour vous seul',
+                subtitle: 'Réservez pour vous-même',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _navigateToSummary(false);
+                },
+              ),
+              const SizedBox(height: 12),
+              _BookingChoiceCard(
+                icon: Icons.groups_rounded,
+                title: 'Pour un groupe',
+                subtitle: 'Réservez pour plusieurs personnes',
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  // Group mode requires login — prompt instantly, before the
+                  // booking form, and resume the group flow once connected.
+                  final auth = context.read<AuthViewModel>();
+                  if (!auth.isAuthenticated) {
+                    final ok = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const LoginScreen(returnResultOnSuccess: true),
+                      ),
+                    );
+                    if (ok != true || !mounted) return;
+                  }
+                  _navigateToSummary(true);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _navigateToSummary(bool isGroupMode) {
+    final venue = _venue;
+    if (venue == null) return;
+    // Only forward accumulated participants when explicitly continuing a group
+    // booking (autoStartGroupBooking). For any fresh booking (user taps
+    // "Réserver" → picks "Pour vous" or "Groupe"), start with empty state.
+    final forwardParticipants = (isGroupMode && widget.autoStartGroupBooking)
+        ? widget.accumulatedParticipants
+        : <Map<String, dynamic>>[];
+    final forwardPrefill = (isGroupMode && widget.autoStartGroupBooking)
+        ? widget.prefillParticipant
+        : null;
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => BookingScreen(
+        builder: (_) => BookingSummaryScreen(
           tenantId: widget.tenantId,
           venue: venue.copyWithServices(_services),
-          preselectedService: allSelected.length == 1 ? allSelected.first : null,
-          preselectedServices: allSelected,
+          selectedServiceIds: _stagedServiceIds,
           onGoToBookings: widget.onGoToBookings,
+          isGroupMode: isGroupMode,
+          accumulatedParticipants: forwardParticipants,
+          prefillParticipant: forwardPrefill,
         ),
       ),
     );
@@ -350,16 +462,12 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                 Container(
                   key: _keys[3],
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: const _HorairesSection(),
+                  child: _HorairesSection(businessHours: _businessHours),
                 ),
                 const Divider(height: 32, indent: 20, endIndent: 20, color: AppColors.border),
                 Container(
                   key: _keys[4],
-                  child: _AutresSection(
-                    venue: venue,
-                    nearby: _nearby,
-                    onGoToBookings: widget.onGoToBookings,
-                  ),
+                  child: _AutresSection(venue: venue),
                 ),
                 const SizedBox(height: 24),
               ],
@@ -504,8 +612,6 @@ class _AProposSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('À propos', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 12),
         Text(expanded ? description : short, style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray, height: 1.6)),
         if (description.length > 120)
           GestureDetector(
@@ -709,55 +815,67 @@ class _EquipeSection extends StatelessWidget {
 }
 
 class _HorairesSection extends StatelessWidget {
-  const _HorairesSection();
+  final Map<String, dynamic>? businessHours;
+  const _HorairesSection({this.businessHours});
 
   static const _days = [
-    {'day': 'lundi', 'hours': '11:00 - 19:00'},
-    {'day': 'mardi', 'hours': '11:00 - 19:00'},
-    {'day': 'mercredi', 'hours': '11:00 - 19:00'},
-    {'day': 'jeudi', 'hours': '11:00 - 19:00'},
-    {'day': 'vendredi', 'hours': '11:00 - 19:00'},
-    {'day': 'samedi', 'hours': '11:00 - 19:00'},
-    {'day': 'dimanche', 'hours': '11:00 - 19:00'},
+    'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche',
   ];
+
+  /// Formats '09:00' as '9h' / '09:30' as '9h30' — clean FR display.
+  String _fmt(String t) {
+    final parts = t.split(':');
+    final h = int.tryParse(parts[0]) ?? 0;
+    final m = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+    return m == 0 ? '$h h' : '$h h$m';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final hours = businessHours;
+    final hasHours = hours != null && _days.any((d) => hours[d] is Map);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text("Horaires d'ouverture", style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700)),
         const SizedBox(height: 16),
-        ..._days.map((d) => Padding(
+        if (!hasHours)
+          Text('Horaires non renseignés', style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray))
+        else
+          ..._days.map((day) {
+            final h = hours[day];
+            final open = (h is Map ? (h['open'] ?? '').toString() : '').trim();
+            final close = (h is Map ? (h['close'] ?? '').toString() : '').trim();
+            final isOpen = open.isNotEmpty && close.isNotEmpty;
+            final label = isOpen ? '${_fmt(open)} - ${_fmt(close)}' : 'Fermé';
+            return Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: Row(
                 children: [
-                  const Icon(Icons.circle, size: 10, color: Color(0xFF22C55E)),
+                  Icon(Icons.circle, size: 10, color: isOpen ? const Color(0xFF22C55E) : AppColors.textLight),
                   const SizedBox(width: 12),
-                  Expanded(child: Text(d['day']!, style: GoogleFonts.inter(fontSize: 14, color: AppColors.textDark))),
-                  Text(d['hours']!, style: GoogleFonts.inter(fontSize: 14, color: AppColors.textDark)),
+                  Expanded(child: Text(_capitalize(day), style: GoogleFonts.inter(fontSize: 14, color: AppColors.textDark))),
+                  Text(label, style: GoogleFonts.inter(fontSize: 14, color: isOpen ? AppColors.textDark : AppColors.textGray)),
                 ],
               ),
-            )),
+            );
+          }),
       ],
     );
   }
+
+  String _capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 }
 
 class _AutresSection extends StatelessWidget {
   final VenueItem venue;
-  final List<VenueItem> nearby;
-  final VoidCallback? onGoToBookings;
   const _AutresSection({
     required this.venue,
-    required this.nearby,
-    this.onGoToBookings,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Never fall back to mock allVenues — fake ids (1/2/…) hit API 404 on tap.
-    final list = nearby;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -798,59 +916,6 @@ class _AutresSection extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
           child: Text(venue.location, style: GoogleFonts.inter(fontSize: 13, color: AppColors.textDark, height: 1.5)),
         ),
-        if (list.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text('Établissements à proximité', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700)),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            height: 190,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: list.length,
-              itemBuilder: (context, index) {
-                final v = list[index];
-                return GestureDetector(
-                  onTap: () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => VenueDetailScreen(
-                        tenantId: v.id,
-                        onGoToBookings: onGoToBookings,
-                      ),
-                    ),
-                  ),
-                  child: Container(
-                    width: 160,
-                    margin: const EdgeInsets.only(right: 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: Image.network(
-                            v.image,
-                            height: 110,
-                            width: 160,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(height: 110, color: AppColors.surface),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(v.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700)),
-                        Text(v.location, maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray)),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
       ],
     );
   }
@@ -887,4 +952,65 @@ class _TriPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter _) => false;
+}
+
+class _BookingChoiceCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _BookingChoiceCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: AppColors.primary, size: 26),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textDark),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textGray),
+          ],
+        ),
+      ),
+    );
+  }
 }

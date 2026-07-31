@@ -7,27 +7,43 @@ import '../services/api_client.dart';
 import '../viewmodels/bookings_viewmodel.dart';
 import 'login_screen.dart';
 
-class BookingsScreen extends StatelessWidget {
-  const BookingsScreen({super.key});
+class BookingsScreen extends StatefulWidget {
+  final int navIndex;
+  const BookingsScreen({super.key, this.navIndex = 0});
+
+  @override
+  State<BookingsScreen> createState() => _BookingsScreenState();
+}
+
+class _BookingsScreenState extends State<BookingsScreen> {
+  final _vm = BookingsViewModel();
+
+  @override
+  void dispose() {
+    _vm.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => BookingsViewModel(),
-      child: const _BookingsBody(),
+    return ChangeNotifierProvider.value(
+      value: _vm,
+      child: _BookingsBody(navIndex: widget.navIndex),
     );
   }
 }
 
 class _BookingsBody extends StatefulWidget {
-  const _BookingsBody();
+  final int navIndex;
+  const _BookingsBody({this.navIndex = 0});
   @override
-  State<_BookingsBody> createState() => _BookingsScreenState();
+  State<_BookingsBody> createState() => _BookingsBodyState();
 }
 
-class _BookingsScreenState extends State<_BookingsBody> with SingleTickerProviderStateMixin {
+class _BookingsBodyState extends State<_BookingsBody> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final Map<String, bool> _expandedCards = {}; // Track expanded state per card
+  int _lastNavIndex = 0;
 
   BookingsViewModel get _bvm => context.watch<BookingsViewModel>();
   List<Map<String, dynamic>> get _upcoming => _bvm.upcoming;
@@ -39,7 +55,17 @@ class _BookingsScreenState extends State<_BookingsBody> with SingleTickerProvide
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _lastNavIndex = widget.navIndex;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void didUpdateWidget(covariant _BookingsBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.navIndex == 2 && _lastNavIndex != 2) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    }
+    _lastNavIndex = widget.navIndex;
   }
 
   @override

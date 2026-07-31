@@ -22,7 +22,7 @@ class SessionUser {
 
   factory SessionUser.fromJson(Map<String, dynamic> j) => SessionUser(
         id: j['id']?.toString() ?? '',
-        email: j['email']?.toString() ?? '',
+        email: j['email']?.toString() ?? j['email'] ?? '',
         firstName: j['firstName']?.toString() ?? '',
         lastName: j['lastName']?.toString() ?? '',
         phone: j['phone']?.toString(),

@@ -378,6 +378,21 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const displayStep = visibleSteps.indexOf(bookingStep) + 1;
   const totalSteps = visibleSteps.length;
 
+  // "Pour vous / Pour [Nom]" — which person is currently being configured.
+  // The booker while savedPeople is empty; afterwards the participant added via
+  // addPersonToGroup (whose name is pre-filled into bookingData). Hidden on the
+  // final recap step where every participant is already individually labeled.
+  const currentPersonLabel = useMemo(() => {
+    if (savedPeople.length === 0) return 'Pour vous';
+    const prefilled = `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim();
+    if (prefilled) return `Pour ${prefilled}`;
+    // "Réserver pour [proche]" seeds savedPeople with the person being configured.
+    if (savedPeople.length === 1 && currentFamilyMemberId && savedPeople[0]?.name) {
+      return `Pour ${savedPeople[0].name.trim()}`;
+    }
+    return 'Pour vous';
+  }, [savedPeople, bookingData.firstName, bookingData.lastName, currentFamilyMemberId]);
+
   const flatServices = salonServices.flatMap((c) => c.items);
   const getServicesTotal = (ids: string[]) =>
     flatServices
@@ -1455,6 +1470,15 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 {bookingStep === 5 && 'Paiement & Confirmation'}
               </h2>
               <p className="text-xs text-gray-500 mt-1">Étape {displayStep} sur {totalSteps}</p>
+              {/* 'Pour vous / Pour [Nom]' — which person is being configured.
+                  Hidden on the final recap (step 5) where everyone is already
+                  individually labeled. */}
+              {bookingStep !== 5 && (
+                <span className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 text-xs font-semibold">
+                  <User className="w-3.5 h-3.5" />
+                  {currentPersonLabel}
+                </span>
+              )}
             </div>
             <button
               onClick={onClose}
@@ -2272,22 +2296,9 @@ function EmployeeSelect({
 }: {
   value: string;
   onChange: (val: string) => void;
-  employees: Array<{ id: string; firstName: string; lastName: string }>;
+  employees: Array<{ id: string; firstName: string; lastName: string; avatar?: string }>;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
 
   const matchedEmp = value !== 'any' ? employees.find((e) => e.id === value) : null;
   const selectedName = matchedEmp
@@ -2295,71 +2306,147 @@ function EmployeeSelect({
     : 'Sans préférence';
 
   return (
-    <div ref={ref} className="relative">
+    <>
+      {/* Trigger — shows the selected employee with avatar when chosen */}
       <button
         type="button"
-        onClick={() => setOpen(!open)}
-        className={`w-full flex items-center justify-between gap-2 px-4 py-3 rounded-2xl text-sm font-medium transition-all border ${
-          open
-            ? 'border-black bg-white shadow-sm'
-            : 'border-gray-200 bg-white hover:border-gray-300'
-        }`}
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-2xl text-sm font-medium transition-all border border-gray-200 bg-white hover:border-gray-300"
       >
-        <span className={value === 'any' ? 'text-gray-400' : 'text-gray-900'}>
-          {selectedName}
+        <span className="flex items-center gap-2 min-w-0">
+          {value === 'any' ? (
+            <span className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+              <Shuffle className="w-3.5 h-3.5 text-gray-400" />
+            </span>
+          ) : (
+            <EmployeeAvatar name={selectedName} avatar={matchedEmp?.avatar} size={28} />
+          )}
+          <span
+            className={`truncate ${value === 'any' ? 'text-gray-400' : 'text-gray-900'}`}
+          >
+            {selectedName}
+          </span>
         </span>
-        <ChevronRight
-          className={`w-4 h-4 text-gray-500 transition-transform ${open ? 'rotate-90' : ''}`}
-        />
+        <ChevronRight className="w-4 h-4 text-gray-500 shrink-0" />
       </button>
 
+      {/* Popup: employees with avatars on the left — more room to show them clearly */}
       {open && (
-        <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-2xl shadow-lg overflow-hidden max-h-60 overflow-y-auto">
-          <button
-            type="button"
-            onClick={() => {
-              onChange('any');
-              setOpen(false);
-            }}
-            className={`w-full text-left px-4 py-3 text-sm transition-colors flex items-center gap-3 ${
-              value === 'any'
-                ? 'bg-black/5 text-black font-semibold'
-                : 'text-gray-500 hover:bg-gray-50'
-            }`}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-            Sans préférence
-          </button>
-          <div className="border-t border-gray-100" />
-          {employees.map((emp) => {
-            const fullName = `${emp.firstName} ${emp.lastName}`.trim();
-            const isActive = value === emp.id;
-            return (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setOpen(false)}
+          />
+          <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h4 className="font-bold text-gray-900 text-base">
+                  Choisir un professionnel
+                </h4>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Sélectionnez qui prendra en charge la prestation.
+                </p>
+              </div>
               <button
-                key={emp.id}
+                type="button"
+                onClick={() => setOpen(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 -mx-2 px-2">
+              <button
                 type="button"
                 onClick={() => {
-                  onChange(emp.id);
+                  onChange('any');
                   setOpen(false);
                 }}
-                className={`w-full text-left px-4 py-3 text-sm transition-colors flex items-center gap-3 ${
-                  isActive
+                className={`w-full text-left px-3 py-3 rounded-xl text-sm transition-colors flex items-center gap-3 ${
+                  value === 'any'
                     ? 'bg-black/5 text-black font-semibold'
-                    : 'text-gray-700 hover:bg-gray-50'
+                    : 'text-gray-500 hover:bg-gray-50'
                 }`}
               >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    isActive ? 'bg-black' : 'bg-gray-300'
-                  }`}
-                />
-                {fullName}
+                <span className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                  <Shuffle className="w-4 h-4 text-gray-400" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block truncate">Sans préférence</span>
+                  <span className="block text-[11px] text-gray-400 font-normal">
+                    Attribution automatique
+                  </span>
+                </span>
+                {value === 'any' && <Check className="w-4 h-4 text-black" />}
               </button>
-            );
-          })}
+              <div className="border-t border-gray-100 my-1" />
+              {employees.map((emp) => {
+                const fullName = `${emp.firstName} ${emp.lastName}`.trim();
+                const isActive = value === emp.id;
+                return (
+                  <button
+                    key={emp.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(emp.id);
+                      setOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-3 rounded-xl text-sm transition-colors flex items-center gap-3 ${
+                      isActive
+                        ? 'bg-black/5 text-black font-semibold'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <EmployeeAvatar name={fullName} avatar={emp.avatar} size={36} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block truncate">{fullName}</span>
+                      <span className="block text-[11px] text-gray-400 font-normal">
+                        Disponible
+                      </span>
+                    </span>
+                    {isActive && <Check className="w-4 h-4 text-black" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
+  );
+}
+
+// Avatar circle — photo when available, name initial otherwise (state-based
+// fallback so a failed image shows the initial in-flow, like mobile).
+function EmployeeAvatar({
+  name,
+  avatar,
+  size,
+}: {
+  name: string;
+  avatar?: string;
+  size: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  const initials = name.trim().charAt(0).toUpperCase() || '?';
+  const fallback = (
+    <span
+      className="rounded-full bg-gray-100 flex items-center justify-center font-bold text-gray-500 shrink-0"
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.4) }}
+    >
+      {initials}
+    </span>
+  );
+  if (!avatar || failed) return fallback;
+  return (
+    <img
+      src={avatar}
+      alt={name}
+      className="rounded-full object-cover shrink-0"
+      style={{ width: size, height: size }}
+      onError={() => setFailed(true)}
+    />
   );
 }
 

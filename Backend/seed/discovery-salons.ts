@@ -1,6 +1,7 @@
 import type { PrismaClient } from '../prisma/generated/prisma/client';
 import { hashPassword } from '../src/utils/password';
 import {
+  avatarUrlFor,
   EMPLOYEE_WORKING_HOURS,
   PASSWORDS,
   TENANT_BUSINESS_HOURS,
@@ -209,6 +210,7 @@ export async function seedDiscoverySalons(prisma: PrismaClient) {
         firstName: 'Sara',
         lastName: 'Benali',
         email: `sara@${venue.subdomain}.ma`,
+        avatar: avatarUrlFor('Sara', 'Benali', `sara@${venue.subdomain}.ma`),
         isActive: true,
         workingHours: EMPLOYEE_WORKING_HOURS,
         agendaSettings: {

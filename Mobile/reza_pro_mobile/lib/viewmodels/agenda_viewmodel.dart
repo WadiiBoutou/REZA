@@ -91,7 +91,7 @@ class AgendaViewModel extends ChangeNotifier {
       if (target != null && a.status != target) return false;
     }
     if (selectedEmployeeId.isNotEmpty) {
-      if (a.employeeId == null || a.employeeId != selectedEmployeeId) {
+      if (a.employeeId != selectedEmployeeId) {
         return false;
       }
     }

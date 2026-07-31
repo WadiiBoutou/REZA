@@ -28,6 +28,7 @@ type EmployeeAgenda = {
   allowOnlineBooking: boolean;
   services: string[];
   status: 'active' | 'inactive' | 'vacation';
+  avatar?: string;
 };
 
 const defaultWorkingHours: WorkingHours[] = [
@@ -63,7 +64,8 @@ const transformEmployeeToAgenda = (employee: any): EmployeeAgenda => {
     workingHours: Array.isArray(workingHours) ? workingHours : defaultWorkingHours,
     allowOnlineBooking: agendaSettings.allowOnlineBooking !== false,
     services,
-    status
+    status,
+    avatar: employee.avatar || undefined
   };
 };
 
@@ -83,6 +85,7 @@ const transformAgendaToEmployee = (agenda: EmployeeAgenda, existingEmployee?: an
     firstName: existingEmployee?.firstName || firstName,
     lastName: existingEmployee?.lastName || lastName,
     email: agenda.email || undefined,
+    avatar: agenda.avatar || existingEmployee?.avatar || undefined,
     workingHours: agenda.workingHours,
     agendaSettings,
     isActive: true
@@ -182,6 +185,7 @@ const GestionDesAgendas = () => {
       const newEmployeeData: any = {
         firstName: `${firstName} (Copie)`,
         lastName,
+        avatar: originalEmployee.avatar || undefined,
         workingHours: agenda.workingHours,
         agendaSettings: {
           color: agenda.color,
@@ -490,6 +494,7 @@ const AgendaCard = ({ agenda, onEdit, onDelete, onDuplicate }: {
   onDelete: () => void;
   onDuplicate: () => void;
 }) => {
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const workingDays = agenda.workingHours.filter(h => h.isWorking);
   const totalHoursPerWeek = workingDays.reduce((sum, day) => {
     const start = parseInt(day.startTime.split(':')[0]);
@@ -525,14 +530,23 @@ const AgendaCard = ({ agenda, onEdit, onDelete, onDuplicate }: {
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div 
-            className="w-12 h-12 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: agenda.color }}
-          >
-            <span className="text-white font-semibold text-lg">
-              {agenda.name.charAt(0).toUpperCase()}
-            </span>
-          </div>
+          {agenda.avatar && !avatarFailed ? (
+            <img
+              src={agenda.avatar}
+              alt={agenda.name}
+              className="w-12 h-12 rounded-full object-cover shrink-0"
+              onError={() => setAvatarFailed(true)}
+            />
+          ) : (
+            <div 
+              className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+              style={{ backgroundColor: agenda.color }}
+            >
+              <span className="text-white font-semibold text-lg">
+                {agenda.name.charAt(0).toUpperCase()}
+              </span>
+            </div>
+          )}
           <div>
             <h3 className="font-semibold text-gray-900">{agenda.name}</h3>
             <p className="text-sm text-gray-500">{agenda.role}</p>

@@ -5,6 +5,7 @@ import type {
 } from '../prisma/generated/prisma/client';
 import { hashPassword } from '../src/utils/password';
 import {
+  avatarUrlFor,
   EMPLOYEE_WORKING_HOURS,
   PASSWORDS,
   SPA_ROYAL_ADMIN,
@@ -441,6 +442,7 @@ async function seedOneSalon(
         firstName: e.firstName,
         lastName: e.lastName,
         role: 'STAFF',
+        avatar: avatarUrlFor(e.firstName, e.lastName, e.email),
         isActive: true,
       },
     });
@@ -453,6 +455,7 @@ async function seedOneSalon(
         firstName: e.firstName,
         lastName: e.lastName,
         email: e.email,
+        avatar: avatarUrlFor(e.firstName, e.lastName, e.email),
         phone: '+212600000099',
         isActive: true,
         workingHours: EMPLOYEE_WORKING_HOURS,

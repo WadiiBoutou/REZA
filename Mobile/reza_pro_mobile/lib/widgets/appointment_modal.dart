@@ -785,7 +785,7 @@ class _NewAppointmentModalState extends State<NewAppointmentModal> {
     final svcPlan = services
         .cast<Map<String, dynamic>>()
         .where(
-          (s) => s['serviceId'] == serviceId,
+          (s) => s['serviceId']?.toString() == serviceId,
         )
         .toList();
     if (svcPlan.isEmpty) return _employees;
@@ -798,7 +798,7 @@ class _NewAppointmentModalState extends State<NewAppointmentModal> {
       final planEmp = planEmployees
           .cast<Map<String, dynamic>>()
           .where(
-            (p) => p['employeeId'] == empId,
+            (p) => p['employeeId']?.toString() == empId || p['id']?.toString() == empId,
           )
           .toList();
       final p = planEmp.isNotEmpty ? planEmp.first : <String, dynamic>{};

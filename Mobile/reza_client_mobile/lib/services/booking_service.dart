@@ -11,6 +11,7 @@ class BookingService {
     required String startTimeIso,
     String? notes,
     String? employeeId,
+    List<Map<String, dynamic>>? serviceEmployees,
     List<Map<String, dynamic>>? participants,
   }) async {
     final body = <String, dynamic>{
@@ -22,6 +23,8 @@ class BookingService {
       'serviceIds': serviceIds,
       'startTime': startTimeIso,
       if (employeeId != null && employeeId.isNotEmpty) 'employeeId': employeeId,
+      if (serviceEmployees != null && serviceEmployees.isNotEmpty)
+        'serviceEmployees': serviceEmployees,
       if (notes != null) 'notes': notes,
     };
     if (participants != null && participants.isNotEmpty) {
