@@ -35,7 +35,14 @@ export default function SalonDetail() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showBookingOptionModal, setShowBookingOptionModal] = useState(false);
   const [slotServiceIds, setSlotServiceIds] = useState<string[]>([]);
+  const [existingParticipants, setExistingParticipants] = useState<Array<{
+    serviceIds: string[];
+    startTime: string;
+    serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
+  }>>([]);
+  const [currentServiceEmployees, setCurrentServiceEmployees] = useState<Array<{ serviceId: string; employeeId: string | null }>>([]);
   const [bookingStep, setBookingStep] = useState(1);
+  const [isGroupBooking, setIsGroupBooking] = useState(false);
   const [bookingData, setBookingData] = useState({
     firstName: '',
     lastName: '',
@@ -267,6 +274,9 @@ export default function SalonDetail() {
     serviceIds,
     enabled: !!salon && !!bookingData.date && serviceIds.length > 0,
     pollInterval: 30000,
+    clientEmail: user?.email,
+    existingParticipants: existingParticipants.length > 0 ? existingParticipants : undefined,
+    serviceEmployees: currentServiceEmployees.length > 0 ? currentServiceEmployees : undefined,
   });
 
   const selectService = (service: Service) => {
@@ -399,7 +409,7 @@ export default function SalonDetail() {
       <RezaNavbar />
 
       {/* Page-specific header (back, like) */}
-      <header className="mt-16 bg-white backdrop-blur-xl">
+      <header className="mt-16 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 flex items-center justify-between">
           <button className="w-10 h-10 hover:bg-gray-50 rounded-full transition-all flex items-center justify-center" onClick={() => window.history.back()}>
             <ArrowLeft className="w-5 h-5 text-gray-500" />
@@ -876,7 +886,7 @@ export default function SalonDetail() {
               </div>
                 {/* Social Media */}
                 {salonData.socialMedia && Object.keys(salonData.socialMedia).length > 0 && (
-                  <div className="bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
+                  <div className="mt-6 bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
                     <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 sm:mb-6">Réseaux sociaux</h3>
                     <div className="flex flex-wrap gap-2 sm:gap-3">
                       {salonData.socialMedia.instagram && (
@@ -929,7 +939,7 @@ export default function SalonDetail() {
 
                 {/* Map embed = OSM (no key); external link = Google Maps only */}
                 {(salonData.coordinates || salonData.googleMapsLink) && (
-                  <div className="bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
+                  <div className="mt-6 bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
                     <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 sm:mb-6">Localisation</h3>
                     <div className="flex flex-wrap gap-3 sm:gap-4 mb-3 sm:mb-4">
                       <a
@@ -960,7 +970,7 @@ export default function SalonDetail() {
                 )}
 
                 {/* Hours */}
-                <div className="bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
+                <div className="mt-6 bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
                   <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 sm:mb-6">Horaires</h3>
                   <div className="space-y-2 sm:space-y-3">
                     {Object.entries(salonData.hours).map(([day, hours]) => (
@@ -1013,6 +1023,7 @@ export default function SalonDetail() {
               <button
                 onClick={() => {
                   setShowBookingOptionModal(false);
+                  setIsGroupBooking(false);
                   if (selectedServices.length === 0 && salonData?.services?.[0]?.items?.[0]) {
                     setSelectedServices([salonData.services[0].items[0]]);
                   }
@@ -1034,6 +1045,7 @@ export default function SalonDetail() {
               <button
                 onClick={() => {
                   setShowBookingOptionModal(false);
+                  setIsGroupBooking(true);
                   if (selectedServices.length === 0 && salonData?.services?.[0]?.items?.[0]) {
                     setSelectedServices([salonData.services[0].items[0]]);
                   }
@@ -1077,6 +1089,7 @@ export default function SalonDetail() {
         getTotalPrice={getTotalPrice}
         bookingData={bookingData}
         setBookingData={setBookingData}
+        isGroupBooking={isGroupBooking}
         timeSlots={timeSlots}
         setSelectedServices={setSelectedServices}
         onSlotServiceIdsChange={setSlotServiceIds}
@@ -1090,9 +1103,13 @@ export default function SalonDetail() {
         salonId={salon?.id}
         employees={employees}
         blockedDates={salon?.settings?.businessHours?.blockedDates || []}
+        bookingAdvanceDays={salon?.settings?.bookingAdvanceDays ?? 30}
+        advanceBooking={salon?.settings?.businessHours?.advanceBooking || null}
         slotsLoading={slotsLoading}
         slotsError={slotsError}
         lastUpdated={lastUpdated}
+        onExistingParticipantsChange={setExistingParticipants}
+        onServiceEmployeesChange={setCurrentServiceEmployees}
       />
 
       {/* Shared Footer */}
@@ -1155,15 +1172,6 @@ function ReviewForm({ tenantId, user, onReviewSubmitted }: { tenantId?: string; 
       const firstName = user.firstName || nameParts[0] || 'Client';
       const lastName = user.lastName || nameParts.slice(1).join(' ') || '';
 
-      console.log('Submitting review with data:', {
-        tenantId,
-        firstName,
-        lastName,
-        email: user.email,
-        rating,
-        hasComment: !!comment.trim()
-      });
-
       const response = await api.createReview({
         tenantId,
         firstName,
@@ -1174,7 +1182,6 @@ function ReviewForm({ tenantId, user, onReviewSubmitted }: { tenantId?: string; 
         comment: comment.trim() || undefined,
       });
 
-      console.log('Review submitted successfully:', response);
       toast.success('Votre avis a été soumis avec succès');
       setRating(0);
       setComment('');

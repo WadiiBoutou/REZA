@@ -23,18 +23,6 @@ router.post('/register', (req, res, next) => authController.register(req, res, n
 router.get('/me', authMiddleware, (req, res, next) => authController.getCurrentUser(req, res, next));
 
 /**
- * GET /api/auth/google/url
- * Get Google OAuth URL
- */
-router.get('/google/url', (req, res, next) => authController.getGoogleUrl(req, res, next));
-
-/**
- * GET /api/auth/google/callback
- * Handle Google OAuth callback
- */
-router.get('/google/callback', (req, res, next) => authController.handleGoogleCallback(req, res, next));
-
-/**
  * POST /api/auth/switch-salon
  * Multi-salon: re-issue a token scoped to another salon of the owner's account
  */

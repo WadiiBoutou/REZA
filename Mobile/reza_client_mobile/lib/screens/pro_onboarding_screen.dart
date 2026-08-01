@@ -11,8 +11,6 @@ class ProOnboardingScreen extends StatefulWidget {
 
 class _ProOnboardingScreenState extends State<ProOnboardingScreen> {
   int _step = 1;
-  String _userType = '';
-  String _businessType = '';
   String? _hasCommercialLocal;
 
   final TextEditingController _establishmentNameController = TextEditingController();
@@ -45,9 +43,6 @@ class _ProOnboardingScreenState extends State<ProOnboardingScreen> {
   }
 
   void _handleUserType(String type) {
-    setState(() {
-      _userType = type;
-    });
     if (type == 'client') {
       Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
     } else {
@@ -57,9 +52,8 @@ class _ProOnboardingScreenState extends State<ProOnboardingScreen> {
     }
   }
 
-  void _handleBusinessType(String type) {
+  void _handleBusinessType(String _) {
     setState(() {
-      _businessType = type;
       _step = 3;
     });
   }

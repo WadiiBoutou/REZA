@@ -12,6 +12,8 @@ interface ValidationParams {
   excludeAppointmentId?: string;
   /** When false, only overlap/time rules run (e.g. drag same employee+service). */
   validateServiceCompatibility?: boolean;
+  /** When false, a null employeeId is allowed (e.g. drag move keeps existing per-service employees). */
+  requireEmployee?: boolean;
   source?: 'ADMIN' | 'PUBLIC';
 }
 
@@ -192,6 +194,7 @@ export async function validateAppointmentRules(params: ValidationParams) {
     isPublicBooking,
     excludeAppointmentId,
     validateServiceCompatibility = isPublicBooking,
+    requireEmployee = isPublicBooking,
     source,
   } = params;
 
@@ -310,11 +313,14 @@ export async function validateAppointmentRules(params: ValidationParams) {
     if (source === 'ADMIN') {
       return { isValid: true };
     }
+    if (!requireEmployee) {
+      return { isValid: true };
+    }
     return {
       isValid: false,
-      status: 409,
-      error: 'Overlapping appointment',
-      message: 'Ce créneau n\'est plus disponible. Veuillez en choisir un autre.',
+      status: 400,
+      error: 'Employee not specified',
+      message: 'Aucun collaborateur sélectionné. Veuillez choisir un professionnel.',
     };
   }
 
@@ -367,18 +373,16 @@ export async function validateAppointmentRules(params: ValidationParams) {
 
     if (!whResult.isAvailable) {
       if (source === 'ADMIN') {
-        return {
-          isValid: false,
-          status: whResult.status || 400,
-          error: whResult.error || 'Employee unavailable',
-          message: whResult.message || 'Cet employé n\'est pas disponible.',
-        };
+        return { isValid: true };
       }
     }
   }
 
   // 2. Service Compatibility Check
   if (validateServiceCompatibility && employee) {
+    if (source === 'ADMIN') {
+      return { isValid: true };
+    }
     const employeeAllowedServiceIds = employee.employeeServices.map((es) => es.serviceId);
     if (employeeAllowedServiceIds.length > 0) {
       for (const serviceId of serviceIds) {

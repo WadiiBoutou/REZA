@@ -12,6 +12,7 @@ import '../../viewmodels/agenda_viewmodel.dart';
 import '../../viewmodels/new_appointment_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../widgets/appointment_modal.dart';
+import '../../widgets/group_billing_sheet.dart';
 import '../../widgets/pro_drawer.dart';
 
 /// Timed block after classic calendar column-packing (overlap graph).
@@ -737,21 +738,54 @@ class _DetailsSheet extends StatelessWidget {
           const SizedBox(height: 8),
           Text('${appointment.time} · ${appointment.duration} min'),
           Text(appointment.employee),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceGray,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              Appointment.labelFr(appointment.status),
-              style: GoogleFonts.outfit(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceGray,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  Appointment.labelFr(appointment.status),
+                  style: GoogleFonts.outfit(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textDark,
+                  ),
+                ),
               ),
-            ),
+              if (appointment.bookingGroupId != null &&
+                  appointment.bookingGroupId!.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7C3AED).withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.group_rounded,
+                          size: 13, color: Color(0xFF7C3AED)),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Réservation de groupe',
+                        style: GoogleFonts.outfit(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF7C3AED),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 20),
           Wrap(
@@ -828,6 +862,7 @@ class _FinalizeCaisseDialog extends StatefulWidget {
 class _FinalizeCaisseDialogState extends State<_FinalizeCaisseDialog> {
   String _paymentMethod = 'CASH';
   bool _loading = false;
+  bool _billed = false;
 
   Future<void> _withCaisse() async {
     setState(() => _loading = true);
@@ -882,6 +917,33 @@ class _FinalizeCaisseDialogState extends State<_FinalizeCaisseDialog> {
         SnackBar(content: Text('$e', style: GoogleFonts.outfit())),
       );
     }
+  }
+
+  bool get _isGroup =>
+      widget.appointment.bookingGroupId != null &&
+      widget.appointment.bookingGroupId!.isNotEmpty;
+
+  /// Ouvre la facturation de groupe pour le RDV courant (parité web pro).
+  Future<void> _groupBilling() async {
+    _billed = false;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => GroupBillingSheet(
+        initialGroupId: widget.appointment.bookingGroupId,
+        onDone: () async {
+          _billed = true;
+          await Future.wait([
+            widget.vm.loadAppointments(),
+            widget.vm.loadMonthAppointments(
+                forMonth: widget.vm.selectedDate, force: true),
+          ]);
+        },
+      ),
+    );
+    // La vente a réussi → fermer la fenêtre de finalisation (le RDV est désormais terminé).
+    if (_billed && mounted) Navigator.pop(context);
   }
 
   @override
@@ -955,6 +1017,23 @@ class _FinalizeCaisseDialogState extends State<_FinalizeCaisseDialog> {
                 style: GoogleFonts.outfit(fontWeight: FontWeight.w700),
               ),
             ),
+            if (_isGroup) ...[
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: _loading ? null : _groupBilling,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7C3AED),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24)),
+                ),
+                child: Text(
+                  'Facturer le groupe',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             TextButton(
               onPressed: _loading ? null : _withoutCaisse,

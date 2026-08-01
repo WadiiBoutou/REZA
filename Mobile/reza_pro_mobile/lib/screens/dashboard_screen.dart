@@ -431,6 +431,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             setState(() {
               _selectedIndex = index;
             });
+            // Re-fetch when the Caisse tab is opened so a stale/empty first
+            // load (e.g. at app startup) doesn't linger until a manual refresh.
+            if (index == 2) _caisseVm.load();
           },
           child: Stack(
             alignment: Alignment.center,

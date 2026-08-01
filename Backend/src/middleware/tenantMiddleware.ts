@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { requireTenantId } from '../utils/tenantIsolation';
 import { accountService } from '../modules/account/account.service';
 import { parseSalonIdsInput } from '../utils/salonScope';
+import * as log from '../utils/logger';
 
 declare global {
   namespace Express {
@@ -104,7 +105,7 @@ export const tenantMiddleware = async (req: Request, res: Response, next: NextFu
 
     next();
   } catch (error: any) {
-    console.error('[Tenant Middleware] Unexpected error:', error);
+    log.error('[Tenant Middleware] Unexpected error:', error);
     return res.status(500).json({
       error: 'Internal server error',
       message: 'An error occurred while processing tenant identification.',

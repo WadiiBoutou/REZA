@@ -9,7 +9,6 @@
 import { prisma } from '../src/lib/prisma';
 import { cleanupDatabase } from './cleanup';
 import { PASSWORDS, REZA_ADMIN, SPA_ROYAL_ADMIN, SUPERADMIN } from './constants';
-import { seedDiscoverySalons } from './discovery-salons';
 import { seedRezaAccount } from './reza-account';
 import { seedSpaRoyalAccount } from './spa-royal-account';
 import { seedSubscriptionPlan } from './subscription-plan';

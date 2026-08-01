@@ -172,7 +172,6 @@ function LoginPageContent() {
   };
 
   const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
-    console.log('[Login] handleSubmit called', { mode, loading });
     if (e) {
       e.preventDefault();
       if ('stopPropagation' in e) {
@@ -213,7 +212,6 @@ function LoginPageContent() {
       }
 
       setLoading(true);
-      console.log('[Signup] Attempting registration');
       try {
         const result = await register({
           email: email.trim(),
@@ -227,7 +225,6 @@ function LoginPageContent() {
           tenantEmail: email.trim(), // Use user's email as organization email
           tenantCity: city, // Add city to registration
         });
-        console.log('[Signup] Registration result:', result);
 
         if (result.success) {
           // Show success message about email verification instead of redirecting
@@ -267,15 +264,12 @@ function LoginPageContent() {
         return;
       }
       setLoading(true);
-      console.log('[Login] Attempting login for:', email.trim());
       try {
         const result = await login(email.trim(), password.trim());
-        console.log('[Login] Login result:', result);
 
         if (result.success) {
           // Redirect to specified URL or default dashboard
           const redirectUrl = getRedirectUrl();
-          console.log('[Login] Redirecting to:', redirectUrl);
           router.push(redirectUrl);
         } else {
           console.warn('[Login] Login failed:', result.error);
@@ -568,7 +562,6 @@ function LoginPageContent() {
             ) : (
               <form
                 onSubmit={(e) => {
-                  console.log('[Login] Form onSubmit triggered');
                   handleSubmit(e);
                 }}
                 className="space-y-4"
@@ -836,12 +829,6 @@ function LoginPageContent() {
                 <div className="w-full mt-4">
                   <CurvySlideButton
                     onClick={(e) => {
-                      console.log('[Login] Button clicked', {
-                        mode,
-                        loading,
-                        email: email.trim(),
-                        hasPassword: !!password,
-                      });
                       if (e) {
                         e.preventDefault();
                         (e as any).stopPropagation?.();

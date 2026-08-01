@@ -1,13 +1,16 @@
-import { X, Check, ArrowRight, CreditCard, Store, Lock, Plus, Calendar, Clock, User, Users, AlertCircle, AlertTriangle, ChevronRight } from 'lucide-react';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { X, Check, ArrowRight, CreditCard, Store, Lock, Plus, Calendar, Clock, User, Users, AlertCircle, AlertTriangle, ChevronRight, Shuffle, GripVertical, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import Receipt from './Receipt';
 import Loading from './Loading';
-import GroupParticipantsSection, { GuestParticipant, FamilyMemberOption } from './GroupParticipantsSection';
+import type { GuestParticipant, FamilyMemberOption } from './GroupParticipantsSection';
 import AddServiceModal from './AddServiceModal';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
-import { getMoroccoToday, getMoroccoDate, isMoroccoToday, isMoroccoPast, formatMoroccoDate, formatMoroccoTime, formatMoroccoDateTime, createDateFromMoroccoDateTime } from '../../lib/utils';
+import { getMoroccoToday, getMoroccoDate, isMoroccoToday, isMoroccoPast, formatMoroccoDate, formatMoroccoTime, formatMoroccoDateTime, createDateFromMoroccoDateTime, isValidMoroccanPhone, getMoroccanPhoneError } from '../../lib/utils';
 import {
   clearBookingForProche,
   peekBookingForProche,
@@ -52,6 +55,7 @@ type BookingModalProps = {
   onClose: () => void;
   bookingStep: number;
   setBookingStep: (step: number) => void;
+  isGroupBooking?: boolean;
   selectedServices: Service[];
   getTotalDuration: () => string;
   getTotalPrice: () => number;
@@ -68,6 +72,20 @@ type BookingModalProps = {
   slotsError?: string | null;
   lastUpdated?: Date | null;
   blockedDates?: string[];
+  closedDaysOfWeek?: number[];
+  bookingDelay?: {
+    value: number;
+    unit: 'heures' | 'jours' | 'semaines';
+    allowLastMoment?: boolean;
+  } | null;
+  bookingAdvanceDays?: number;
+  advanceBooking?: { unit: string; value: number } | null;
+  onExistingParticipantsChange?: (participants: Array<{
+    serviceIds: string[];
+    startTime: string;
+    serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
+  }>) => void;
+  onServiceEmployeesChange?: (selections: Array<{ serviceId: string; employeeId: string | null }>) => void;
 };
 
 // Utility to sum durations
@@ -106,6 +124,41 @@ const formatExpiry = (value: string) => {
   return cleaned;
 };
 
+// Get total duration in minutes for a list of services
+function getDurationMinutes(svcList: Service[]): number {
+  return svcList.reduce((sum, s) => {
+    const d = s.duration.trim();
+    let m = 0;
+    const h = d.match(/(\d+)\s*h/);
+    const mn = d.match(/(\d+)\s*min/);
+    if (h) m += parseInt(h[1], 10) * 60;
+    if (mn) m += parseInt(mn[1], 10);
+    if (!h && !mn && /^\d+$/.test(d)) m += parseInt(d, 10);
+    return sum + m;
+  }, 0);
+}
+
+/** Add N minutes to a "HH:MM" string and return "HH:MM". */
+function addMinutes(start: string, mins: number): string {
+  if (!start) return '';
+  const [h, m] = start.split(':').map(Number);
+  const total = h * 60 + m + mins;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Normalize a Moroccan/local phone number to a comparable national form:
+ * "+212612345678", "00212612345678" and "0612345678" all become "612345678".
+ * Shared by the guest-form and proche-picker duplicate checks.
+ */
+function normalizePhone(p?: string): string {
+  let d = (p || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('212') && d.length > 9) d = d.slice(3);
+  if (d.startsWith('0')) d = d.slice(1);
+  return d;
+}
+
 type EmployeeAvailabilityStatus = {
   id: string;
   firstName: string;
@@ -120,6 +173,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
   onClose,
   bookingStep,
   setBookingStep,
+  isGroupBooking = false,
   selectedServices,
   getTotalDuration,
   getTotalPrice,
@@ -136,40 +190,62 @@ const BookingModal: React.FC<BookingModalProps> = ({
   slotsError = null,
   lastUpdated = null,
   blockedDates = [],
+  closedDaysOfWeek = [0],
+  bookingDelay = null,
+  bookingAdvanceDays = 30,
+  advanceBooking = null,
+  onExistingParticipantsChange,
+  onServiceEmployeesChange,
 }) => {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  // Calendar 14-day window start. Initialized to today, but will jump to the
+  // first bookable day when availableDays loads (see auto-scroll effect below).
   const [currentMonth, setCurrentMonth] = useState(getMoroccoToday());
+  // Prevents the calendar from rendering with a default position and then jumping
+  // when availableDays loads. Calendar only appears after the initial fetch + jump.
+  const [calendarReady, setCalendarReady] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [referenceNumber, setReferenceNumber] = useState<string | null>(null);
   const [isCardFlipped, setIsCardFlipped] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showAddServiceModal, setShowAddServiceModal] = useState(false);
-  const [groupParticipants, setGroupParticipants] = useState<GuestParticipant[]>([]);
-  const [includeBooker, setIncludeBooker] = useState(true);
+  // Person selector for 'Ajouter une personne' (choisir proche ou invité)
+  const [showPersonSelector, setShowPersonSelector] = useState(false);
+  // Accumulated completed people (sequential add-person flow)
+  const [savedPeople, setSavedPeople] = useState<GuestParticipant[]>([]);
+  // Family-member id of the person currently being configured (for duplicate checks)
+  const [currentFamilyMemberId, setCurrentFamilyMemberId] = useState<string | undefined>(undefined);
+  // Permanently store booker's contact info so it's not lost when adding people
+  const [bookerContact, setBookerContact] = useState<{firstName: string; lastName: string; phone: string; email: string; notes: string}>({firstName: '', lastName: '', phone: '', email: '', notes: ''});
   const [familyMembers, setFamilyMembers] = useState<FamilyMemberOption[]>([]);
   const [familyLoading, setFamilyLoading] = useState(false);
+  // Guest form state for "Ajouter un invité"
+  const [showGuestForm, setShowGuestForm] = useState(false);
+  const [guestName, setGuestName] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestFormError, setGuestFormError] = useState('');
+  const [showProchePrompt, setShowProchePrompt] = useState(false);
+  const [procheRelation, setProcheRelation] = useState('');
+  const [isAddingProche, setIsAddingProche] = useState(false);
   const [selectedTeamMemberId, setSelectedTeamMemberId] = useState<string>('any');
+  // Step 2: sub-phase (0 = initial choice card, 1 = per-service selection)
+  const [step2Phase, setStep2Phase] = useState(0);
+  // Whether user chose 'specific per service' mode
+  const [perServiceMode, setPerServiceMode] = useState(false);
+  // Per-service employee selections (keyed by serviceId/serviceName)
+  const [perServiceEmployeeSelections, setPerServiceEmployeeSelections] = useState<Record<string, string>>({});
+  // Accumulated participants for sequential group flow
+  const [accumulatedParticipants, setAccumulatedParticipants] = useState<Array<{
+    firstName: string; lastName: string; phone: string; email?: string;
+    serviceIds: string[]; startTimeIso: string;
+    serviceEmployees?: Array<{serviceId: string; employeeId: string | null}>;
+  }>>([]);
 
-  // "Même employé pour tous les services" feature
-  const [sameEmployeeForAll, setSameEmployeeForAll] = useState(true);
-  const [commonEmployeeIdsPerPerson, setCommonEmployeeIdsPerPerson] = useState<Record<string, string[]>>({});
-  const [perServiceEmployeeMap, setPerServiceEmployeeMap] = useState<Record<string, Record<string, string>>>({});
-
-  // Per-service employee availability data from backend (for "Même employé" unchecked view)
-  const [serviceEmployeeData, setServiceEmployeeData] = useState<Record<string, any[]>>({});
-
-  // Conflict resolution state
-  const [resolveLoading, setResolveLoading] = useState(false);
-  const [resolvingEmployees, setResolvingEmployees] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
-  const resolveCounterRef = useRef(0);
-  const applyingResolvedStateRef = useRef(false);
-  
   // Real employee availability map per person: key is 'booker' or participant.id
   const [employeeAvailabilityMap, setEmployeeAvailabilityMap] = useState<Record<string, EmployeeAvailabilityStatus[]>>({});
   const [availabilityLoadingMap, setAvailabilityLoadingMap] = useState<Record<string, boolean>>({});
@@ -178,6 +254,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
     participants: { name: string; services: Service[]; subtotal: number }[];
     grandTotal: number;
   } | null>(null);
+  const [receiptBookerName, setReceiptBookerName] = useState<string | undefined>(undefined);
 
   const [salonData, setSalonData] = useState<{
     name?: string;
@@ -234,8 +311,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
     const displayName =
       pending.name.trim() ||
       [pending.firstName, pending.lastName].filter(Boolean).join(' ').trim();
-    setIncludeBooker(false);
-    setGroupParticipants([
+    setSavedPeople([
       {
         id: `family-${pending.id}`,
         familyMemberId: pending.id,
@@ -243,9 +319,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
         sameServicesAsBooker: true,
         serviceIds: [],
         employeeId: 'any',
-        followsBookerSchedule: true,
       },
     ]);
+    setCurrentFamilyMemberId(pending.id);
   }, [show]);
 
   // Load Mes proches when logged-in client opens booking modal
@@ -270,6 +346,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
             firstName: member.firstName,
             lastName: member.lastName,
             relationship: member.relationship,
+            phone: member.phone || undefined,
           })
         );
         setFamilyMembers(formatted);
@@ -291,38 +368,44 @@ const BookingModal: React.FC<BookingModalProps> = ({
   useEffect(() => {
     if (!show) {
       clearBookingForProche();
-      setGroupParticipants([]);
-      setIncludeBooker(true);
+      setSavedPeople([]);
+      setCurrentFamilyMemberId(undefined);
       setSelectedTeamMemberId('any');
       setEmployeeAvailabilityMap({});
       setAvailabilityLoadingMap({});
     }
   }, [show]);
 
-  // Auto-sync: when booker date/time changes, clear stale overrides for linked participants
-  useEffect(() => {
-    setGroupParticipants(prev =>
-      prev.map(p =>
-        p.followsBookerSchedule !== false
-          ? { ...p, customTime: undefined, customDate: undefined }
-          : p
-      )
-    );
-  }, [bookingData.date, bookingData.time]);
+  // followsBookerSchedule a été supprimé — plus besoin d'auto-sync sur date/time
   
   // Calculate total steps & step mapping
-  // Step 1: Prestations & Groupe
-  // Step 2: Date & Créneau
-  // Step 3: Professionnel
+  // Step 1: Vos prestations
+  // Step 2: Choix du professionnel
+  // Step 3: Date & Créneau
   // Step 4: Coordonnées (if !isAuthenticated || !userHasAllInfo)
   // Step 5: Paiement (Step 4 if step 4 skipped)
   const effectivePhone = clientProfileData?.phone || user?.phone || '';
   const userHasAllInfo = isAuthenticated && effectivePhone && effectivePhone.trim() !== '';
-  const shouldShowStep3 = !isAuthenticated || !userHasAllInfo;
+  const shouldShowStep4 = !isAuthenticated || !userHasAllInfo;
   
-  const visibleSteps = shouldShowStep3 ? [1, 2, 3, 4, 5] : [1, 2, 3, 5];
+  const visibleSteps = shouldShowStep4 ? [1, 2, 3, 4, 5] : [1, 2, 3, 5];
   const displayStep = visibleSteps.indexOf(bookingStep) + 1;
   const totalSteps = visibleSteps.length;
+
+  // "Pour vous / Pour [Nom]" — which person is currently being configured.
+  // The booker while savedPeople is empty; afterwards the participant added via
+  // addPersonToGroup (whose name is pre-filled into bookingData). Hidden on the
+  // final recap step where every participant is already individually labeled.
+  const currentPersonLabel = useMemo(() => {
+    if (savedPeople.length === 0) return 'Pour vous';
+    const prefilled = `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim();
+    if (prefilled) return `Pour ${prefilled}`;
+    // "Réserver pour [proche]" seeds savedPeople with the person being configured.
+    if (savedPeople.length === 1 && currentFamilyMemberId && savedPeople[0]?.name) {
+      return `Pour ${savedPeople[0].name.trim()}`;
+    }
+    return 'Pour vous';
+  }, [savedPeople, bookingData.firstName, bookingData.lastName, currentFamilyMemberId]);
 
   const flatServices = salonServices.flatMap((c) => c.items);
   const getServicesTotal = (ids: string[]) =>
@@ -332,20 +415,112 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
   const getGroupGrandTotal = () => {
     const bookerTotal = getTotalPrice();
-    const guestsTotal = groupParticipants.reduce((sum, p) => {
-      if (p.sameServicesAsBooker) return sum + bookerTotal;
+    const savedTotal = savedPeople.reduce((sum, p) => {
       return sum + getServicesTotal(p.serviceIds);
     }, 0);
-    return (includeBooker ? bookerTotal : 0) + guestsTotal;
+    return bookerTotal + savedTotal;
   };
 
   useEffect(() => {
     const bookerIds = selectedServices.map((s) => s.id).filter(Boolean) as string[];
-    const extraIds = groupParticipants.flatMap((p) =>
-      p.sameServicesAsBooker ? bookerIds : p.serviceIds
-    );
-    onSlotServiceIdsChange?.([...new Set([...bookerIds, ...extraIds])]);
-  }, [selectedServices, groupParticipants, onSlotServiceIdsChange]);
+    const savedIds = savedPeople.flatMap((p) => p.serviceIds);
+    onSlotServiceIdsChange?.([...new Set([...bookerIds, ...savedIds])]);
+  }, [selectedServices, savedPeople, onSlotServiceIdsChange]);
+
+  // Drag-and-drop sensors for reordering services
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  /** Stable ID for a service — prefers `id`, falls back to `name`. */
+  const serviceKey = (svc: Service, idx: number) => (svc.id || svc.name || `svc-${idx}`);
+
+  const handleDragEnd = useCallback((event: any) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = selectedServices.findIndex((s) => serviceKey(s, 0) === active.id);
+    const newIdx = selectedServices.findIndex((s) => serviceKey(s, 0) === over.id);
+    if (oldIdx === -1 || newIdx === -1) return;
+    const reordered = [...selectedServices];
+    const [moved] = reordered.splice(oldIdx, 1);
+    reordered.splice(newIdx, 0, moved);
+    setSelectedServices(reordered);
+  }, [selectedServices, setSelectedServices]);
+
+  // Days that have at least 1 available slot (from backend existence check).
+  // null = not yet loaded; [] = loaded but zero days; [...] = loaded with results.
+  const [availableDays, setAvailableDays] = useState<string[] | null>(null);
+
+  // Fetch available days covering the FULL 14-day window shown by the calendar.
+  // Re-fetches only when the window start or service selection changes.
+  const prevAvailableDaysDeps = useRef<{ salonId: string | null; currentMonthMs: number; servicesRef: unknown } | null>(null);
+  useEffect(() => {
+    const cur = { salonId: salonId ?? null, currentMonthMs: currentMonth.getTime(), servicesRef: selectedServices };
+    if (prevAvailableDaysDeps.current) {
+      const p = prevAvailableDaysDeps.current;
+      const changed: string[] = [];
+      if (p.salonId !== cur.salonId) changed.push('salonId');
+      if (p.currentMonthMs !== cur.currentMonthMs) changed.push('currentMonth');
+      if (p.servicesRef !== cur.servicesRef) changed.push('selectedServices');
+      if (changed.length > 0) console.log('[AvailableDays] REFIRE cause:', changed.join(','));
+    }
+    prevAvailableDaysDeps.current = cur;
+    if (!salonId) return;
+    const serviceIds = selectedServices.map(s => s.id).filter(Boolean) as string[];
+    if (serviceIds.length === 0) return;
+
+    const today = getMoroccoToday();
+    // from = start of the 14-day window, but never before today
+    const from = currentMonth < today ? today : new Date(currentMonth);
+    // to = end of the 14-day window (start + 13 days)
+    const to = new Date(currentMonth);
+    to.setDate(to.getDate() + 13);
+
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const fromStr = fmt(from);
+    const toStr = fmt(to);
+
+    let cancelled = false;
+    console.log('[AvailableDays] Fetching:', { salonId, fromStr, toStr, serviceIds, currentMonth: currentMonth.toISOString() });
+    api.getAvailableDays(salonId, fromStr, toStr, serviceIds)
+      .then(res => {
+        console.log('[AvailableDays] Response:', res);
+        if (!cancelled) setAvailableDays(res.days || []);
+      })
+      .catch(err => {
+        console.error('[AvailableDays] Error:', err);
+        // Don't set availableDays on error — leave as null to skip the check
+      });
+
+    return () => { cancelled = true; };
+  }, [salonId, currentMonth, selectedServices]);
+
+  // When availableDays first loads, jump the 14-day window start to the first
+  // available day so the calendar doesn't start from today with all days greyed out.
+  // Also marks calendarReady — the calendar only renders after this runs to avoid
+  // rendering with a default position and then visibly jumping.
+  // IMPORTANT: after calendarReady is true, subsequent availableDays changes (from
+  // date clicks or month navigation) do NOT re-position the calendar — only the
+  // initial load triggers positioning.
+  useEffect(() => {
+    if (!availableDays) return;
+    if (!calendarReady) {
+      if (availableDays.length > 0) {
+        const first = [...availableDays].sort()[0];
+        const [y, m, d] = first.split('-').map(Number);
+        const firstDate = new Date(y, m - 1, d);
+        const desiredStart = new Date(firstDate);
+        desiredStart.setDate(desiredStart.getDate() - 3);
+        const curStart = new Date(currentMonth);
+        curStart.setHours(0, 0, 0, 0);
+        if (desiredStart.getTime() > curStart.getTime()) {
+          setCurrentMonth(desiredStart);
+        }
+      }
+      setCalendarReady(true);
+    }
+  }, [availableDays, calendarReady]);
 
   const [filterUpdateKey, setFilterUpdateKey] = useState(0);
   
@@ -508,14 +683,6 @@ const BookingModal: React.FC<BookingModalProps> = ({
     }
   }, [bookingData.date, bookingData.time, lastUpdated, setBookingData]);
 
-  const daysInMonth = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const days = new Date(year, month + 1, 0).getDate();
-    const firstDay = new Date(year, month, 1).getDay();
-    return { days, firstDay };
-  };
-
   const isDateDisabled = (date: Date) => {
     const today = getMoroccoToday();
     const checkDate = new Date(date);
@@ -524,6 +691,31 @@ const BookingModal: React.FC<BookingModalProps> = ({
     // Check blocked dates
     const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
     if (blockedDates.includes(dateStr)) return true;
+    // Check closed days of week (salon's off days, e.g. Sunday = 0)
+    if (closedDaysOfWeek.includes(checkDate.getDay())) return true;
+    // Check minimum booking lead time
+    if (bookingDelay && bookingDelay.value && bookingDelay.unit && !bookingDelay.allowLastMoment) {
+      const now = getMoroccoDate();
+      let minDate = new Date(now);
+      if (bookingDelay.unit === 'heures') {
+        const leadMs = bookingDelay.value * 60 * 60 * 1000;
+        minDate = new Date(now.getTime() + leadMs);
+      } else if (bookingDelay.unit === 'jours') {
+        minDate.setDate(minDate.getDate() + bookingDelay.value);
+      } else if (bookingDelay.unit === 'semaines') {
+        minDate.setDate(minDate.getDate() + bookingDelay.value * 7);
+      }
+      const minDay = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
+      if (checkDate.getTime() < minDay.getTime()) return true;
+    }
+    // Check maximum advance booking window
+    const maxDay = new Date(today);
+    maxDay.setDate(maxDay.getDate() + bookingAdvanceDays);
+    if (checkDate.getTime() > maxDay.getTime()) return true;
+    // Check availableDays (from backend existence check).
+    // Only grey out after the API has responded (availableDays !== null).
+    // When availableDays is [] (zero available days), ALL days get greyed out.
+    if (availableDays !== null && !availableDays.includes(dateStr)) return true;
     return false;
   };
 
@@ -546,7 +738,6 @@ const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-  const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
   useEffect(() => {
     if (bookingData.date) {
@@ -561,7 +752,6 @@ const BookingModal: React.FC<BookingModalProps> = ({
             if (!prevDate || !isSameDay(date, prevDate)) return date;
             return prevDate;
           });
-          setCurrentMonth(new Date(year, month, 1));
         }
       }
     } else {
@@ -588,7 +778,68 @@ const BookingModal: React.FC<BookingModalProps> = ({
       totalPrice,
       totalDuration,
     }));
-  }, [selectedServices, groupParticipants, includeBooker]);
+  }, [selectedServices, savedPeople]);
+
+  // Remonter savedPeople au parent pour les calculs de disponibilité (existingParticipants)
+  // Debounced 200ms. flatServices is kept via ref to avoid infinite re-render loops
+  // when parent recreates salonServices on every render.
+  const flatServicesRef = useRef(flatServices);
+  flatServicesRef.current = flatServices;
+
+  useEffect(() => {
+    if (!onExistingParticipantsChange) return;
+
+    const timer = setTimeout(() => {
+      const fs = flatServicesRef.current;
+      const existing: Array<{
+        serviceIds: string[];
+        startTime: string;
+        serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
+      }> = [];
+
+      for (const p of savedPeople) {
+        const mainTime = bookingData.date && bookingData.time ? `${bookingData.date}T${bookingData.time}:00` : '';
+        const pTime = p.customDate && p.customTime
+          ? `${p.customDate}T${p.customTime}:00`
+          : mainTime;
+        if (!pTime || p.serviceIds.length === 0) continue;
+
+        const svcEmployees: Array<{ serviceId: string; employeeId: string | null }> = [];
+        if (p.perServiceEmployees && Object.keys(p.perServiceEmployees).length > 0) {
+          for (const [svcKey, empId] of Object.entries(p.perServiceEmployees)) {
+            if (empId && empId !== 'any') {
+              const svc = fs.find((s: any) => (s.id || s.name) === svcKey);
+              const realSvcId = svc?.id || svcKey;
+              svcEmployees.push({ serviceId: realSvcId, employeeId: empId });
+            }
+          }
+        }
+
+        existing.push({
+          serviceIds: p.serviceIds,
+          startTime: pTime,
+          serviceEmployees: svcEmployees.length > 0 ? svcEmployees : undefined,
+        });
+      }
+
+      onExistingParticipantsChange(existing.length > 0 ? existing : []);
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [savedPeople, bookingData.date, bookingData.time, onExistingParticipantsChange]);
+
+  // Notify parent about current person's explicit employee choices for availability checking
+  useEffect(() => {
+    if (!onServiceEmployeesChange || Object.keys(perServiceEmployeeSelections).length === 0) return;
+    const fs = flatServicesRef.current;
+    const entries = Object.entries(perServiceEmployeeSelections)
+      .filter(([_, empId]) => empId && empId !== 'any')
+      .map(([svcKey, empId]) => {
+        const svc = fs.find((s: any) => (s.id || s.name) === svcKey);
+        return { serviceId: svc?.id || svcKey, employeeId: empId };
+      });
+    onServiceEmployeesChange(entries);
+  }, [perServiceEmployeeSelections, onServiceEmployeesChange]);
 
   // Pre-fill booking data with user info
   useEffect(() => {
@@ -628,9 +879,17 @@ const BookingModal: React.FC<BookingModalProps> = ({
     }
   }, [bookingStep]);
 
-  // Fetch real employee availability whenever entering Step 3 or when Date/Time changes
+  // Fetch real employee availability whenever a date/time is selected (step 3)
+  const availAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (bookingStep !== 3 || !salonId || !bookingData.date) return;
+    if (!salonId || !bookingData.date || !bookingData.time) return;
+
+    // Cancel any in-flight availability fetches from a previous effect run
+    if (availAbortRef.current) {
+      availAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    availAbortRef.current = controller;
 
     const bookerServiceIds = selectedServices.map(s => s.id).filter(Boolean) as string[];
 
@@ -643,49 +902,44 @@ const BookingModal: React.FC<BookingModalProps> = ({
       setAvailabilityLoadingMap(prev => ({ ...prev, [personKey]: true }));
       try {
         const res = await api.getEmployeeAvailability(salonId, bookingData.date, timeSlot, serviceIds);
+        if (controller.signal.aborted) return;
         setEmployeeAvailabilityMap(prev => ({ ...prev, [personKey]: res.employees || [] }));
-        setCommonEmployeeIdsPerPerson(prev => ({ ...prev, [personKey]: res.commonEmployeeIds || [] }));
-        setServiceEmployeeData(prev => ({ ...prev, [personKey]: (res as any).services || [] }));
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.name === 'AbortError' || controller.signal.aborted) return;
         console.error(`Error fetching employee availability for ${personKey}:`, err);
         setEmployeeAvailabilityMap(prev => ({ ...prev, [personKey]: [] }));
       } finally {
-        setAvailabilityLoadingMap(prev => ({ ...prev, [personKey]: false }));
+        if (!controller.signal.aborted) {
+          setAvailabilityLoadingMap(prev => ({ ...prev, [personKey]: false }));
+        }
       }
     };
 
-    if (includeBooker && bookingData.time) {
+    if (bookingData.time) {
       fetchAvailabilityForPerson('booker', bookingData.time, bookerServiceIds);
     }
 
-    groupParticipants.forEach(p => {
-      const pDate = p.followsBookerSchedule !== false ? bookingData.date : (p.customDate || bookingData.date);
-      const pTime = p.followsBookerSchedule !== false ? bookingData.time : (p.customTime || bookingData.time);
-      const pServiceIds = p.sameServicesAsBooker ? bookerServiceIds : p.serviceIds;
+    savedPeople.forEach(p => {
+      const pDate = p.customDate || bookingData.date;
+      const pTime = p.customTime || bookingData.time;
+      const pServiceIds = p.serviceIds;
       if (pDate && pTime && pServiceIds.length > 0) {
         fetchAvailabilityForPerson(p.id, pTime, pServiceIds);
       }
     });
-  }, [bookingStep, salonId, bookingData.date, bookingData.time, selectedServices, groupParticipants, includeBooker]);
 
-  // Auto-uncheck "Même employé" when no employee can perform all selected services
-  useEffect(() => {
-    if (selectedServices.length < 2 || !sameEmployeeForAll) return;
-    const bookerCommon = commonEmployeeIdsPerPerson['booker'];
-    if (bookerCommon && bookerCommon.length === 0) {
-      setSameEmployeeForAll(false);
-    }
-  }, [commonEmployeeIdsPerPerson, selectedServices.length, sameEmployeeForAll]);
+    return () => { controller.abort(); };
+  }, [salonId, bookingData.date, bookingData.time, selectedServices, savedPeople]);
 
   const validate = (): boolean => {
     const newErrors: Record<string, boolean> = {};
     
-    if (bookingStep === 2) {
+    if (bookingStep === 3) {
       if (!bookingData.date) newErrors.date = true;
       if (!bookingData.time) newErrors.time = true;
     }
     
-    if (bookingStep === 4 && shouldShowStep3) {
+    if (bookingStep === 4 && shouldShowStep4) {
       if (!(bookingData.firstName || '').trim()) newErrors.firstName = true;
       if (!(bookingData.lastName || '').trim()) newErrors.lastName = true;
       if (!(bookingData.phone || '').trim()) newErrors.phone = true;
@@ -698,21 +952,155 @@ const BookingModal: React.FC<BookingModalProps> = ({
     }
 
     if (bookingStep === 5) {
-      if (!bookingData.paymentMethod) newErrors.paymentMethod = true;
+      // No payment validation needed — paiement sur place
     }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
+  // Add a person to the group (from proches or guest), auto-copying the main client's services
+  const addPersonToGroup = (opts: { name: string; phone?: string; email?: string; familyMemberId?: string }) => {
+    const mainServiceIds = selectedServices.map(s => s.id).filter(Boolean) as string[];
+    
+    // Save the CURRENT person (who just completed their booking) to savedPeople
+    // with ALL their data: services, employees, date/time.
+    // This runs EVERY time addPersonToGroup is called — not just the first time.
+    // Identity is carried so duplicate prevention can match them later.
+    const completedPerson: GuestParticipant = {
+      id: savedPeople.length === 0 ? 'booker-saved' : `person-${Date.now()}`,
+      name: `${bookingData.firstName || 'Vous'} ${bookingData.lastName || ''}`.trim() || 'Vous',
+      phone: bookingData.phone || undefined,
+      familyMemberId: currentFamilyMemberId,
+      sameServicesAsBooker: false,
+      serviceIds: mainServiceIds,
+      employeeId: selectedTeamMemberId === 'any' ? null : selectedTeamMemberId,
+      perServiceEmployees: Object.keys(perServiceEmployeeSelections).length > 0 ? { ...perServiceEmployeeSelections } : undefined,
+      customDate: bookingData.date,
+      customTime: bookingData.time,
+    };
+    if (savedPeople.length === 0) {
+      setSavedPeople([completedPerson]);
+    } else {
+      setSavedPeople(prev => [...prev, completedPerson]);
+    }
+    // The NEXT person being configured is the one from opts.
+    setCurrentFamilyMemberId(opts.familyMemberId);
+
+    // Pre-fill the NEW person's name into bookingData for step 4
+    const nameParts = opts.name.trim().split(/\s+/);
+    const prefilledFirstName = nameParts[0] || '';
+    const prefilledLastName = nameParts.slice(1).join(' ') || '';
+
+    // Pre-fill services from main client for the next person
+    const prefilledServices = flatServices.filter(s => s.id && mainServiceIds.includes(s.id));
+    setSelectedServices(prefilledServices);
+    setSelectedTeamMemberId('any');
+    setPerServiceMode(false);
+    setStep2Phase(0);
+    setPerServiceEmployeeSelections({});
+    // Reset bookingData for the new person — pre-fill name from opts
+    setBookingData({
+      date: bookingData.date || '',
+      time: '',
+      totalDuration: '0',
+      totalPrice: 0,
+      firstName: prefilledFirstName,
+      lastName: prefilledLastName,
+      email: opts.email || bookingData.email || '',
+      phone: opts.phone || bookingData.phone || '',
+      notes: bookingData.notes || '',
+    });
+    setBookingStep(1);
+  };
+
+  const resetGuestForm = () => {
+    setShowGuestForm(false);
+    setGuestName('');
+    setGuestPhone('');
+    setGuestEmail('');
+    setGuestFormError('');
+    setShowProchePrompt(false);
+    setProcheRelation('');
+    setIsAddingProche(false);
+  };
+
+  const handleGuestSubmit = () => {
+    const name = guestName.trim();
+    const phone = guestPhone.trim();
+    const email = guestEmail.trim();
+
+    if (!name || name.length < 2) {
+      setGuestFormError('Le prénom est requis (minimum 2 caractères)');
+      return;
+    }
+    if (!phone) {
+      setGuestFormError('Le numéro de téléphone est requis');
+      return;
+    }
+    const phoneErr = getMoroccanPhoneError(phone);
+    if (phoneErr) {
+      setGuestFormError(phoneErr);
+      return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setGuestFormError('Format d\'email invalide');
+      return;
+    }
+
+    // ── Duplicate-participant prevention (session-scoped only) ──
+    // A one-time guest is a duplicate when BOTH normalized name and phone match
+    // an already-added participant, the person currently being configured, or
+    // the booker themselves. Phone is the reliable signal; name alone is too loose.
+    const normPhone = normalizePhone;
+    const normName = (n?: string) => (n || '').trim().toLowerCase();
+    const gName = normName(name);
+    const gPhone = normPhone(phone);
+
+    const existingPeople: Array<{ name: string; phone: string }> = [
+      ...savedPeople.map((p) => ({ name: p.name || '', phone: p.phone || '' })),
+      // The person currently being configured (may be the booker).
+      { name: `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim(), phone: bookingData.phone || '' },
+    ];
+    // If the booker wasn't configured through step 4 (authenticated users skip it),
+    // add their identity from the profile so they can't be re-added as a guest.
+    if (savedPeople.length === 0) {
+      const booker =
+        (bookerContact.firstName ? bookerContact : null) ||
+        clientProfileData ||
+        (user
+          ? {
+              firstName: user.firstName || '',
+              lastName: user.lastName || '',
+              phone: user.phone || '',
+            }
+          : null);
+      if (booker) {
+        existingPeople.push({
+          name: `${booker.firstName || ''} ${booker.lastName || ''}`.trim(),
+          phone: booker.phone || '',
+        });
+      }
+    }
+
+    const duplicate = existingPeople.some(
+      (p) =>
+        gName === normName(p.name) &&
+        gPhone !== '' &&
+        gPhone === normPhone(p.phone),
+    );
+    if (duplicate) {
+      setGuestFormError('Cette personne a déjà été ajoutée à cette réservation.');
+      return;
+    }
+
+    setShowProchePrompt(true);
+  };
+
   const handleContinue = async () => {
     setError(null);
     
     if (bookingStep === 1 && selectedServices.length === 0) return;
-    if (bookingStep === 1 && !includeBooker && groupParticipants.length === 0) {
-      setError('Sélectionnez au moins une personne (Moi ou un proche / invité).');
-      return;
-    }
 
     if (bookingStep === 1) {
       setBookingStep(2);
@@ -720,19 +1108,100 @@ const BookingModal: React.FC<BookingModalProps> = ({
     }
 
     if (bookingStep === 2) {
-      if (!validate()) return;
-      setBookingStep(3);
-      return;
+      // 2-phase employee choice:
+      //   Phase 0 → 'Sans préférence': skip to date step
+      //   Phase 0 → 'Sélectionner par prestation': advance to phase 1
+      //   Phase 1 → go to date step
+      if (step2Phase === 0) {
+        if (perServiceMode) {
+          // Pre-fill all selected services with 'any' so the resolution at step 5 can find them
+          setPerServiceEmployeeSelections(prev => {
+            const updated = { ...prev };
+            for (const svc of selectedServices) {
+              const key = svc.id || svc.name;
+              if (key && updated[key] === undefined) {
+                updated[key] = 'any';
+              }
+            }
+            return updated;
+          });
+          setStep2Phase(1);
+          return;
+        } else {
+          // Sans préférence — resolve employees before date step
+          setPerServiceEmployeeSelections(prev => {
+            const updated = { ...prev };
+            for (const svc of selectedServices) {
+              const key = svc.id || svc.name;
+              if (key && (!updated[key] || updated[key] === 'any')) {
+                const capableEmps = employees.filter((emp: Employee) => {
+                  if (!emp.services || emp.services.length === 0) return true;
+                  return emp.services.some(
+                    (es: any) =>
+                      (typeof es === 'string' && (es === svc.id || es === svc.name)) ||
+                      (es.serviceId === svc.id) || (es.serviceId === svc.name) || (es.name === svc.name)
+                  );
+                });
+                if (capableEmps.length > 0) {
+                  updated[key] = capableEmps[0].id;
+                }
+              }
+            }
+            return updated;
+          });
+          setBookingStep(3);
+          return;
+        }
+      } else {
+        // Phase 1 — resolve any remaining 'any' selections before date step
+        setPerServiceEmployeeSelections(prev => {
+          const updated = { ...prev };
+          let changed = false;
+          for (const [key, empId] of Object.entries(updated)) {
+            if (empId === 'any') {
+              const svc = selectedServices.find(s => (s.id || s.name) === key);
+              if (svc) {
+                const capableEmps = employees.filter((emp: Employee) => {
+                  if (!emp.services || emp.services.length === 0) return true;
+                  return emp.services.some(
+                    (es: any) =>
+                      (typeof es === 'string' && (es === svc.id || es === svc.name)) ||
+                      (es.serviceId === svc.id) || (es.serviceId === svc.name) || (es.name === svc.name)
+                  );
+                });
+                if (capableEmps.length > 0) {
+                  updated[key] = capableEmps[0].id;
+                  changed = true;
+                }
+              }
+            }
+          }
+          return changed ? updated : prev;
+        });
+        setBookingStep(3);
+        return;
+      }
     }
 
     if (bookingStep === 3) {
-      const nextStep = shouldShowStep3 ? 4 : 5;
+      if (!validate()) return;
+      const nextStep = shouldShowStep4 ? 4 : 5;
       setBookingStep(nextStep);
       return;
     }
 
     if (bookingStep === 4) {
       if (!validate()) return;
+      // Save booker contact info permanently (only on first pass)
+      if (savedPeople.length === 0) {
+        setBookerContact({
+          firstName: bookingData.firstName || '',
+          lastName: bookingData.lastName || '',
+          phone: bookingData.phone || '',
+          email: bookingData.email || '',
+          notes: bookingData.notes || '',
+        });
+      }
       setBookingStep(5);
       return;
     }
@@ -774,7 +1243,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
         if (!finalPhone) missingFields.push('Téléphone');
         
         setError(`Veuillez remplir tous les champs obligatoires : ${missingFields.join(', ')}`);
-        if (shouldShowStep3) {
+        if (shouldShowStep4) {
           setBookingStep(4);
         }
         return;
@@ -785,76 +1254,94 @@ const BookingModal: React.FC<BookingModalProps> = ({
         return;
       }
 
-      const invalidGuest = groupParticipants.find((p) => !p.name.trim());
+      const invalidGuest = savedPeople.find((p) => !p.name.trim());
       if (invalidGuest) {
         setError('Veuillez indiquer le prénom de chaque personne ajoutée.');
-        setBookingStep(1);
         return;
       }
 
-      if (!includeBooker && groupParticipants.length === 0) {
-        setError('Sélectionnez au moins une personne (Moi ou un proche / invité).');
-        setBookingStep(1);
+      if (selectedServices.length === 0) {
+        setError('Veuillez sélectionner au moins un service.');
+        return;
+      }
+
+      if (!bookingData.date || !bookingData.time) {
+        setError('Veuillez sélectionner une date et une heure.');
         return;
       }
 
       setIsLoading(true);
       try {
         const bookerServiceIds = selectedServices.map(s => s.id).filter(Boolean) as string[];
-        if (includeBooker && bookerServiceIds.length === 0) {
-          throw new Error('Aucun service sélectionné pour le réservant');
-        }
-
-        if (!bookingData.date || !bookingData.time) {
-          throw new Error('Veuillez sélectionner une date et une heure');
-        }
-
         const startDateTime = createDateFromMoroccoDateTime(bookingData.date, bookingData.time);
 
-        // Compute per-service employees for the booker
-        const bookerServiceEmployees = !sameEmployeeForAll && selectedServices.length > 1 && perServiceEmployeeMap['booker']
-          ? selectedServices.map(s => ({
-              serviceId: s.id || s.name,
-              employeeId: (perServiceEmployeeMap['booker'] || {})[s.id || s.name] &&
-                (perServiceEmployeeMap['booker'] || {})[s.id || s.name] !== 'any'
-                ? (perServiceEmployeeMap['booker'] || {})[s.id || s.name] : null,
-            }))
-          : undefined;
-
-        const bookingResponse = await api.createBooking({
-          tenantId: salonId,
-          firstName: finalFirstName.trim(),
-          lastName: finalLastName.trim(),
-          email: finalEmail.trim() || undefined,
-          phone: finalPhone.trim(),
-          serviceIds: bookerServiceIds,
-          startTime: startDateTime.toISOString(),
-          employeeId: selectedTeamMemberId === 'any' ? null : selectedTeamMemberId,
-          ...(bookerServiceEmployees ? { serviceEmployees: bookerServiceEmployees } : {}),
-          notes: bookingData.notes,
-          includeBooker,
-          participants: groupParticipants.map((p) => {
-            const pDate = p.followsBookerSchedule !== false ? bookingData.date : (p.customDate || bookingData.date);
-            const pTime = p.followsBookerSchedule !== false ? bookingData.time : (p.customTime || bookingData.time);
-            const pServices = p.sameServicesAsBooker ? selectedServices : flatServices.filter((s) => p.serviceIds.includes((s.id || s.name) as string));
-            const pServiceEmployees = !sameEmployeeForAll && pServices.length > 1 && perServiceEmployeeMap[p.id]
-              ? pServices.map(s => ({
-                  serviceId: s.id || s.name,
-                  employeeId: (perServiceEmployeeMap[p.id] || {})[s.id || s.name] &&
-                    (perServiceEmployeeMap[p.id] || {})[s.id || s.name] !== 'any'
-                    ? (perServiceEmployeeMap[p.id] || {})[s.id || s.name] : null,
-                }))
-              : undefined;
+        // Build participants list: savedPeople + current person
+        const allParticipants = [
+          ...savedPeople.map((p) => {
+            const pDate = p.customDate || bookingData.date;
+            const pTime = p.customTime || bookingData.time;
             const pStart = createDateFromMoroccoDateTime(pDate, pTime);
+            // Translate per-service selections to real service IDs
+            const svcEmployees: Array<{ serviceId: string; employeeId: string | null }> = [];
+            if (p.perServiceEmployees && Object.keys(p.perServiceEmployees).length > 0) {
+              for (const [svcKey, empId] of Object.entries(p.perServiceEmployees)) {
+                if (empId && empId !== 'any') {
+                  const svc = flatServices.find((s: any) => (s.id || s.name) === svcKey);
+                  svcEmployees.push({ serviceId: svc?.id || svcKey, employeeId: empId });
+                }
+              }
+            }
             return {
               name: p.name.trim(),
-              sameServicesAsBooker: p.sameServicesAsBooker,
-              serviceIds: p.sameServicesAsBooker ? undefined : p.serviceIds,
-              employeeId: !p.employeeId || p.employeeId === 'any' ? null : p.employeeId,
-              ...(pServiceEmployees ? { serviceEmployees: pServiceEmployees } : {}),
+              sameServicesAsBooker: false,
+              serviceIds: p.serviceIds,
+              employeeId: null,
+              serviceEmployees: svcEmployees.length > 0 ? svcEmployees : undefined,
               startTime: pStart.toISOString(),
             };
           }),
+          {
+            name: `${finalFirstName} ${finalLastName}`.trim(),
+            sameServicesAsBooker: false,
+            serviceIds: bookerServiceIds,
+            employeeId: null,
+            serviceEmployees: (() => {
+              const entries = Object.entries(perServiceEmployeeSelections)
+                .filter(([_, empId]) => empId && empId !== 'any');
+              if (entries.length === 0) return undefined;
+              return entries.map(([svcKey, empId]) => {
+                const svc = flatServices.find((s: any) => (s.id || s.name) === svcKey);
+                return { serviceId: svc?.id || svcKey, employeeId: empId };
+              });
+            })(),
+            startTime: startDateTime.toISOString(),
+          },
+        ];
+
+        // Use the REAL booker's identity for the top-level API fields, NEVER the
+        // current participant's name from bookingData (which can be a guest's name
+        // after addPersonToGroup resets it). Priority: bookerContact (saved at step 4
+        // before any guests were added) → authenticated user → bookingData fallback.
+        const bookerIdentity = bookerContact.firstName
+          ? bookerContact
+          : isAuthenticated && user
+          ? { firstName: user.firstName || '', lastName: user.lastName || '', email: user.email || '', phone: user.phone || '', notes: bookingData.notes }
+          : null;
+        const primaryContact = bookerIdentity ?? { firstName: finalFirstName, lastName: finalLastName, email: finalEmail, phone: finalPhone, notes: bookingData.notes };
+
+        const bookingResponse = await api.createBooking({
+          tenantId: salonId,
+          firstName: primaryContact.firstName.trim(),
+          lastName: primaryContact.lastName.trim(),
+          email: primaryContact.email.trim() || undefined,
+          phone: primaryContact.phone.trim(),
+          serviceIds: allParticipants[0]?.serviceIds || bookerServiceIds,
+          startTime: allParticipants[0]?.startTime || startDateTime.toISOString(),
+          employeeId: null,
+          serviceEmployees: allParticipants[0]?.serviceEmployees,
+          notes: primaryContact.notes,
+          includeBooker: true,
+          participants: allParticipants.slice(1),
         });
 
         const refNum = bookingResponse.appointments?.[0]?.id
@@ -873,6 +1360,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
           participants: pricingParticipants,
           grandTotal: bookingResponse.pricing?.grandTotal ?? getTotalPrice(),
         });
+        setReceiptBookerName(
+          bookingResponse.client
+            ? `${bookingResponse.client.firstName} ${bookingResponse.client.lastName}`.trim()
+            : undefined,
+        );
 
         setIsLoading(false);
         setShowReceipt(true);
@@ -901,19 +1393,20 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
   if (showReceipt) {
     return (
-      <Receipt
-        bookingData={bookingData}
-        selectedServices={selectedServices}
-        receiptSummary={receiptSummary}
-        onClose={() => {
+        <Receipt
+          bookingData={bookingData}
+          selectedServices={selectedServices}
+          receiptSummary={receiptSummary}
+          onClose={() => {
           setShowReceipt(false);
           setIsLoading(true);
           setTimeout(() => {
             setIsLoading(false);
             onClose();
             setSelectedServices([]);
-            setGroupParticipants([]);
+            setSavedPeople([]);
             setReceiptSummary(null);
+            setReceiptBookerName(undefined);
             setBookingStep(1);
             setBookingData({
               firstName: '',
@@ -941,7 +1434,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
         }}
         referenceNumber={referenceNumber || undefined}
         salonName={salonData?.name}
-        clientName={`${bookingData.firstName} ${bookingData.lastName}`}
+        clientName={receiptBookerName}
         salonAddress={salonData?.address}
         salonCity={salonData?.city}
         salonPhone={salonData?.phone}
@@ -953,439 +1446,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
   }
 
   // Helper: get total duration in minutes for a set of services
-  const getDurationMinutes = (svcList: Service[]): number => {
-    return svcList.reduce((sum, s) => {
-      const d = s.duration.trim();
-      let m = 0;
-      const h = d.match(/(\d+)\s*h/);
-      const mn = d.match(/(\d+)\s*min/);
-      if (h) m += parseInt(h[1], 10) * 60;
-      if (mn) m += parseInt(mn[1], 10);
-      if (!h && !mn && /^\d+$/.test(d)) m += parseInt(d, 10);
-      return sum + m;
-    }, 0);
-  };
-
   // ─── Conflict resolution handler ──────────────────────────────
   // Called after every employee selection change.
   // Preserves the user's latest choice, reassigns others via backend.
-  const handleEmployeeSelection = async (
-    personKey: string,
-    employeeIdVal: string,
-    immediateUpdate: () => void,
-  ) => {
-    // Guard: ignore if triggered by applying resolved state (not user interaction)
-    if (applyingResolvedStateRef.current) return;
-
-    // 1. Apply the user's selection immediately
-    immediateUpdate();
-    setConflictMessage(null);
-
-    // 2. Resolve cross-participant conflicts via backend
-    if (!bookingData.time || !salonId) return;
-
-    // 3. Build the participants array for the backend
-    const bookerServiceIds = selectedServices.map((s) => s.id).filter(Boolean) as string[];
-    const bookerDuration = getDurationMinutes(selectedServices);
-
-    // Determine which participant index just changed
-    const changedIndex = personKey === 'booker' ? 0 : groupParticipants.findIndex((p) => p.id === personKey) + 1;
-    // null means "N'importe qui" → backend resolves. Never send the string "any".
-    const selectedEmpId = employeeIdVal === 'any' ? null : employeeIdVal;
-
-    const participants: Array<{
-      index: number;
-      serviceIds: string[];
-      startTime: string;
-      duration: number;
-      currentEmployeeId: string | null;
-    }> = [];
-
-    if (includeBooker) {
-      const currentEmp = selectedTeamMemberId === 'any' ? null : selectedTeamMemberId;
-      participants.push({
-        index: 0,
-        serviceIds: bookerServiceIds,
-        startTime: bookingData.time,
-        duration: bookerDuration,
-        currentEmployeeId: currentEmp,
-      });
-    }
-
-    groupParticipants.forEach((p, i) => {
-      const idx = i + 1;
-      participants.push({
-        index: idx,
-        serviceIds: p.sameServicesAsBooker
-          ? bookerServiceIds
-          : p.serviceIds.filter(Boolean),
-        startTime: p.customTime || bookingData.time,
-        duration: getDurationMinutes(
-          p.sameServicesAsBooker
-            ? selectedServices
-            : flatServices.filter((s) => p.serviceIds.includes((s.id || s.name) as string)),
-        ),
-        currentEmployeeId: p.employeeId && p.employeeId !== 'any' ? p.employeeId : null,
-      });
-    });
-
-    if (participants.length < 2) return; // no conflict possible with 1 participant
-
-        setResolvingEmployees(true);
-    const thisCall = ++resolveCounterRef.current;
-    try {
-      const result = await api.resolveConflicts(
-        salonId,
-        bookingData.date || '',
-        changedIndex,
-        selectedEmpId,
-        participants,
-      );
-      if (thisCall !== resolveCounterRef.current) return; // stale, newer request in flight
-
-      if (result.resolved && result.assignments) {
-        // Check if any auto-assignments were made   (excluding the one just changed)
-        const autoCount = result.assignments.filter(
-          (a) => a.autoAssigned && a.employeeId !== employeeIdVal,
-        ).length;
-        if (autoCount > 0) {
-          setToastMessage(
-            'Les collaborateurs ont été réaffectés automatiquement afin d\'éviter un conflit.',
-          );
-          setTimeout(() => setToastMessage(null), 4000);
-        }
-
-        // Mark that we're about to apply resolved state,
-        // so spurious onChange events during the re-render are dropped.
-        applyingResolvedStateRef.current = true;
-
-        // Apply resolved assignments
-        try {
-          for (const a of result.assignments) {
-            // Resolve the participant and their services
-            const participant = a.index === 0 ? null : groupParticipants[a.index - 1];
-            const personKey = a.index === 0 ? 'booker' : participant?.id;
-            const ownSvcIds = participant?.serviceIds || [];
-            const pServices = a.index === 0
-              ? selectedServices
-              : participant?.sameServicesAsBooker
-                ? selectedServices
-                : ownSvcIds.length > 0
-                  ? flatServices.filter((s) =>
-                      ownSvcIds.includes((s.id || s.name) as string),
-                    )
-                  : [];
-
-            // Write to the participant's employee slot
-            if (a.index === 0) {
-              if (a.employeeId !== selectedTeamMemberId) {
-                setSelectedTeamMemberId(a.employeeId);
-              }
-            } else {
-              const pIdx = a.index - 1;
-              setGroupParticipants((prev) =>
-                prev.map((item, i) =>
-                  i === pIdx && item.employeeId !== a.employeeId
-                    ? { ...item, employeeId: a.employeeId }
-                    : item,
-                ),
-              );
-            }
-
-            // Always write the resolver's assignment into perServiceEmployeeMap
-            // for every service of this participant, so per-service dropdowns
-            // reflect the resolved state (not a stale per-service override).
-            if (personKey && pServices.length > 0) {
-              setPerServiceEmployeeMap((prev) => ({
-                ...prev,
-                [personKey]: Object.fromEntries(
-                  pServices.map((s) => [s.id || s.name, a.employeeId]),
-                ),
-              }));
-            }
-          }
-        } finally {
-          // Clear guard after React has committed the re-render
-          setTimeout(() => {
-            applyingResolvedStateRef.current = false;
-          }, 0);
-        }
-      } else if (result.conflict) {
-        setConflictMessage(
-          result.message ||
-            'Aucun collaborateur disponible pour satisfaire toutes les contraintes.',
-        );
-        setTimeout(() => setConflictMessage(null), 6000);
-      }
-    } catch (err) {
-      console.error('Conflict resolution error:', err);
-    } finally {
-      // Only clear resolving after ALL state updates above have been applied
-      setResolvingEmployees(false);
-    }
-  };
-
-  // Per-service employee dropdown pickers (when "Même employé" is unchecked)
-  const renderPerServicePickers = (
-    personKey: string,
-    timeSlot: string,
-    svcs: Service[],
-    currentSelectedId: string,
-    onSingleSelect: (empId: string) => void
-  ) => {
-    const availabilities = employeeAvailabilityMap[personKey] || [];
-    const loadingAvail = availabilityLoadingMap[personKey] || false;
-    const personServices = serviceEmployeeData[personKey] || [];
-    const personPerService = perServiceEmployeeMap[personKey] || {};
-
-    const setPersonService = (serviceId: string, empIdVal: string) => {
-      setPerServiceEmployeeMap(prev => ({
-        ...prev,
-        [personKey]: { ...(prev[personKey] || {}), [serviceId]: empIdVal },
-      }));
-    };
-
-    if (loadingAvail) {
-      return (
-        <div className="p-4 text-center text-sm text-gray-500 bg-gray-50 rounded-xl animate-pulse">
-          Vérification des disponibilités...
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-4">
-        {svcs.map((svc) => {
-          const svcId = svc.id || svc.name;
-          const svcAvail = personServices.find((s: any) => s.serviceId === svcId)?.employees || availabilities;
-          const selectedEmp = personPerService[svcId] || currentSelectedId;
-          return (
-            <div key={svcId} className="p-3 bg-gray-50 rounded-xl space-y-2">
-              <label className="text-xs font-bold text-gray-700 flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[10px] font-bold">
-                  {svcs.indexOf(svc) + 1}
-                </span>
-                {svc.name}
-                <span className="font-normal text-gray-400">({svc.duration} min)</span>
-              </label>
-              <select
-                value={selectedEmp}
-                onChange={(e) => {
-                  // Guard: drop spurious onChange from post-resolve re-render
-                  if (applyingResolvedStateRef.current) return;
-
-                  const val = e.target.value;
-
-                  setPersonService(svcId, val);
-                  onSingleSelect(val);
-                }}
-                className="w-full p-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:border-black"
-              >
-                <option value="any">N'importe qui</option>
-                {svcAvail.map((emp: any) => {
-                  const isAvail = emp.available !== false;
-                  const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || emp.name || emp.id;
-                  return (
-                    <option key={emp.id} value={emp.id} disabled={!isAvail}>
-                      {fullName}{isAvail ? '' : ' — Indisponible'}
-                    </option>
-                  );
-                })}
-              </select>
-              {selectedEmp !== 'any' && (
-                <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                  <Check className="w-3 h-3 text-emerald-600" />
-                  Affecté à ce service
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {/* No common employee informational message */}
-        {commonEmployeeIdsPerPerson[personKey]?.length === 0 && svcs.length > 1 && (
-          <p className="text-xs text-amber-700 bg-amber-50 p-3 rounded-xl">
-            Aucun collaborateur ne peut réaliser toutes les prestations sélectionnées.
-            Veuillez choisir un collaborateur pour chaque prestation.
-          </p>
-        )}
-      </div>
-    );
-  };
-
-  // Render Employee Selection Cards Component for a specific person
-  const renderEmployeeCards = (
-    personKey: string,
-    currentSelectedId: string,
-    onSelect: (empId: string) => void,
-    employeeIdFilter?: string[]
-  ) => {
-    const availabilities = employeeAvailabilityMap[personKey] || [];
-    const loadingAvail = availabilityLoadingMap[personKey] || false;
-
-    // Filter employees from props or availability
-    const allEmployeesList = employees.length > 0
-      ? employees
-      : availabilities.map(a => ({ id: a.id, firstName: a.firstName, lastName: a.lastName, role: '', avatar: undefined }));
-
-    const filteredList = employeeIdFilter && employeeIdFilter.length > 0
-      ? allEmployeesList.filter(emp => employeeIdFilter.includes(emp.id))
-      : allEmployeesList;
-
-    const anyAvailable = availabilities.some(a => a.available);
-
-    // ---- Cross-participant conflict prevention ----
-    // Build set of employee IDs already selected by OTHER participants whose time window overlaps
-    const blockedByOthers = new Map<string, string>(); // employeeId -> participantName
-    const bookerStart = bookingData.time;
-    const bookerTotalMinutes = getDurationMinutes(selectedServices);
-    const parseMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-
-    const getOverlap = (t1: string, t2: string) => {
-      // Two time ranges [t1, t1+dur1) and [t2, t2+dur2) overlap
-      // Simple: same start time = same duration = full overlap
-      // Different start times: check if intervals intersect
-      const s1 = parseMin(t1), s2 = parseMin(t2);
-      const e1 = s1 + (personKey === 'booker' ? bookerTotalMinutes : parseMin(bookingData.time) + bookerTotalMinutes - parseMin(bookingData.time));
-      // Use booker duration as reference for simplicity
-      const dur = bookerTotalMinutes;
-      const e2 = s2 + dur;
-      return s1 < e2 && e1 > s2;
-    };
-
-    // Get this person's start time
-    const thisPersonTime = personKey === 'booker'
-      ? bookingData.time
-      : (groupParticipants.find(p => p.id === personKey)?.customTime || bookingData.time);
-
-    // Check booker's selection against this person
-    if (personKey !== 'booker' && includeBooker && selectedTeamMemberId && selectedTeamMemberId !== 'any' && bookingData.time && thisPersonTime) {
-      if (getOverlap(thisPersonTime, bookingData.time)) {
-        blockedByOthers.set(selectedTeamMemberId, 'vous');
-      }
-    }
-
-    // Check other participants' selections against this person
-    for (const otherP of groupParticipants) {
-      if (otherP.id === personKey) continue;
-      if (!otherP.employeeId || otherP.employeeId === 'any') continue;
-      const otherTime = otherP.customTime || bookingData.time;
-      if (thisPersonTime && otherTime && getOverlap(thisPersonTime, otherTime)) {
-        blockedByOthers.set(otherP.employeeId, otherP.name);
-      }
-    }
-    // ---- end cross-participant ----
-
-    return (
-      <div className="space-y-3">
-        {loadingAvail ? (
-          <div className="p-4 text-center text-sm text-gray-500 bg-gray-50 rounded-xl animate-pulse">
-            Vérification des disponibilités...
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Anyone / N'importe qui Option */}
-            <div
-              onClick={() => onSelect('any')}
-              className={`p-4 border-2 rounded-2xl cursor-pointer transition-all flex items-center justify-between ${
-                currentSelectedId === 'any'
-                  ? 'border-black bg-black/5 shadow-sm'
-                  : 'border-gray-100 hover:border-gray-300 bg-white'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-700">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-gray-900">N'importe qui</h4>
-                  <p className="text-xs text-gray-500">Maximum de disponibilité</p>
-                </div>
-              </div>
-              {currentSelectedId === 'any' && (
-                <div className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center">
-                  <Check className="w-3 h-3" />
-                </div>
-              )}
-            </div>
-
-            {/* Individual Employee Cards */}
-            {filteredList.map(emp => {
-              const avail = availabilities.find(a => a.id === emp.id);
-              let isAvailable = avail ? avail.available : true;
-              const reason = avail?.reason;
-              const isRecommended = avail?.recommended;
-
-              // Cross-participant conflict: blocked by another participant
-              const blockedByName = blockedByOthers.get(emp.id) || blockedByOthers.get(emp.id);
-              const isBlocked = blockedByOthers.has(emp.id);
-              if (isBlocked) isAvailable = false;
-
-              let statusLabel = 'Disponible';
-              let statusStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-              let statusIcon = null;
-
-              if (isBlocked) {
-                statusLabel = `Déjà choisi par ${blockedByOthers.get(emp.id)}`;
-                statusStyle = 'bg-amber-50 text-amber-800 border-amber-200';
-                statusIcon = <AlertTriangle className="w-3 h-3 inline mr-1" />;
-              } else if (!isAvailable) {
-                statusStyle = 'bg-amber-50 text-amber-800 border-amber-200';
-                statusIcon = <AlertTriangle className="w-3 h-3 inline mr-1" />;
-                if (reason === 'BREAK') statusLabel = 'En pause';
-                else if (reason === 'BOOKED') statusLabel = 'Déjà réservé';
-                else if (reason === 'OUTSIDE_HOURS') statusLabel = 'En dehors des horaires';
-                else if (reason === 'INACTIF') statusLabel = 'Employé inactif';
-                else if (reason === 'VACATION') statusLabel = 'En vacances';
-                else statusLabel = 'Indisponible';
-              } else if (isRecommended) {
-                statusLabel = 'Recommandé';
-                statusStyle = 'bg-blue-50 text-blue-700 border-blue-200';
-              }
-
-              const fullName = `${emp.firstName} ${emp.lastName}`.trim();
-              const initials = `${emp.firstName?.[0] || ''}${emp.lastName?.[0] || ''}`.toUpperCase();
-              const isSelected = currentSelectedId === emp.id;
-              return (
-                <div
-                  key={emp.id}
-                  onClick={() => onSelect(emp.id)}
-                  className={`p-4 border-2 rounded-2xl transition-all flex items-center justify-between cursor-pointer hover:border-gray-300 ${
-                    isSelected
-                      ? 'border-black bg-black/5 shadow-sm'
-                      : 'border-gray-100 bg-white'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    {emp.avatar ? (
-                      <img src={emp.avatar} alt={fullName} className="w-10 h-10 rounded-full object-cover" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-gray-100 text-gray-800 flex items-center justify-center font-bold text-xs">
-                        {initials}
-                      </div>
-                    )}
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-900">{fullName}</h4>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${statusStyle}`}>
-                          {statusIcon}{statusLabel}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  {isSelected && (
-                    <div className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center">
-                      <Check className="w-3 h-3" />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
     <>
       <style jsx>{`
@@ -1405,13 +1468,22 @@ const BookingModal: React.FC<BookingModalProps> = ({
           <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
             <div>
               <h2 className="text-xl font-bold text-gray-900">
-                {bookingStep === 1 && 'Prestations & Groupe'}
-                {bookingStep === 2 && 'Date & Créneau'}
-                {bookingStep === 3 && 'Choix du professionnel'}
+                {bookingStep === 1 && 'Vos prestations'}
+                {bookingStep === 2 && 'Choix du professionnel'}
+                {bookingStep === 3 && 'Date & Créneau'}
                 {bookingStep === 4 && 'Vos coordonnées'}
                 {bookingStep === 5 && 'Paiement & Confirmation'}
               </h2>
               <p className="text-xs text-gray-500 mt-1">Étape {displayStep} sur {totalSteps}</p>
+              {/* 'Pour vous / Pour [Nom]' — which person is being configured.
+                  Hidden on the final recap (step 5) where everyone is already
+                  individually labeled. */}
+              {bookingStep !== 5 && (
+                <span className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 text-xs font-semibold">
+                  <User className="w-3.5 h-3.5" />
+                  {currentPersonLabel}
+                </span>
+              )}
             </div>
             <button
               onClick={onClose}
@@ -1448,30 +1520,45 @@ const BookingModal: React.FC<BookingModalProps> = ({
           {/* Scrollable Modal Content */}
           <div className="p-6 overflow-y-auto flex-1 page-content space-y-6">
             
-            {/* STEP 1: Prestations & Groupe */}
+            {/* STEP 1: Vos prestations — with drag-and-drop reorder + running total */}
             {bookingStep === 1 && (
               <div className="space-y-6">
                 <div>
                   <h3 className="font-bold text-gray-900 text-base mb-3">Services sélectionnés</h3>
-                  <div className="space-y-2">
-                    {selectedServices.map((service, index) => (
-                      <div key={index} className="p-4 bg-gray-50 rounded-2xl flex items-center justify-between">
-                        <div>
-                          <h4 className="font-bold text-sm text-gray-900">{service.name}</h4>
-                          <p className="text-xs text-gray-500">{service.duration} • {service.price} MAD</p>
+                  {selectedServices.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-8">
+                      Sélectionnez au moins un service pour continuer.
+                    </p>
+                  ) : (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={selectedServices.map((s, i) => serviceKey(s, i))}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="space-y-2">
+                          {selectedServices.map((service, index) => {
+                            const sk = serviceKey(service, index);
+                            return (
+                              <SortableServiceItem
+                                key={sk}
+                                id={sk}
+                                service={service}
+                                index={index}
+                                onRemove={() => {
+                                  const newServices = selectedServices.filter((_, i) => i !== index);
+                                  setSelectedServices(newServices);
+                                }}
+                              />
+                            );
+                          })}
                         </div>
-                        <button
-                          onClick={() => {
-                            const newServices = selectedServices.filter((_, i) => i !== index);
-                            setSelectedServices(newServices);
-                          }}
-                          className="text-xs text-rose-600 hover:underline font-medium"
-                        >
-                          Supprimer
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                      </SortableContext>
+                    </DndContext>
+                  )}
 
                   {onAddService && (
                     <button
@@ -1483,99 +1570,257 @@ const BookingModal: React.FC<BookingModalProps> = ({
                   )}
                 </div>
 
-                <GroupParticipantsSection
-                  participants={groupParticipants}
-                  onChange={setGroupParticipants}
-                  includeBooker={includeBooker}
-                  onIncludeBookerChange={setIncludeBooker}
-                  bookerTotal={getTotalPrice()}
-                  allServices={flatServices}
-                  getServicesTotal={getServicesTotal}
-                  familyMembers={familyMembers}
-                  familyLoading={familyLoading}
-                  isAuthenticated={isAuthenticated}
-                />
+                {/* Running total */}
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Total des prestations</span>
+                    <span className="text-lg font-bold text-gray-900">{getTotalPrice()} MAD</span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {selectedServices.length} service{selectedServices.length > 1 ? 's' : ''} · {getTotalDuration()}
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* STEP 2: Date & Créneau */}
+            {/* STEP 2: Choix du professionnel — 2-phase */}
             {bookingStep === 2 && (
               <div className="space-y-6">
-                {/* Date Picker */}
+                <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
+                  <User className="w-5 h-5 text-gray-700" />
+                  {step2Phase === 0 ? 'Choix du professionnel' : 'Professionnel par prestation'}
+                </h3>
+
+                {step2Phase === 0 && (
+                  <>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Comment souhaitez-vous choisir le(s) professionnel(s) pour vos prestations ?
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Option 1: Sans préférence (default) */}
+                      <div
+                        onClick={() => {
+                          setPerServiceMode(false);
+                          setSelectedTeamMemberId('any');
+                          setPerServiceEmployeeSelections({});
+                        }}
+                        className={`p-5 border-2 rounded-2xl transition-all cursor-pointer ${
+                          !perServiceMode
+                            ? 'border-black bg-black/5 shadow-sm'
+                            : 'border-gray-100 hover:border-gray-300 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-gray-700">
+                            <Shuffle className="w-6 h-6" />
+                          </div>
+                          {!perServiceMode && (
+                            <div className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center">
+                              <Check className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+                        </div>
+                        <h4 className="font-bold text-sm text-gray-900 mb-1">Sans préférence</h4>
+                        <p className="text-xs text-gray-500">
+                          Attribution automatique — les meilleurs professionnels disponibles seront choisis pour chaque service.
+                        </p>
+                      </div>
+
+                      {/* Option 2: Sélectionner par prestation */}
+                      <div
+                        onClick={() => {
+                          setPerServiceMode(true);
+                          setSelectedTeamMemberId('any');
+                        }}
+                        className={`p-5 border-2 rounded-2xl transition-all cursor-pointer ${
+                          perServiceMode
+                            ? 'border-black bg-black/5 shadow-sm'
+                            : 'border-gray-100 hover:border-gray-300 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-gray-700">
+                            <Users className="w-6 h-6" />
+                          </div>
+                          {perServiceMode && (
+                            <div className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center">
+                              <Check className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+                        </div>
+                        <h4 className="font-bold text-sm text-gray-900 mb-1">Sélectionner un employé de choix</h4>
+                        <p className="text-xs text-gray-500">
+                          Choisissez un professionnel différent pour chaque prestation.
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {step2Phase === 1 && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-gray-500 mb-2">
+                      Sélectionnez un professionnel pour chaque prestation.
+                    </p>
+                    {selectedServices.map((svc) => {
+                      const svcKey = svc.id || svc.name;
+                      const selectedEmp = perServiceEmployeeSelections[svcKey] || 'any';
+                      // Build list of employees capable of this service
+                      const capableEmps = employees.filter((emp) => {
+                        if (!emp.services || emp.services.length === 0) return true;
+                        return emp.services.some(
+                          (es: any) =>
+                            (typeof es === 'string' && (es === svc.id || es === svc.name)) ||
+                            (es.serviceId === svc.id) ||
+                            (es.serviceId === svc.name) ||
+                            (es.name === svc.name)
+                        );
+                      });
+                      return (
+                        <div
+                          key={svcKey}
+                          className="p-4 bg-gray-50 rounded-2xl space-y-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="font-bold text-sm text-gray-900">{svc.name}</h4>
+                              <p className="text-[11px] text-gray-500">{svc.duration} · {svc.price} MAD</p>
+                            </div>
+                          </div>
+                          {/* Custom Employee Select */}
+                          <EmployeeSelect
+                            value={selectedEmp}
+                            onChange={(val) => {
+                              const empName = val === 'any' ? 'Sans préférence' : getEmployeeName(val, employees);
+                              console.log('[Step2] Employee selected:', { service: svc.name, selectedName: empName });
+                              setPerServiceEmployeeSelections((prev) => ({
+                                ...prev,
+                                [svcKey]: val,
+                              }));
+                            }}
+                            employees={capableEmps}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* STEP 3: Date & Créneau — 14-day sliding window */}
+            {bookingStep === 3 && (
+              <div className="space-y-6">
+                {/* 14-Day Picker */}
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
                       <Calendar className="w-5 h-5 text-gray-700" />
                       Sélectionner une date
                     </h3>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          const prev = new Date(currentMonth);
-                          prev.setMonth(prev.getMonth() - 1);
-                          setCurrentMonth(prev);
-                        }}
-                        className="p-2 hover:bg-gray-100 rounded-xl text-gray-600 transition-colors"
-                      >
-                        ←
-                      </button>
-                      <span className="text-sm font-bold text-gray-900 min-w-[120px] text-center">
-                        {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-                      </span>
-                      <button
-                        onClick={() => {
-                          const next = new Date(currentMonth);
-                          next.setMonth(next.getMonth() + 1);
-                          setCurrentMonth(next);
-                        }}
-                        className="p-2 hover:bg-gray-100 rounded-xl text-gray-600 transition-colors"
-                      >
-                        →
-                      </button>
+                  </div>
+
+                  {!calendarReady ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#002366]"></div>
                     </div>
+                  ) : (
+                  <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <button
+                      onClick={() => {
+                        const prev = new Date(currentMonth);
+                        prev.setDate(prev.getDate() - 14);
+                        setCurrentMonth(prev);
+                      }}
+                      className="p-2 hover:bg-gray-100 rounded-xl text-gray-600 transition-colors"
+                    >
+                      ←
+                    </button>
+                    <span className="text-sm font-bold text-gray-900 min-w-[180px] text-center">
+                      {(() => {
+                        const end = new Date(currentMonth);
+                        end.setDate(end.getDate() + 13);
+                        const fmt = (d: Date) =>
+                          `${d.getDate()} ${monthNames[d.getMonth()].slice(0, 3)}`;
+                        return `${fmt(currentMonth)} - ${fmt(end)} ${end.getFullYear()}`;
+                      })()}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const next = new Date(currentMonth);
+                        next.setDate(next.getDate() + 14);
+                        setCurrentMonth(next);
+                      }}
+                      className="p-2 hover:bg-gray-100 rounded-xl text-gray-600 transition-colors"
+                    >
+                      →
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-gray-400 mb-2">
-                    {dayNames.map(d => <div key={d} className="py-1">{d}</div>)}
-                  </div>
+                  {/* 14-day grid: 2 rows × 7 columns */}
+                  <div className="space-y-2">
+                    {[0, 7].map((offset) => (
+                      <div key={offset} className="grid grid-cols-7 gap-2">
+                        {Array.from({ length: 7 }).map((_, col) => {
+                          const dayOffset = offset + col;
+                          const dateObj = new Date(currentMonth);
+                          dateObj.setDate(currentMonth.getDate() + dayOffset);
 
-                  <div className="grid grid-cols-7 gap-1">
-                    {Array.from({ length: daysInMonth(currentMonth).firstDay }).map((_, i) => (
-                      <div key={`empty-${i}`} />
+                          if (dayOffset >= 14) return <div key={col} />;
+
+                          const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+                          const isBlocked = blockedDates.includes(dateStr);
+                          const disabled = isDateDisabled(dateObj);
+                          const isSelected = selectedDate && isSameDay(dateObj, selectedDate);
+                          const dayName = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][dateObj.getDay()];
+                          const dayNum = dateObj.getDate();
+                          const isToday =
+                            dateObj.getFullYear() === getMoroccoToday().getFullYear() &&
+                            dateObj.getMonth() === getMoroccoToday().getMonth() &&
+                            dateObj.getDate() === getMoroccoToday().getDate();
+
+                          return (
+                            <button
+                              key={col}
+                              onClick={() => handleDateSelect(dateObj)}
+                              disabled={disabled}
+                              title={
+                                isBlocked
+                                  ? 'Fermé'
+                                  : disabled
+                                  ? 'Indisponible'
+                                  : ''
+                              }
+                              className={`flex flex-col items-center gap-0.5 py-3 rounded-2xl text-sm font-bold transition-all border ${
+                                isSelected
+                                  ? 'bg-black text-white border-black shadow-md'
+                                  : disabled
+                                  ? 'text-gray-300 border-transparent cursor-not-allowed'
+                                  : isToday
+                                  ? 'border-black/20 bg-white hover:bg-gray-50 text-gray-900'
+                                  : 'border-gray-100 bg-white hover:bg-gray-50 text-gray-800'
+                              }`}
+                            >
+                              <span className="text-[11px] font-normal text-inherit opacity-70">
+                                {dayName}
+                              </span>
+                              <span className={`text-base ${isSelected ? 'text-white' : ''}`}>
+                                {dayNum}
+                              </span>
+                              {isBlocked && (
+                                <span className="text-[8px] text-gray-400 font-normal">
+                                  Fermé
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     ))}
-                    {Array.from({ length: daysInMonth(currentMonth).days }).map((_, i) => {
-                      const dayNum = i + 1;
-                      const dateObj = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), dayNum);
-                      const isBlocked = blockedDates.includes(
-                        `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`
-                      );
-                      const disabled = isDateDisabled(dateObj);
-                      const isSelected = selectedDate && isSameDay(dateObj, selectedDate);
-
-                      return (
-                        <button
-                          key={dayNum}
-                          onClick={() => handleDateSelect(dateObj)}
-                          disabled={disabled}
-                          title={isBlocked ? 'Fermé' : undefined}
-                          className={`py-3 rounded-2xl text-sm font-bold transition-all relative ${
-                            isSelected
-                              ? 'bg-black text-white shadow-md'
-                              : disabled
-                              ? 'text-gray-300 cursor-not-allowed'
-                              : 'hover:bg-gray-100 text-gray-800'
-                          }`}
-                        >
-                          <span>{dayNum}</span>
-                          {isBlocked && (
-                            <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 text-[7px] text-gray-400 font-normal">
-                              Fermé
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
                   </div>
+                  </div>
+                  )}
                 </div>
 
                 {/* Main Booker Time Slot Selection */}
@@ -1616,240 +1861,6 @@ const BookingModal: React.FC<BookingModalProps> = ({
                     )}
                   </div>
                 )}
-
-                {/* Per-Participant Schedule Overrides */}
-                {groupParticipants.length > 0 && selectedDate && (
-                  <div className="space-y-4 pt-4 border-t border-gray-100">
-                    <h4 className="font-bold text-sm text-gray-900">Participants</h4>
-                    {groupParticipants.map((p) => {
-                      const isLinked = p.followsBookerSchedule !== false;
-                      return (
-                        <div key={p.id} className="p-4 bg-gray-50 rounded-2xl space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-sm text-gray-800">{p.name}</span>
-                          </div>
-
-                          {/* Même créneau que moi checkbox */}
-                          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={isLinked}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setGroupParticipants(prev =>
-                                  prev.map(item =>
-                                    item.id === p.id
-                                      ? {
-                                          ...item,
-                                          followsBookerSchedule: checked,
-                                          customTime: checked ? undefined : (item.customTime || bookingData.time),
-                                          customDate: checked ? undefined : (item.customDate || bookingData.date),
-                                        }
-                                      : item
-                                  )
-                                );
-                              }}
-                              className="rounded border-gray-300"
-                            />
-                            Même créneau que moi
-                          </label>
-
-                          {isLinked ? (
-                            /* Synchronized: show mirrored info */
-                            <div className="text-xs text-gray-500 space-y-1">
-                              <span className="inline-flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {bookingData.date || '—'} à {bookingData.time || '—'}
-                              </span>
-                            </div>
-                          ) : (
-                            /* Independent: show date + time pickers */
-                            <div className="space-y-3 pt-1">
-                              {/* Date input */}
-                              <div>
-                                <label className="text-xs font-medium text-gray-600 mb-1 block">
-                                  Date
-                                </label>
-                                <input
-                                  type="date"
-                                  value={p.customDate || bookingData.date || ''}
-                                  min={getMoroccoToday().toISOString().slice(0, 10)}
-                                  onChange={(e) => {
-                                    setGroupParticipants(prev =>
-                                      prev.map(item =>
-                                        item.id === p.id ? { ...item, customDate: e.target.value } : item
-                                      )
-                                    );
-                                  }}
-                                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-black bg-white"
-                                />
-                              </div>
-                              {/* Time slots */}
-                              <div>
-                                <label className="text-xs font-medium text-gray-600 mb-1 block">
-                                  Horaire
-                                </label>
-                                <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
-                                  {filteredTimeSlots.map((slot) => {
-                                    const isSelected = (p.customTime || bookingData.time) === slot;
-                                    return (
-                                      <button
-                                        key={slot}
-                                        onClick={() => {
-                                          setGroupParticipants(prev =>
-                                            prev.map(item =>
-                                              item.id === p.id ? { ...item, customTime: slot } : item
-                                            )
-                                          );
-                                        }}
-                                        className={`py-2 px-1 text-[11px] font-bold rounded-xl border transition-all ${
-                                          isSelected
-                                            ? 'bg-black text-white border-black'
-                                            : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
-                                        }`}
-                                      >
-                                        {slot}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* STEP 3: Choix du professionnel */}
-            {bookingStep === 3 && (
-              <div className="space-y-6">
-                {/* "Même employé pour tous les services" toggle — only for multi-service */}
-                {selectedServices.length > 1 && (
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl">
-                    <div className="flex items-center gap-2">
-                      <div
-                        onClick={() => {
-                          const newVal = !sameEmployeeForAll;
-                          setSameEmployeeForAll(newVal);
-                          if (newVal) {
-                            setPerServiceEmployeeMap({});
-                          }
-                        }}
-                        className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${
-                          sameEmployeeForAll ? 'bg-black border-black' : 'border-gray-300 bg-white'
-                        }`}
-                      >
-                        {sameEmployeeForAll && <Check className="w-3 h-3 text-white" />}
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">
-                        Même employé pour tous les services
-                      </span>
-                    </div>
-                    {!sameEmployeeForAll && commonEmployeeIdsPerPerson['booker']?.length === 0 && (
-                      <span className="text-[11px] text-amber-700 text-right max-w-[200px]">
-                        Aucun collaborateur ne peut réaliser toutes les prestations sélectionnées.
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Auto-reassignment toast */}
-                {toastMessage && (
-                  <div className="px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-800 flex items-center gap-2 animate-fadeIn">
-                    <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                    {toastMessage}
-                  </div>
-                )}
-
-                {/* Conflict message */}
-                {conflictMessage && (
-                  <div className="px-4 py-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-center gap-2">
-                    <span className="w-4 h-4 rounded-full bg-rose-200 text-rose-700 flex items-center justify-center text-[10px] font-bold shrink-0">!</span>
-                    {conflictMessage}
-                  </div>
-                )}
-
-                {/* Employee selection content with resolving overlay */}
-                <div className="relative">
-                  {resolvingEmployees && (
-                    <div className="absolute inset-0 z-10 bg-white/60 flex items-center justify-center pointer-events-none" style={{ minHeight: '200px' }}>
-                      <div className="flex items-center gap-2 px-4 py-2 bg-white/90 rounded-xl shadow-sm border border-gray-100">
-                        <span className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin" />
-                        <span className="text-sm text-gray-600">Réaffectation en cours...</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Booker Professional Selection */}
-                  {includeBooker && (
-                    <div className="space-y-3">
-                    <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
-                      <User className="w-5 h-5 text-gray-700" />
-                      Professionnel pour vous
-                    </h3>
-                    {sameEmployeeForAll || selectedServices.length <= 1 ? (
-                      renderEmployeeCards('booker', selectedTeamMemberId, (empId) => {
-                        handleEmployeeSelection('booker', empId, () => setSelectedTeamMemberId(empId));
-                      },
-                        sameEmployeeForAll && selectedServices.length > 1 ? commonEmployeeIdsPerPerson['booker'] : undefined
-                      )
-                    ) : (
-                      renderPerServicePickers('booker', bookingData.time || '', selectedServices, selectedTeamMemberId, (empId) => {
-                        handleEmployeeSelection('booker', empId, () => setSelectedTeamMemberId(empId));
-                      })
-                    )}
-                  </div>
-                )}
-
-                {/* Per-Participant Professional Selection */}
-                {groupParticipants.map((p) => {
-                  const pServices = p.sameServicesAsBooker ? selectedServices : flatServices.filter((s) => p.serviceIds.includes((s.id || s.name) as string));
-                  return (
-                    <div key={p.id} className="space-y-3 pt-4 border-t border-gray-100">
-                      <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
-                        <User className="w-5 h-5 text-gray-700" />
-                        Professionnel pour {p.name}
-                      </h3>
-                      {sameEmployeeForAll || pServices.length <= 1 ? (
-                        renderEmployeeCards(
-                          p.id,
-                          p.employeeId || 'any',
-                          (empId) => {
-                            handleEmployeeSelection(p.id, empId, () => {
-                              setGroupParticipants(prev =>
-                                prev.map(item =>
-                                  item.id === p.id ? { ...item, employeeId: empId } : item
-                                )
-                              );
-                            });
-                          },
-                          sameEmployeeForAll && pServices.length > 1 ? commonEmployeeIdsPerPerson[p.id] : undefined
-                        )
-                      ) : (
-                        renderPerServicePickers(
-                          p.id,
-                          (p.customTime || bookingData.time),
-                          pServices,
-                          p.employeeId || 'any',
-                          (empId) => {
-                            handleEmployeeSelection(p.id, empId, () => {
-                              setGroupParticipants(prev =>
-                                prev.map(item =>
-                                  item.id === p.id ? { ...item, employeeId: empId } : item
-                                )
-                              );
-                            });
-                          }
-                        )
-                      )}
-                    </div>
-                  );
-                })}
-                </div>{/* end overlay wrapper */}
               </div>
             )}
 
@@ -1928,75 +1939,313 @@ const BookingModal: React.FC<BookingModalProps> = ({
               <div className="space-y-6">
                 <h4 className="font-bold text-sm text-gray-900">Récapitulatif de la réservation</h4>
 
-                {/* Booker Section */}
-                {includeBooker && (
-                  <RecapParticipantSection
-                    name={`${bookingData.firstName || 'Vous'} ${bookingData.lastName || ''}`.trim() || 'Vous'}
-                    isPrincipal
-                    date={bookingData.date}
-                    time={bookingData.time}
-                    services={selectedServices}
-                    employeeId={selectedTeamMemberId === 'any' ? null : selectedTeamMemberId}
-                    employees={employees}
-                    totalDuration={bookingData.totalDuration}
-                    subtotal={getTotalPrice()}
-                  />
+                {/* Saved participants (people already configured) */}
+                {savedPeople.length > 0 && (
+                  <>
+                    {savedPeople.map((p) => {
+                      const pServices = flatServices.filter((s) => p.serviceIds.includes((s.id || s.name) as string));
+                      const pDuration = p.customDate && p.customTime
+                        ? sumDurations(pServices)
+                        : bookingData.totalDuration;
+                      const pSubtotal = getServicesTotal(p.serviceIds);
+                      return (
+                        <RecapParticipantSection
+                          key={p.id}
+                          name={p.name}
+                          isPrincipal={savedPeople.indexOf(p) === 0}
+                          date={p.customDate || bookingData.date}
+                          time={p.customTime || bookingData.time}
+                          services={pServices}
+                          employeeId={!p.employeeId || p.employeeId === 'any' ? null : p.employeeId}
+                          employees={employees}
+                          perServiceEmployees={p.perServiceEmployees}
+                          totalDuration={pDuration}
+                          subtotal={pSubtotal}
+                        />
+                      );
+                    })}
+                  </>
                 )}
 
-                {/* Participant Sections */}
-                {groupParticipants.map((p) => {
-                  const pServices = p.sameServicesAsBooker
-                    ? selectedServices
-                    : flatServices.filter((s) => p.serviceIds.includes((s.id || s.name) as string));
-                  const pDuration = p.sameServicesAsBooker
-                    ? bookingData.totalDuration
-                    : sumDurations(pServices);
-                  const pSubtotal = p.sameServicesAsBooker
-                    ? getTotalPrice()
-                    : getServicesTotal(p.serviceIds);
-                  const pDate = p.followsBookerSchedule !== false ? bookingData.date : (p.customDate || bookingData.date);
-                  const pTime = p.followsBookerSchedule !== false ? bookingData.time : (p.customTime || bookingData.time);
+                {/* Current person's recap — only show if person has services or name */}
+                {selectedServices.length > 0 && (bookingData.firstName || bookingData.lastName) && (function() {
+                  // Use perServiceEmployeeSelections directly (already resolved at step 2)
+                  // Filter out any remaining 'any' as safety fallback
+                  const resolvedPerService: Record<string, string> | undefined = (() => {
+                    const entries = Object.entries(perServiceEmployeeSelections)
+                      .filter(([_, empId]) => empId && empId !== 'any');
+                    if (entries.length > 0) {
+                      return Object.fromEntries(entries);
+                    }
+                    // Fallback: use selectedTeamMemberId for single-employee mode
+                    return undefined;
+                  })();
+                  
+                  // Log for debugging
+                  if (resolvedPerService) {
+                    const logNames = Object.fromEntries(
+                      Object.entries(resolvedPerService).map(([k, v]) => {
+                        const name = selectedServices.find(s => (s.id || s.name) === k)?.name || k;
+                        return [name, getEmployeeName(v, employees)];
+                      })
+                    );
+                  }
+                  
                   return (
                     <RecapParticipantSection
-                      key={p.id}
-                      name={p.name || 'Invité'}
-                      isPrincipal={false}
-                      date={pDate}
-                      time={pTime}
-                      services={pServices}
-                      employeeId={!p.employeeId || p.employeeId === 'any' ? null : p.employeeId}
+                      name={`${bookingData.firstName || 'Vous'} ${bookingData.lastName || ''}`.trim() || 'Vous'}
+                      isPrincipal={savedPeople.length === 0}
+                      date={bookingData.date}
+                      time={bookingData.time}
+                      services={selectedServices}
+                      employeeId={selectedTeamMemberId === 'any' ? null : selectedTeamMemberId}
                       employees={employees}
-                      totalDuration={pDuration}
-                      subtotal={pSubtotal}
-                      followsBooker={p.followsBookerSchedule !== false}
+                      perServiceEmployees={resolvedPerService}
+                      totalDuration={bookingData.totalDuration}
+                      subtotal={getTotalPrice()}
                     />
                   );
-                })}
+                })()}
+
+                {/* Ajouter une personne button — only for group bookings */}
+                {isGroupBooking && savedPeople.length + 1 < 4 && (
+                  <button
+                    onClick={() => setShowPersonSelector(true)}
+                    className="w-full p-4 border-2 border-dashed border-gray-300 rounded-2xl flex items-center justify-center gap-2 text-sm font-bold text-gray-600 hover:border-gray-900 hover:text-gray-900 transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                    Ajouter une personne à la réservation
+                  </button>
+                )}
+
+                {/* Person Selector Overlay */}
+                {showPersonSelector && (
+                  <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => { resetGuestForm(); setShowPersonSelector(false); }}>
+                    <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-gray-900">Ajouter une personne</h4>
+                        <button onClick={() => { resetGuestForm(); setShowPersonSelector(false); }} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Mes proches */}
+                      {familyMembers.length > 0 && (
+                        <div>
+                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Mes proches</p>
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {familyMembers.map((member) => {
+                              // Duplicate if this proche is already added (by id),
+                              // is the person currently being configured, or matches
+                              // the booker by name — so the booker can't be added as
+                              // an extra participant from their own proches list.
+                              // ALSO matches by normalized name+phone: a guest created
+                              // on the fly during THIS session and saved to "Mes
+                              // proches" has no familyMemberId on its savedPeople
+                              // entry, so id-only matching would let the same person
+                              // be added twice (mobile already compares name+phone).
+                              const normPhone = normalizePhone;
+                              const memberName = (member.name || '').trim().toLowerCase();
+                              const memberPhone = normPhone(member.phone);
+                              // Stable booker identity (set at step 4 / from the
+                              // profile) — NOT the current in-progress person, whose
+                              // name changes per guest. Protects the booker from being
+                              // re-added via their own proches list without falsely
+                              // greying out a proche who merely shares a guest's name.
+                              const bookerName = (
+                                bookerContact.firstName
+                                  ? `${bookerContact.firstName} ${bookerContact.lastName}`
+                                  : clientProfileData?.firstName
+                                  ? `${clientProfileData.firstName} ${clientProfileData.lastName || ''}`
+                                  : isAuthenticated && user
+                                  ? `${user.firstName || ''} ${user.lastName || ''}`
+                                  : ''
+                              ).trim().toLowerCase();
+                              const sameByContact = (name?: string, phone?: string) =>
+                                memberName !== '' &&
+                                memberPhone !== '' &&
+                                (name || '').trim().toLowerCase() === memberName &&
+                                normPhone(phone) === memberPhone;
+                              const alreadyAdded =
+                                savedPeople.some(p => p.familyMemberId === member.id) ||
+                                savedPeople.some(p => sameByContact(p.name, p.phone)) ||
+                                currentFamilyMemberId === member.id ||
+                                // The person currently being configured (guest X
+                                // saved to Mes proches mid-session) — not yet in
+                                // savedPeople, but still the same person.
+                                sameByContact(
+                                  `${bookingData.firstName || ''} ${bookingData.lastName || ''}`.trim(),
+                                  bookingData.phone,
+                                ) ||
+                                (memberName !== '' && memberName === bookerName);
+                              return (
+                                <button
+                                  key={member.id}
+                                  disabled={alreadyAdded}
+                                  onClick={() => {
+                                    addPersonToGroup({
+                                      name: member.name,
+                                      familyMemberId: member.id,
+                                    });
+                                    setShowPersonSelector(false);
+                                  }}
+                                  className={`w-full p-3 rounded-2xl border text-left flex items-center gap-3 transition-all ${
+                                    alreadyAdded
+                                      ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
+                                      : 'border-gray-200 hover:border-black hover:bg-gray-50 text-gray-900'
+                                  }`}
+                                >
+                                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                                    <User className="w-5 h-5 text-gray-500" />
+                                  </div>
+                                  <div>
+                                    <span className="font-bold text-sm block">{member.name}</span>
+                                    {member.relationship && (
+                                      <span className="text-[11px] text-gray-500">{member.relationship}</span>
+                                    )}
+                                  </div>
+                                  {alreadyAdded && (
+                                    <span className="ml-auto text-[11px] text-gray-400">Déjà ajouté</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Ajouter un invité */}
+                      <div>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ajouter un invité</p>
+
+                        {!showGuestForm ? (
+                          <button
+                            onClick={() => { setShowGuestForm(true); setGuestFormError(''); }}
+                            className="w-full p-3 rounded-2xl border-2 border-dashed border-gray-300 text-sm text-gray-500 hover:border-black hover:text-black transition-all flex items-center justify-center gap-2"
+                          >
+                            <Plus className="w-4 h-4" /> Ajouter
+                          </button>
+                        ) : showProchePrompt ? (
+                          <div className="space-y-3">
+                            <p className="text-sm text-gray-700">
+                              Ajouter <strong>{guestName}</strong> à Mes proches ?
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  addPersonToGroup({ name: guestName, phone: guestPhone, email: guestEmail });
+                                  resetGuestForm();
+                                  setShowPersonSelector(false);
+                                }}
+                                className="flex-1 py-2.5 rounded-2xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                              >
+                                Non
+                              </button>
+                              <button
+                                onClick={() => setIsAddingProche(true)}
+                                className="flex-1 py-2.5 rounded-2xl bg-black text-white text-sm hover:bg-gray-800 transition-colors"
+                              >
+                                Oui
+                              </button>
+                            </div>
+                            {isAddingProche && (
+                              <div className="space-y-2 pt-2">
+                                <input
+                                  type="text"
+                                  value={procheRelation}
+                                  onChange={e => setProcheRelation(e.target.value)}
+                                  placeholder="Relation (ex: cousin, ami) — optionnel"
+                                  className="w-full p-3 rounded-2xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-black placeholder:text-gray-400"
+                                />
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      if (user?.email) {
+                                        const parts = guestName.trim().split(/\s+/);
+                                        await api.createFamilyMember({
+                                          clientEmail: user.email,
+                                          firstName: parts[0] || guestName,
+                                          lastName: parts.slice(1).join(' ') || '',
+                                          phone: guestPhone || undefined,
+                                          email: guestEmail || undefined,
+                                          relationship: procheRelation.trim() || 'Invité',
+                                        });
+                                        const familyRes = await api.getClientFamilyMembers(user.email);
+                                        setFamilyMembers((familyRes.familyMembers || []).map((m: any) => ({
+                                          id: m.id,
+                                          name: `${m.firstName} ${m.lastName}`,
+                                          firstName: m.firstName,
+                                          lastName: m.lastName,
+                                          relationship: m.relationship,
+                                          phone: m.phone || undefined,
+                                        })));
+                                      }
+                                    } catch (err) {
+                                      console.error('Failed to save proche:', err);
+                                    }
+                                    addPersonToGroup({ name: guestName, phone: guestPhone, email: guestEmail });
+                                    resetGuestForm();
+                                    setShowPersonSelector(false);
+                                  }}
+                                  className="w-full py-2.5 rounded-2xl bg-black text-white text-sm hover:bg-gray-800 transition-colors"
+                                >
+                                  Ajouter
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <input
+                              type="text"
+                              value={guestName}
+                              onChange={e => { setGuestName(e.target.value); setGuestFormError(''); }}
+                              placeholder="Prénom et nom *"
+                              className="w-full p-3 rounded-2xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-black placeholder:text-gray-400"
+                            />
+                            <input
+                              type="tel"
+                              value={guestPhone}
+                              onChange={e => { setGuestPhone(e.target.value); setGuestFormError(''); }}
+                              placeholder="Téléphone *"
+                              className="w-full p-3 rounded-2xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-black placeholder:text-gray-400"
+                            />
+                            <input
+                              type="email"
+                              value={guestEmail}
+                              onChange={e => { setGuestEmail(e.target.value); setGuestFormError(''); }}
+                              placeholder="Email (optionnel)"
+                              className="w-full p-3 rounded-2xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-black placeholder:text-gray-400"
+                            />
+                            {guestFormError && (
+                              <p className="text-xs text-red-500">{guestFormError}</p>
+                            )}
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => resetGuestForm()}
+                                className="flex-1 py-2.5 rounded-2xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                              >
+                                Annuler
+                              </button>
+                              <button
+                                onClick={handleGuestSubmit}
+                                className="flex-1 py-2.5 rounded-2xl bg-black text-white text-sm hover:bg-gray-800 transition-colors"
+                              >
+                                OK
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Grand Total */}
                 <div className="p-4 bg-gray-50 rounded-2xl">
                   <div className="flex justify-between items-center text-sm font-bold text-gray-900">
                     <span>TOTAL</span>
                     <span>{getGroupGrandTotal()} MAD</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="font-bold text-sm text-gray-900">Mode de paiement</h4>
-                  <div
-                    onClick={() => setBookingData({ ...bookingData, paymentMethod: 'establishment' })}
-                    className="p-4 border-2 border-black bg-black/5 rounded-2xl flex items-center justify-between cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Store className="w-5 h-5 text-gray-900" />
-                      <div>
-                        <h5 className="font-bold text-sm text-gray-900">Paiement sur place</h5>
-                        <p className="text-xs text-gray-500">Réglez directement le jour de votre rendez-vous</p>
-                      </div>
-                    </div>
-                    <div className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center">
-                      <Check className="w-3 h-3" />
-                    </div>
                   </div>
                 </div>
               </div>
@@ -2006,12 +2255,14 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
           {/* Modal Footer Controls */}
           <div className="p-6 border-t border-gray-100 bg-white flex items-center justify-between sticky bottom-0">
-            {bookingStep > 1 ? (
+            {bookingStep > 1 || (bookingStep === 2 && step2Phase === 1) ? (
               <button
                 onClick={() => {
                   setError(null);
                   if (bookingStep === 5) {
-                    setBookingStep(shouldShowStep3 ? 4 : 3);
+                    setBookingStep(shouldShowStep4 ? 4 : 3);
+                  } else if (bookingStep === 2 && step2Phase === 1) {
+                    setStep2Phase(0);
                   } else {
                     setBookingStep(bookingStep - 1);
                   }
@@ -2024,13 +2275,27 @@ const BookingModal: React.FC<BookingModalProps> = ({
               <div />
             )}
 
-            <button
-              onClick={handleContinue}
-              className="px-8 py-3 rounded-2xl text-xs font-bold text-white bg-black hover:bg-gray-800 transition-colors flex items-center gap-2 shadow-lg"
-            >
-              {bookingStep === 5 ? 'Confirmer la réservation' : 'Continuer'}
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            {(() => {
+              // Disable continue when step 3 (date) has no date/time selected
+              const stepDisabled = (() => {
+                if (bookingStep === 3 && (!bookingData.date || !bookingData.time)) return true;
+                return false;
+              })();
+              return (
+                <button
+                  onClick={handleContinue}
+                  disabled={stepDisabled}
+                  className={`px-8 py-3 rounded-2xl text-xs font-bold text-white transition-colors flex items-center gap-2 shadow-lg ${
+                    stepDisabled
+                      ? 'bg-gray-300 cursor-not-allowed'
+                      : 'bg-black hover:bg-gray-800'
+                  }`}
+                >
+                  {bookingStep === 5 ? 'Confirmer la réservation' : 'Continuer'}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              );
+            })()}
           </div>
 
         </div>
@@ -2048,6 +2313,230 @@ const BookingModal: React.FC<BookingModalProps> = ({
   );
 };
 
+// ─── Custom Employee Select Component ─────────────────────────────
+
+function EmployeeSelect({
+  value,
+  onChange,
+  employees,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  employees: Array<{ id: string; firstName: string; lastName: string; avatar?: string }>;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const matchedEmp = value !== 'any' ? employees.find((e) => e.id === value) : null;
+  const selectedName = matchedEmp
+    ? `${matchedEmp.firstName} ${matchedEmp.lastName}`.trim()
+    : 'Sans préférence';
+
+  return (
+    <>
+      {/* Trigger — shows the selected employee with avatar when chosen */}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-2xl text-sm font-medium transition-all border border-gray-200 bg-white hover:border-gray-300"
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          {value === 'any' ? (
+            <span className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+              <Shuffle className="w-3.5 h-3.5 text-gray-400" />
+            </span>
+          ) : (
+            <EmployeeAvatar name={selectedName} avatar={matchedEmp?.avatar} size={28} />
+          )}
+          <span
+            className={`truncate ${value === 'any' ? 'text-gray-400' : 'text-gray-900'}`}
+          >
+            {selectedName}
+          </span>
+        </span>
+        <ChevronRight className="w-4 h-4 text-gray-500 shrink-0" />
+      </button>
+
+      {/* Popup: employees with avatars on the left — more room to show them clearly */}
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setOpen(false)}
+          />
+          <div className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h4 className="font-bold text-gray-900 text-base">
+                  Choisir un professionnel
+                </h4>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Sélectionnez qui prendra en charge la prestation.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 -mx-2 px-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onChange('any');
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-3 py-3 rounded-xl text-sm transition-colors flex items-center gap-3 ${
+                  value === 'any'
+                    ? 'bg-black/5 text-black font-semibold'
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <span className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                  <Shuffle className="w-4 h-4 text-gray-400" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block truncate">Sans préférence</span>
+                  <span className="block text-[11px] text-gray-400 font-normal">
+                    Attribution automatique
+                  </span>
+                </span>
+                {value === 'any' && <Check className="w-4 h-4 text-black" />}
+              </button>
+              <div className="border-t border-gray-100 my-1" />
+              {employees.map((emp) => {
+                const fullName = `${emp.firstName} ${emp.lastName}`.trim();
+                const isActive = value === emp.id;
+                return (
+                  <button
+                    key={emp.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(emp.id);
+                      setOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-3 rounded-xl text-sm transition-colors flex items-center gap-3 ${
+                      isActive
+                        ? 'bg-black/5 text-black font-semibold'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <EmployeeAvatar name={fullName} avatar={emp.avatar} size={36} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block truncate">{fullName}</span>
+                      <span className="block text-[11px] text-gray-400 font-normal">
+                        Disponible
+                      </span>
+                    </span>
+                    {isActive && <Check className="w-4 h-4 text-black" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Avatar circle — photo when available, name initial otherwise (state-based
+// fallback so a failed image shows the initial in-flow, like mobile).
+function EmployeeAvatar({
+  name,
+  avatar,
+  size,
+}: {
+  name: string;
+  avatar?: string;
+  size: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  const initials = name.trim().charAt(0).toUpperCase() || '?';
+  const fallback = (
+    <span
+      className="rounded-full bg-gray-100 flex items-center justify-center font-bold text-gray-500 shrink-0"
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.4) }}
+    >
+      {initials}
+    </span>
+  );
+  if (!avatar || failed) return fallback;
+  return (
+    <img
+      src={avatar}
+      alt={name}
+      className="rounded-full object-cover shrink-0"
+      style={{ width: size, height: size }}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+
+// ─── Sortable Service Item Component ──────────────────────────────
+
+function SortableServiceItem({ id, service, index, onRemove }: {
+  id: string;
+  service: Service;
+  index: number;
+  onRemove: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto' as any,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`p-4 bg-white rounded-2xl flex items-center justify-between border ${
+        isDragging ? 'border-black shadow-lg' : 'border-gray-200'
+      }`}
+    >
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <button
+          className="cursor-grab active:cursor-grabbing touch-none text-gray-400 hover:text-gray-700 transition-colors"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="w-5 h-5" />
+        </button>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[11px] font-bold shrink-0">
+              {index + 1}
+            </span>
+            <h4 className="font-bold text-sm text-gray-900 truncate">{service.name}</h4>
+          </div>
+          <p className="text-xs text-gray-500 ml-9">{service.duration} • {service.price} MAD</p>
+        </div>
+      </div>
+      <button
+        onClick={onRemove}
+        className="text-xs text-rose-600 hover:underline font-medium shrink-0 ml-2"
+      >
+        Supprimer
+      </button>
+    </div>
+  );
+}
+
 // ─── Recap Participant Section ────────────────────────────────────
 
 function getEmployeeName(empId: string | null | undefined, employees: Employee[]): string {
@@ -2064,6 +2553,7 @@ function RecapParticipantSection({
   services,
   employeeId,
   employees,
+  perServiceEmployees,
   totalDuration,
   subtotal,
   followsBooker,
@@ -2075,11 +2565,38 @@ function RecapParticipantSection({
   services: Service[];
   employeeId: string | null;
   employees: Employee[];
+  perServiceEmployees?: Record<string, string>;
   totalDuration: string;
   subtotal: number;
   followsBooker?: boolean;
 }) {
   const empName = getEmployeeName(employeeId, employees);
+
+  // For a single service, get the employee name
+  const getEmpForService = (svc: Service): string | null => {
+    if (perServiceEmployees) {
+      const key = svc.id || svc.name;
+      const empId = perServiceEmployees[key];
+      if (empId && empId !== 'any') return getEmployeeName(empId, employees);
+      return null;
+    }
+    if (employeeId) return empName;
+    return null;
+  };
+
+  // Compute service time windows for logging (fires only when the content changes)
+  const timeWindowsLogKey = JSON.stringify(services.map((svc) => {
+    if (!time) return { name: svc.name, window: '', empName: getEmpForService(svc) };
+    const durMinutes = getDurationMinutes([svc]);
+    const end = addMinutes(time, durMinutes);
+    return { name: svc.name, window: `${time} → ${end}`, empName: getEmpForService(svc) };
+  }));
+  useEffect(() => {
+    if (timeWindowsLogKey === '[]') return;
+    const windows = JSON.parse(timeWindowsLogKey) as Array<{ name: string; window: string; empName: string | null }>;
+    console.log('[Recap]', name, '-', windows.map(w => `${w.name} ${w.window}${w.empName ? ` (${w.empName})` : ''}`).join(' | '));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeWindowsLogKey]);
 
   return (
     <div className="p-4 bg-gray-50 rounded-2xl space-y-3">
@@ -2105,17 +2622,20 @@ function RecapParticipantSection({
       </div>
 
       <div className="space-y-2">
-        {services.map((svc, i) => (
-          <div key={i} className="flex items-center justify-between text-xs">
-            <div>
-              <span className="text-gray-900 font-medium">{svc.name}</span>
-              {employeeId && (
-                <span className="text-gray-500 ml-1">→ {empName}</span>
-              )}
+        {services.map((svc, i) => {
+          const empNameForSvc = getEmpForService(svc);
+          return (
+            <div key={i} className="flex items-center justify-between text-xs">
+              <div className="flex flex-col">
+                <span className="text-gray-900 font-medium">{svc.name}</span>
+                {empNameForSvc && (
+                  <span className="text-[11px] text-gray-500">par {empNameForSvc}</span>
+                )}
+              </div>
+              <span className="text-gray-500 whitespace-nowrap">{svc.duration} · {svc.price} MAD</span>
             </div>
-            <span className="text-gray-500">{svc.duration} · {svc.price} MAD</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="flex items-center justify-between text-xs pt-1 border-t border-gray-200">

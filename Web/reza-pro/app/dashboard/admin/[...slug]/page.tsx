@@ -116,7 +116,6 @@ export default function DynamicAdminPage({ params }: { params: Promise<{ slug: s
           return;
         }
         
-        console.log('[DynamicAdminPage] Loading route:', routeKey);
         setRouteKey(routeKey);
         setLoading(true);
         setError(null);

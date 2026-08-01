@@ -1,9 +1,13 @@
 import { prisma } from '../../lib/prisma';
-import { validateAppointmentRules } from '../../utils/schedulingValidation';
+import {
+  checkEmployeeWorkingHoursAndBreaks,
+  validateAppointmentRules,
+} from '../../utils/schedulingValidation';
 import { resolveEmployeeUserId } from '../../utils/resolveEmployeeUserId';
 import { schedulingService } from './scheduling.service';
 import { formatDateForNotification } from '../../utils/dateTime';
 import { tenantIdFilter } from '../../utils/salonScope';
+import * as log from '../../utils/logger';
 import {
   getServicePrice,
   serializeAppointmentWithServices,
@@ -11,6 +15,12 @@ import {
 } from '../../utils/appointmentServiceItems';
 
 const ACTIVE_APPOINTMENT_STATUSES = new Set(['PENDING', 'CONFIRMED', 'IN_PROGRESS']);
+const ACTIVE_APPOINTMENT_STATUS_LIST = ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] as const;
+
+// For drag-move conflict analysis a COMPLETED/IN_PROGRESS appointment still
+// occupies the slot (client was there, employee was busy) — only CANCELLED and
+// NO_SHOW free it. Using the broad list here is intentional.
+const MOVE_CONFLICT_STATUS_LIST = ['PENDING', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED'] as const;
 
 const serviceSelect = {
   id: true,
@@ -34,6 +44,8 @@ const appointmentListInclude = {
   },
   employee: { select: { id: true, firstName: true, lastName: true } },
   createdBy: { select: { id: true, firstName: true, lastName: true } },
+  bookingParticipant: { select: { displayName: true, clientId: true } },
+  bookingGroup: { select: { id: true, _count: { select: { participants: true } } } },
 };
 
 function throwValidationError(details: {
@@ -44,6 +56,35 @@ function throwValidationError(details: {
   const error: any = new Error('VALIDATION_ERROR');
   error.details = details;
   throw error;
+}
+
+/**
+ * Build exact per-employee windows for an appointment: the legacy top-level
+ * employee covers the whole span; each service item covers its own chained
+ * sub-window (start + cumulative durations in service order).
+ */
+function buildEmployeeWindows(
+  apptEmployeeId: string | null,
+  apptStart: number,
+  apptDuration: number,
+  items: Array<{ employeeId: string | null; duration: number | null }>,
+): Map<string, Array<{ start: number; end: number }>> {
+  const windows = new Map<string, Array<{ start: number; end: number }>>();
+  const push = (empId: string, start: number, end: number) => {
+    const arr = windows.get(empId) ?? [];
+    arr.push({ start, end });
+    windows.set(empId, arr);
+  };
+  if (apptEmployeeId) {
+    push(apptEmployeeId, apptStart, apptStart + apptDuration * 60000);
+  }
+  let cursor = apptStart;
+  for (const item of items) {
+    const win = { start: cursor, end: cursor + (item.duration ?? 0) * 60000 };
+    cursor = win.end;
+    if (item.employeeId) push(item.employeeId, win.start, win.end);
+  }
+  return windows;
 }
 
 export class AppointmentService {
@@ -254,6 +295,13 @@ export class AppointmentService {
     const tenantId = existing.tenantId;
 
     const updateData: any = { ...data };
+    // These fields are read above for validation/lookup but must never be written
+    // by an update: client and tenant can't change via this endpoint, and `source`
+    // is not a column. Passing them to prisma.update breaks with
+    // "Unknown argument" on some client versions.
+    delete updateData.clientId;
+    delete updateData.source;
+    delete updateData.tenantId;
     const servicesChanged =
       data.serviceId !== undefined ||
       data.serviceIds !== undefined ||
@@ -287,6 +335,8 @@ export class AppointmentService {
       data.employeeId !== undefined && updateData.employeeId !== existing.employeeId;
     const scheduleChanged = timeChanged || servicesChanged || employeeChanged;
 
+    const source = data.source as 'ADMIN' | 'PUBLIC' | undefined;
+
     if (scheduleChanged && ACTIVE_APPOINTMENT_STATUSES.has(nextStatus)) {
       const validationResult = await validateAppointmentRules({
         tenantId,
@@ -297,9 +347,78 @@ export class AppointmentService {
         isPublicBooking: false,
         excludeAppointmentId: id,
         validateServiceCompatibility: employeeChanged || servicesChanged,
+        // An employee is only required when the assignment itself is being changed;
+        // a pure time move keeps the existing (possibly per-service) employees.
+        requireEmployee: employeeChanged || servicesChanged,
+        source,
       });
 
       if (!validationResult.isValid) throwValidationError(validationResult);
+
+      // The rules above only check the legacy top-level employeeId. Multi-service
+      // appointments carry their real assignments on AppointmentServiceItem.employeeId,
+      // each covering only its own sub-window inside the appointment. Compare exact
+      // per-employee windows (chained by service order) on both sides, so a move
+      // only conflicts when a window truly collides — never on the total span.
+      // (PUBLIC/warning phase only — ADMIN already confirmed the move.)
+      if (source !== 'ADMIN') {
+        const selfItems = await prisma.appointmentServiceItem.findMany({
+          where: { appointmentId: id },
+          orderBy: { sortOrder: 'asc' },
+          select: { employeeId: true, duration: true },
+        });
+        const candidates = buildEmployeeWindows(
+          existing.employeeId,
+          startTime.getTime(),
+          existing.duration,
+          selfItems,
+        );
+
+        if (candidates.size > 0) {
+          const others = await prisma.appointment.findMany({
+            where: {
+              tenantId,
+              status: { in: [...ACTIVE_APPOINTMENT_STATUS_LIST] },
+              id: { not: id },
+              startTime: { lt: endTime },
+              endTime: { gt: startTime },
+            },
+            select: {
+              employeeId: true,
+              startTime: true,
+              duration: true,
+              services: {
+                orderBy: { sortOrder: 'asc' },
+                select: { employeeId: true, duration: true },
+              },
+            },
+          });
+
+          for (const other of others) {
+            const occupied = buildEmployeeWindows(
+              other.employeeId,
+              other.startTime.getTime(),
+              other.duration,
+              other.services,
+            );
+            for (const [empId, wins] of candidates) {
+              const occ = occupied.get(empId);
+              if (!occ) continue;
+              for (const w of wins) {
+                for (const o of occ) {
+                  if (w.start < o.end && w.end > o.start) {
+                    throwValidationError({
+                      status: 409,
+                      error: 'Overlapping appointment',
+                      message: 'Ce collaborateur a déjà un rendez-vous sur ce créneau.',
+                    });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
 
     updateData.startTime = startTime;
@@ -371,11 +490,185 @@ export class AppointmentService {
           },
         });
       } catch (e) {
-        console.error('Error creating appointment confirmation notification:', e);
+        log.error('Error creating appointment confirmation notification:', e);
       }
     }
 
     return serializeAppointmentWithServices(appointment);
+  }
+
+  /**
+   * Dry-run validation for a drag-drop move. Checks the new window against
+   * client double-bookings, per-employee windows, and tenant business hours
+   * WITHOUT writing anything to the database. Returns ALL conflicts so the UI
+   * can show a real confirmation dialog (nothing is persisted until the user
+   * confirms the move).
+   */
+  async validateMove(
+    tenantIds: string | string[],
+    id: string,
+    data: { startTime?: string; tenantId?: string },
+  ): Promise<{ conflicts: string[] }> {
+    if (!data.startTime) throw new Error('INVALID_MOVE_DATA');
+    const existing = await prisma.appointment.findFirst({
+      where: { id, tenantId: tenantIdFilter(tenantIds) },
+      include: {
+        services: {
+          orderBy: { sortOrder: 'asc' },
+          select: { employeeId: true, duration: true },
+        },
+      },
+    });
+    if (!existing) throw new Error('APPOINTMENT_NOT_FOUND');
+    const tenantId = existing.tenantId;
+
+    const startTime = new Date(data.startTime);
+    const duration = existing.duration;
+    const endTime = new Date(startTime.getTime() + duration * 60000);
+    const conflicts: string[] = [];
+
+    // 1. Tenant business hours + top-level employee rules (working hours,
+    // day off, breaks, skill) — reuse the shared validation.
+    const rulesResult = await validateAppointmentRules({
+      tenantId,
+      employeeId: existing.employeeId,
+      serviceIds: existing.serviceId ? [existing.serviceId] : [],
+      startTime,
+      endTime,
+      isPublicBooking: false,
+      excludeAppointmentId: id,
+      validateServiceCompatibility: false,
+      requireEmployee: false,
+      source: 'PUBLIC',
+    });
+    if (!rulesResult.isValid && rulesResult.message) {
+      conflicts.push(rulesResult.message);
+    }
+
+    // 2. Client double-booking: the same client can't be in two places at once.
+    if (existing.clientId) {
+      const clientOverlap = await prisma.appointment.findFirst({
+        where: {
+          tenantId,
+          clientId: existing.clientId,
+          status: { in: [...MOVE_CONFLICT_STATUS_LIST] },
+          id: { not: id },
+          startTime: { lt: endTime },
+          endTime: { gt: startTime },
+        },
+        select: { id: true, startTime: true, endTime: true },
+      });
+      if (clientOverlap) {
+        conflicts.push('Ce client a déjà un rendez-vous sur ce créneau.');
+      }
+    }
+
+    // 3. Per-employee windows (per-service employees on multi-service
+    // appointments) — compare the moved appointment's employee windows against
+    // every other active appointment's windows on both sides.
+    const candidates = buildEmployeeWindows(
+      existing.employeeId,
+      startTime.getTime(),
+      existing.duration,
+      existing.services,
+    );
+
+    if (candidates.size > 0) {
+      const others = await prisma.appointment.findMany({
+        where: {
+          tenantId,
+          status: { in: [...MOVE_CONFLICT_STATUS_LIST] },
+          id: { not: id },
+          startTime: { lt: endTime },
+          endTime: { gt: startTime },
+        },
+        select: {
+          employeeId: true,
+          startTime: true,
+          duration: true,
+          services: {
+            orderBy: { sortOrder: 'asc' },
+            select: { employeeId: true, duration: true },
+          },
+        },
+      });
+
+      for (const other of others) {
+        const occupied = buildEmployeeWindows(
+          other.employeeId,
+          other.startTime.getTime(),
+          other.duration,
+          other.services,
+        );
+        for (const [empId, wins] of candidates) {
+          const occ = occupied.get(empId);
+          if (!occ) continue;
+          for (const w of wins) {
+            for (const o of occ) {
+              if (w.start < o.end && w.end > o.start) {
+                conflicts.push('Ce collaborateur a déjà un rendez-vous sur ce créneau.');
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 4. Employee working hours / breaks / day off for EVERY involved employee
+    // (top-level AND per-service). The shared validateAppointmentRules only
+    // checks the legacy top-level employee and silently swallows working-hours
+    // failures for PUBLIC source, so we check each candidate employee window
+    // explicitly here too.
+    if (candidates.size > 0) {
+      const employeeUserIds = [...candidates.keys()];
+      const users = await prisma.user.findMany({
+        where: { id: { in: employeeUserIds }, tenantId, isActive: true },
+        select: { id: true, email: true },
+      });
+      const emails = users.map((u) => u.email).filter(Boolean) as string[];
+
+      const employeeWhere: any = {
+        tenantId,
+        isActive: true,
+        OR: [{ id: { in: employeeUserIds } }],
+      };
+      if (emails.length > 0) employeeWhere.OR.push({ email: { in: emails } });
+
+      const employees = await prisma.employee.findMany({
+        where: employeeWhere,
+        select: { id: true, email: true, workingHours: true },
+      });
+      const settings = await prisma.tenantSettings.findUnique({
+        where: { tenantId },
+        select: { timezone: true },
+      });
+      const timeZone = settings?.timezone || 'Africa/Casablanca';
+
+      const employeeById = new Map(employees.map((e) => [e.id, e]));
+      const employeeByEmail = new Map(
+        employees.filter((e) => e.email).map((e) => [e.email as string, e]),
+      );
+
+      for (const userId of employeeUserIds) {
+        const user = users.find((u) => u.id === userId);
+        const emp =
+          employeeById.get(userId) ||
+          (user?.email ? employeeByEmail.get(user.email) : undefined);
+        if (!emp || !emp.workingHours) continue;
+        const whResult = checkEmployeeWorkingHoursAndBreaks({
+          workingHours: emp.workingHours as any[],
+          startTime,
+          endTime,
+          timeZone,
+        });
+        if (!whResult.isAvailable && whResult.message) {
+          conflicts.push(whResult.message);
+        }
+      }
+    }
+
+    // Deduplicate identical messages.
+    return { conflicts: [...new Set(conflicts)] };
   }
 
   async deleteAppointment(tenantIds: string | string[], id: string, userId: string) {

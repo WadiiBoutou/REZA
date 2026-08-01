@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { Prisma } from '../../prisma/generated/prisma/client';
 import { HttpError } from '../lib/errors';
+import * as log from '../utils/logger';
 
 export interface AppError extends Error {
   statusCode?: number;
@@ -13,11 +14,11 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
-  console.error('========== ERROR HANDLER ==========');
-  console.error('Error type:', err?.constructor?.name);
-  console.error('Error message:', err?.message);
-  console.error('Request path:', req.path);
-  console.error('Request method:', req.method);
+  log.error('========== ERROR HANDLER ==========');
+  log.error('Error type:', err?.constructor?.name);
+  log.error('Error message:', err?.message);
+  log.error('Request path:', req.path);
+  log.error('Request method:', req.method);
 
   if (err instanceof HttpError) {
     return res.status(err.status).json(err.payload);

@@ -1,4 +1,4 @@
-# Documentation - Plateforme REZA (Web & Mobile)
+# README - Plateforme REZA (Web & Mobile)
 
 Bienvenue dans la documentation officielle de la plateforme **REZA**. REZA est une solution SaaS multi-tenant globale dédiée à la gestion d'établissements de beauté et de bien-être (salons de coiffure, instituts de beauté, spas, barbiers, etc.) ainsi qu'à la réservation de prestations en ligne par les clients.
 
@@ -46,6 +46,7 @@ La plateforme REZA se compose de 5 piliers applicatifs majeurs :
 * **Réservations de groupe / Famille** : Possibilité de réserver pour des proches (Family Members) ou d'effectuer des réservations groupées (Booking Groups) avec résolution automatique des conflits de planning.
 * **Chaînage de services** : Réservation de plusieurs services à la suite pour un même client (ex: coupe + brushing) avec coordination automatique des créneaux.
 * **Gestion du statut des RDV** : En attente (`PENDING`), Confirmé (`CONFIRMED`), En cours (`IN_PROGRESS`), Terminé (`COMPLETED`), Annulé (`CANCELLED`), Absent (`NO_SHOW`).
+* **Délai de réservation (`bookingDelay`)** : Délai minimal imposé avant le créneau choisi (valeur du seed : 1 jour, `allowLastMoment: false`). Les créneaux plus proches que ce délai sont masqués côté client.
 
 ### 3. Facturation Client & Abonnement Plateforme
 * **Factures de vente (SALE)** : Générées automatiquement à partir des RDV terminés. Documentent ce que le client paie au salon pour les prestations reçues.
@@ -85,15 +86,15 @@ La plateforme REZA se compose de 5 piliers applicatifs majeurs :
 ```
 +-------------------------------------------------------------------------+
 |                               CLIENTS                                   |
-|   +-------------------+  +-------------------+  +--------------------+  |
-|   |      Web Client / Pro      |  |      Mobile Client/Pro       |  |
-|   |  (Next.js 15/16)  |  |  (Flutter / Dart) |  |  (Next.js 15)      |  |
-|   +---------+---------+  +---------+---------+  +---------+----------+  |
-+-------------|----------------------|----------------------|-------------+
-              |                      |                      |
-              +----------------------+----------------------+
-                                     |
-                                     v
+|   +-----------------------------+  +-------------------------------+    |
+|   |      Web Client / Pro       |  |     Mobile Client / Pro       |    |
+|   |      (Next.js 15/16)        |  |     (Flutter / Dart)          |    |
+|   +---------------+-------------+  +---------------+---------------+    |
++-------------------|----------------------------------|------------------+
+                    |                                  |
+                    +---------------+------------------+
+                                    |
+                                    v
 +-------------------------------------------------------------------------+
 |                         BACKEND API (Node.js / TS)                      |
 |                                Express.js                               |
@@ -151,12 +152,21 @@ REZA/
 
 L'API REZA est une API REST JSON exposée par défaut sur `/api`.
 
-### Authentification & Accès Public
+### Authentification (Pro / Staff)
 * `POST /api/auth/register` - Inscription nouvel utilisateur / salon.
 * `POST /api/auth/login` - Connexion et génération du token JWT.
+* `GET /api/auth/me` - Utilisateur courant.
+* `POST /api/auth/logout` - Déconnexion.
+
+### Vitrine & Découverte (Public)
 * `GET /api/public/tenants` - Recherche publique de salons (filtres ville, catégorie, nom).
-* `GET /api/public/tenant/:identifier` - Détails d'un salon et ses services bookables.
-* `GET /api/public/tenant/:tenantId/available-slots` - Créneaux de disponibilité en temps réel.
+* `GET /api/public/categories` - Liste des catégories.
+* `GET /api/public/tenant/:identifier` - Détails d'un salon (horaires, galerie, avis).
+* `GET /api/public/tenant/:tenantId/services` - Prestations bookables du salon.
+* `GET /api/public/tenant/:tenantId/employees` - Collaborateurs du salon.
+* `GET /api/public/tenant/:tenantId/reviews` - Avis publiés d'un salon.
+* `GET /api/public/services/featured` - Prestations à la une.
+* `GET /api/public/reviews/featured` - Avis à la une.
 * `GET /api/public/availability/stream` - Streaming SSE des disponibilités (mise à jour temps réel).
 
 ### Client Authentication (Public)
@@ -165,24 +175,42 @@ L'API REZA est une API REST JSON exposée par défaut sur `/api`.
 
 ### Booking System (Public)
 * `POST /api/public/bookings` - Créer une réservation (individuelle, groupe, chaîne de services).
+* `GET /api/public/tenant/:tenantId/available-slots` - Créneaux de disponibilité en temps réel.
 * `POST /api/public/tenant/:tenantId/available-slots` - Vérifier les créneaux (avec paramètres dans le body).
 * `GET /api/public/tenant/:tenantId/employee-availability` - Disponibilités par collaborateur.
-* `POST /api/public/tenant/:tenantId/resolve-conflicts` - Résolution de conflits pour les réservations de groupe.
+* `GET /api/public/tenant/:tenantId/available-days` - Jours disponibles (avec délai `bookingDelay` appliqué).
+* `POST /api/public/tenant/:tenantId/validate-participant` - Validation d'un participant avant réservation de groupe.
 * `PUT /api/public/appointments/:id/cancel` - Annulation d'un rendez-vous par le client.
 * `GET /api/public/client/:email/appointments` - Rendez-vous d'un client.
 
-### Client Profile & Favoris (Public)
+### Client Profile, Avis, Notifications & Proches (Public)
 * `GET /api/public/client/:email/favorites` - Liste des salons favoris.
 * `POST /api/public/favorites` - Ajouter un favori.
 * `DELETE /api/public/favorites/:id` - Supprimer un favori.
 * `PUT /api/public/client/:email` - Mettre à jour le profil client.
 * `PUT /api/public/client/:email/change-password` - Changer le mot de passe.
+* `GET /api/public/client/:email/reviews` - Avis laissés par le client.
+* `POST /api/public/reviews` - Déposer un avis.
+* `PUT /api/public/reviews/:id` - Modifier un avis.
+* `DELETE /api/public/reviews/:id` - Supprimer un avis.
+* `GET /api/public/client/:email/notifications` - Notifications du client.
+* `PATCH /api/public/notifications/:id/read` - Marquer une notification comme lue.
+* `GET /api/public/client/:email/family-members` - Membres de la famille (proches) d'un client.
+* `POST /api/public/family-members` - Ajouter un proche.
+* `PUT /api/public/family-members/:id` - Modifier un proche.
+* `DELETE /api/public/family-members/:id` - Supprimer un proche.
+* `POST /api/public/early-access` - Inscription liste d'attente / early access.
 
 ### Salons & Paramètres Tenant (Protégés)
 * `GET /api/tenant` - Récupérer les informations du tenant actif.
 * `PUT /api/tenant` - Mettre à jour les informations du tenant.
 * `GET /api/tenant/settings` - Récupérer les paramètres.
 * `PUT /api/tenant/settings` - Mettre à jour les paramètres de l'établissement.
+* `GET/PUT /api/tenant/settings/business-hours` - Horaires d'ouverture + délai de réservation (`bookingDelay`).
+* `GET/PUT /api/tenant/settings/appointment-display` - Affichage des rendez-vous.
+* `GET/PUT /api/tenant/settings/message` - Message d'accueil / notification.
+* `GET/PUT /api/tenant/settings/waiting-list` - Paramètres de la liste d'attente.
+* `GET/POST/PUT/DELETE /api/tenant/photos` (+ `/:id`) - Galerie photos du salon.
 
 ### Multi-Salon (Protégé)
 * `POST /api/auth/switch-salon` - Basculer vers un autre salon du même compte (ré-émet un JWT).
@@ -194,7 +222,10 @@ L'API REZA est une API REST JSON exposée par défaut sur `/api`.
 ### Clients & Proches (Staff & Admin)
 * `GET /api/clients` - Liste des clients du salon (pagination, recherche).
 * `POST /api/clients` - Création d'un client.
-* `GET /api/family-members` - Gestion des membres de la famille d'un client.
+* `GET/PUT/DELETE /api/clients/:id` - Détail, mise à jour et suppression.
+* `GET /api/clients/duplicates` - Détection de doublons.
+* `POST /api/clients/merge` - Fusion de doublons.
+* `GET/POST/PUT/DELETE /api/family-members` - Gestion des proches (staff).
 
 ### Prestations & Collaborateurs
 * `GET /api/services` - Liste des services.
@@ -204,15 +235,30 @@ L'API REZA est une API REST JSON exposée par défaut sur `/api`.
 ### Rendez-vous & Factures
 * `GET /api/appointments` - Planning des rendez-vous.
 * `POST /api/appointments` - Créer un RDV (unique ou multi-prestations).
-* `PUT /api/appointments/:id` - Mettre à jour un RDV.
+* `PUT/DELETE /api/appointments/:id` - Modifier / supprimer un RDV.
+* `POST /api/appointments/plan` - Planification assistée d'un RDV.
+* `POST /api/appointments/client-diagnostics` - Diagnostic de conflits côté client.
+* `POST /api/appointments/:id/validate-move` - Validation d'un déplacement (drag & drop) avec détection de conflits.
 * `GET /api/invoices` - Consulter les factures.
-* `POST /api/cash-transactions` - Enregistrer un mouvement de caisse.
+* `POST /api/invoices/sale` - Encaisser une prestation (facture SALE).
+* `POST /api/invoices/group-sale` - Facturer un groupe entier en une fois.
+* `POST /api/invoices/separate-group-sale` - Facturer les participants d'un groupe séparément.
+* `GET /api/invoices/pending-groups` - Groupes en attente de facturation.
+* `GET /api/invoices/group-details/:groupId` - Détails de facturation d'un groupe.
+* `GET/POST/DELETE /api/cash-transactions` - Mouvements de caisse (dépôts, retraits, remboursements).
 
 ### Avis, Statistiques & Abonnements
 * `GET /api/reviews` - Consulter et modérer les avis clients.
-* `GET /api/stats` - Reporting du chiffre d'affaires et fréquentation.
+* `PUT /api/reviews/:id/status` - Approuver / rejeter un avis.
+* `GET /api/stats/*` - Reporting : `/overview`, `/appointments`, `/revenue`, `/dashboard`, `/autres`, `/prestations`, `/collaborateurs`, `/rdv`, `/rdv-pas-venus`, `/occupation/vue-ensemble`.
+* `GET /api/subscription` - Abonnement SaaS courant.
 * `POST /api/subscription/checkout` - Session de paiement Stripe pour abonnement SaaS.
 * `POST /api/webhooks/stripe` - Webhook de traitement asynchrone des paiements Stripe.
+
+### Notifications (Protégé)
+* `GET /api/notifications` - Notifications du staff.
+* `PATCH /api/notifications/:id/read` - Marquer comme lue.
+* `PATCH /api/notifications/read-all` - Tout marquer comme lu.
 
 ### Health
 * `GET /health` - Vérification de l'état du serveur (utilisé par le healthcheck Docker).
@@ -243,19 +289,32 @@ L'API REZA est une API REST JSON exposée par défaut sur `/api`.
 
 ### 1. Variables d'Environnement (Backend `.env`)
 ```env
+# Server
 PORT=5000
-NODE_ENV=production
+NODE_ENV=development
 
-DATABASE_URL="postgresql://user:password@localhost:5432/reza_db?schema=public"
+# Database
+DATABASE_URL="postgresql://user:password@localhost:5432/wellbepro?schema=public"
 
+# JWT (requis en production)
 JWT_SECRET="votre_cle_secrete_jwt_robuste"
 JWT_EXPIRES_IN=7d
 
-# URLs des applications frontend (utilisées pour la configuration CORS)
+# Dev only : permet x-tenant-id sans JWT (jamais en production)
+# ALLOW_TENANT_HEADER=true
+
+# URL de base de l'API (assets / uploads)
+# BACKEND_URL=http://localhost:5000
+
+# CORS
 FRONTEND_URL="http://localhost:3000"
 PRO_APP_URL="http://localhost:3001"
 CLIENT_APP_URL="http://localhost:3002"
-# Stripe
+
+# Multi-tenant
+DEFAULT_TENANT_ID=default
+
+# Stripe (test)
 STRIPE_SECRET_KEY="sk_test_xxx"
 STRIPE_WEBHOOK_SECRET="whsec_xxx"
 ```
@@ -278,7 +337,8 @@ Comptes de démonstration après seed :
 
 | Rôle | Email | Mot de passe | Application |
 |------|-------|-------------|-------------|
-| Pro admin (2 salons) | `admin@spa-royal.ma` | `password123` | reza-pro |
+| Pro admin Spa Royal (2 salons) | `admin@spa-royal.ma` | `password123` | reza-pro |
+| Pro admin Reza (2 salons) | `admin@reza.com` | `123456` | reza-pro |
 | SuperAdmin | `superadmin@gmail.com` | `123456` | reza-pro → `/superadmin` |
 | Client B2C | `client1@gmail.com` | `123456` | reza-client |
 

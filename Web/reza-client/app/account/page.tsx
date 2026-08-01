@@ -270,27 +270,6 @@ export default function AccountDashboard() {
         setLoadingAppointments(true);
         const appointmentsRes = await api.getClientAppointments(userEmail, undefined, 100, appointmentsSortBy);
         
-        // Debug: log first appointment structure to understand API response
-        if (appointmentsRes.appointments && appointmentsRes.appointments.length > 0) {
-          const firstApt = appointmentsRes.appointments[0];
-          console.log('[Account] First appointment RAW from API:', JSON.stringify(firstApt, null, 2));
-          console.log('[Account] First appointment structure:', {
-            id: firstApt.id,
-            price: firstApt.price,
-            totalPrice: firstApt.totalPrice,
-            service: firstApt.service,
-            serviceType: typeof firstApt.service,
-            serviceIsObject: typeof firstApt.service === 'object',
-            services: firstApt.services,
-            servicesType: Array.isArray(firstApt.services),
-            employee: firstApt.employee,
-            employeeType: typeof firstApt.employee,
-            employeeIsObject: typeof firstApt.employee === 'object',
-            employeeId: firstApt.employeeId,
-            professional: firstApt.professional
-          });
-        }
-        
         // Fetch services for all unique serviceIds to get prices
         const uniqueServiceIds = [...new Set((appointmentsRes.appointments || [])
           .map((apt: any) => apt.serviceId)
@@ -307,7 +286,6 @@ export default function AccountDashboard() {
                 servicePriceMap.set(service.id, typeof servicePrice === 'number' ? servicePrice : parseFloat(servicePrice) || 0);
               }
             });
-            console.log('[Account] Service price map:', Array.from(servicePriceMap.entries()));
           } catch (error) {
             console.error('[Account] Error fetching services for prices:', error);
           }
@@ -409,21 +387,6 @@ export default function AccountDashboard() {
             totalPrice: totalPrice !== undefined && totalPrice !== null ? Number(totalPrice) : (price || apt.price || 0)
           };
           
-          // Debug log for transformed data
-          if (appointmentsRes.appointments && appointmentsRes.appointments[0]?.id === apt.id) {
-            console.log('[Account] Transformed appointment:', {
-              originalPrice: apt.price,
-              originalTotalPrice: apt.totalPrice,
-              originalProfessional: apt.professional,
-              originalEmployee: apt.employee,
-              transformedPrice: transformed.price,
-              transformedTotalPrice: transformed.totalPrice,
-              transformedProfessional: transformed.professional,
-              serviceId: apt.serviceId,
-              priceFromMap: apt.serviceId ? servicePriceMap.get(apt.serviceId) : undefined
-            });
-          }
-          
           return transformed;
         });
         
@@ -434,15 +397,6 @@ export default function AccountDashboard() {
         if (appointmentsRes.client) {
           const client = appointmentsRes.client;
           const clientAvatar = (client as any).avatar;
-          console.log('[Account] Initial load - Client data from getClientAppointments:', {
-            phone: client.phone,
-            address: client.address,
-            phoneType: typeof client.phone,
-            addressType: typeof client.address,
-            phoneValue: client.phone,
-            addressValue: client.address
-          });
-          console.log('[Account] Initial load - Client avatar from getClientAppointments:', clientAvatar ? `present (length: ${clientAvatar.length})` : 'null');
           setUserData(prev => {
             const newData = {
               ...prev,
@@ -458,10 +412,6 @@ export default function AccountDashboard() {
                 ? formatMoroccoDate(appointmentsRes.appointments[appointmentsRes.appointments.length - 1].date, { month: 'long', year: 'numeric' })
                 : formatMoroccoDate(new Date(), { month: 'long', year: 'numeric' })
             };
-            console.log('[Account] Initial load - Setting userData with:', {
-              phone: newData.phone,
-              address: newData.address
-            });
             return newData;
           });
         } else {
@@ -500,8 +450,6 @@ export default function AccountDashboard() {
         setLoadingReviews(true);
         try {
           const reviewsRes = await api.getClientReviews(userEmail);
-          console.log('[Account] Reviews API response:', reviewsRes);
-          console.log('[Account] Reviews array:', reviewsRes.reviews);
           
           // The API already returns formatted reviews, but ensure all fields are present
           const formattedReviews = (reviewsRes.reviews || []).map((review: any) => ({
@@ -522,8 +470,6 @@ export default function AccountDashboard() {
             }
           }));
           
-          console.log('[Account] Formatted reviews count:', formattedReviews.length);
-          console.log('[Account] Formatted reviews:', formattedReviews);
           setReviews(formattedReviews);
         } catch (error) {
           console.error('Error fetching reviews:', error);
@@ -570,9 +516,6 @@ export default function AccountDashboard() {
         setLoadingNotifications(true);
         try {
           const notificationsRes = await api.getClientNotifications(userEmail, { limit: 50 });
-          console.log('[Account] Notifications API response:', notificationsRes);
-          console.log('[Account] Notifications array:', notificationsRes.notifications);
-          console.log('[Account] Unread count:', notificationsRes.unreadCount);
           setNotifications(notificationsRes.notifications || []);
           setUnreadNotificationsCount(notificationsRes.unreadCount || 0);
         } catch (notificationsError: any) {
@@ -1365,9 +1308,7 @@ export default function AccountDashboard() {
                   // If updated client data is provided directly from the update response, use it
                   // This avoids the issue where getClientAppointments doesn't return the avatar
                   if (updatedClientData) {
-                    console.log('[Account] Using updated client data from update response');
                     const clientAvatar = (updatedClientData as any).avatar;
-                    console.log('[Account] Avatar from update response:', clientAvatar ? `present (length: ${clientAvatar.length})` : 'null');
                     setUserData(prev => {
                       // Always use the values from the API response, even if they're empty strings
                       const newData = {
@@ -1379,10 +1320,6 @@ export default function AccountDashboard() {
                         address: (updatedClientData as any).address || '',
                         avatar: clientAvatar !== undefined && clientAvatar !== null ? clientAvatar : prev.avatar,
                       };
-                      console.log('[Account] Updated userData with response data:');
-                      console.log('[Account] - phone from API:', updatedClientData.phone, '-> newData.phone:', newData.phone);
-                      console.log('[Account] - address from API:', (updatedClientData as any).address, '-> newData.address:', newData.address);
-                      console.log('[Account] - avatar:', newData.avatar ? 'present' : 'null');
                       return newData;
                     });
                   } else {

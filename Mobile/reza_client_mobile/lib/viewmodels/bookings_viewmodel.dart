@@ -67,7 +67,7 @@ class BookingsViewModel extends ChangeNotifier {
       upcoming = [];
       past = [];
       loading = false;
-      error = null;
+      error = 'Connectez-vous pour voir vos réservations.';
       notifyListeners();
       return;
     }

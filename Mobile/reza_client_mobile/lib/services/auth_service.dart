@@ -7,7 +7,12 @@ class AuthService {
       'email': email.trim(),
       'password': password,
     });
-    final client = SessionUser.fromJson(res['client'] as Map<String, dynamic>);
+    final clientData = res['client'] as Map<String, dynamic>;
+    // Preserve the login email if backend returns null/empty (matches web behavior)
+    if ((clientData['email']?.toString() ?? '').isEmpty) {
+      clientData['email'] = email.trim();
+    }
+    final client = SessionUser.fromJson(clientData);
     await sessionStore.save(client);
     return client;
   }
@@ -26,7 +31,11 @@ class AuthService {
       'password': password,
       if (phone != null && phone.isNotEmpty) 'phone': phone.trim(),
     });
-    final client = SessionUser.fromJson(res['client'] as Map<String, dynamic>);
+    final clientData = res['client'] as Map<String, dynamic>;
+    if ((clientData['email']?.toString() ?? '').isEmpty) {
+      clientData['email'] = email.trim();
+    }
+    final client = SessionUser.fromJson(clientData);
     await sessionStore.save(client);
     return client;
   }

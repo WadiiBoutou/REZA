@@ -29,7 +29,6 @@ export default function BarbierPage() {
         
         // Fetch tenants for Barbier category to count salons per city
         const barbierResponse = await api.searchTenants(undefined, 'Barbier', undefined, 10000);
-        console.log('[Barbier] Total tenants from API:', barbierResponse.tenants?.length || 0);
         
         // For city counting, we only need category and city fields
         // Filter tenants that have at least category and city (required for counting)
@@ -37,7 +36,6 @@ export default function BarbierPage() {
           return tenant.category && tenant.category.trim() && 
                  tenant.city && tenant.city.trim();
         });
-        console.log('[Barbier] Tenants with category and city:', tenantsWithCityAndCategory.length);
         
         // Count tenants per city for Barbier category
         const cityCountMap = new Map<string, number>();

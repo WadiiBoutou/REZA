@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { getStripe } from './stripe';
 import { subscriptionService } from './subscription.service';
+import * as log from '../../utils/logger';
 
 const router = express.Router();
 
@@ -14,7 +15,7 @@ const router = express.Router();
 router.post('/', async (req: Request, res: Response) => {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error('[Stripe] STRIPE_WEBHOOK_SECRET not set');
+    log.error('[Stripe] STRIPE_WEBHOOK_SECRET not set');
     return res.status(500).json({ error: 'Webhook not configured' });
   }
 
@@ -27,7 +28,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     event = getStripe().webhooks.constructEvent(req.body, signature, webhookSecret);
   } catch (err: any) {
-    console.error('[Stripe] Webhook signature verification failed:', err.message);
+    log.error('[Stripe] Webhook signature verification failed:', err.message);
     return res.status(400).json({ error: `Webhook error: ${err.message}` });
   }
 
@@ -50,7 +51,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
     res.json({ received: true });
   } catch (error) {
-    console.error(`[Stripe] Error handling ${event.type}:`, error);
+    log.error(`[Stripe] Error handling ${event.type}:`, error);
     res.status(500).json({ error: 'Webhook handler failed' });
   }
 });

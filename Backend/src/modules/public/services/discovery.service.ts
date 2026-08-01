@@ -119,6 +119,15 @@ export class DiscoveryService {
       }
     });
 
+    // Preserve top-level booking configuration that the frontend calendar needs
+    // to preemptively grey out days within min lead time or explicitly blocked dates.
+    if ((businessHours as any)?.bookingDelay) {
+      formattedBusinessHours.bookingDelay = (businessHours as any).bookingDelay;
+    }
+    if ((businessHours as any)?.blockedDates) {
+      formattedBusinessHours.blockedDates = (businessHours as any).blockedDates;
+    }
+
     // Transform photos array if it exists
     const photos = tenant.settings?.photos;
     const photosArray = Array.isArray(photos) ? photos : [];
@@ -173,10 +182,11 @@ export class DiscoveryService {
           photos: transformedPhotos,
           socialMedia: tenant.settings?.socialMedia || {},
           amenities: tenant.settings?.amenities || [],
-          onlineReservationEnabled: tenant.settings?.onlineReservationEnabled !== false,
+        onlineReservationEnabled: tenant.settings?.onlineReservationEnabled !== false,
           showMap: tenant.settings?.showMap !== false,
           showOpeningHours: tenant.settings?.showOpeningHours !== false,
-          showReviews: tenant.settings?.showReviews !== false
+          showReviews: tenant.settings?.showReviews !== false,
+          bookingAdvanceDays: tenant.settings?.bookingAdvanceDays ?? 30,
         }
       }
     };

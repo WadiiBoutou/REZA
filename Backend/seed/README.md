@@ -16,19 +16,28 @@ npm run seed
 
 | Role | Email | Password | App |
 |------|-------|----------|-----|
-| Pro admin (2 salons) | `admin@spa-royal.ma` | `password123` | reza-pro → dashboard + Mes salons |
+| Pro admin Spa Royal (2 salons) | `admin@spa-royal.ma` | `password123` | reza-pro → dashboard + Mes salons |
+| Pro admin Reza (2 salons) | `admin@reza.com` | `123456` | reza-pro → dashboard + Mes salons |
 | Superadmin | `superadmin@gmail.com` | `123456` | reza-pro → `/superadmin` |
 | B2C client | `client1@gmail.com` | `123456` | reza-client / mobile client |
-| Single-salon admins | `admin@{subdomain}.ma` | `password123` | discovery venues only |
 
 ## Data included
 
-### Spa Royal account (multi-salon)
-- **Spa Royal Casablanca** — 3 clients, 4 services, 4 RDV (incl. 2 same hour), employees Sara + Nadia, paid invoices (Omar stats)
-- **Spa Royal 2** (Rabat) — 2 clients, 3 services, 3 RDV
+### Accounts (multi-salon)
 
-### Discovery salons (client search)
-Salon Élégance, Barber Studio, Beauty Center Chic, Nail Bar Chic, Zen Spa
+- **Spa Royal account**
+  - **Spa Royal Casablanca** — 6 services, 6 clients (incl. Client Demo `client1@gmail.com`), 5 employees (Sara Benali, Nadia Tazi, Karim Ouazzani, Salma El Fassi, Hicham Alaoui)
+  - **Spa Royal 2 (Rabat)** — 3 services, 2 clients, 1 employee (Laila Moussaoui)
+- **Reza account**
+  - **Reza Salon Casablanca** — 4 services, 2 employees (Rachid Tazi, Sofia Alaoui)
+  - **Reza Salon Rabat** — 3 services, 1 employee (Karim Idrissi)
+
+### Base entities
+
+- Clients (with demo client `client1@gmail.com` + password), employees with staff users and selective service links (`serviceIndices`), services, tenant settings, subscription plan, active subscriptions, approved/pending reviews, family members, SUBSCRIPTION invoice.
+- **Booking rule** : chaque salon applique un `bookingDelay` de **1 jour** (`{ value: '1', unit: 'jours', allowLastMoment: false }`) — les créneaux à moins de 24 h sont masqués côté client.
+
+**No appointments, no SALE invoices, no cash transactions, no notifications** — the seed stays clean so booking / caisse features can be tested from a fresh slate.
 
 ## Structure
 
@@ -36,15 +45,14 @@ Salon Élégance, Barber Studio, Beauty Center Chic, Nail Bar Chic, Zen Spa
 seed/
   index.ts              # entry: cleanup → seed all
   cleanup.ts            # delete all rows (FK order)
-  constants.ts          # passwords, business hours
-  superadmin.ts
-  subscription-plan.ts
-  spa-royal-account.ts  # multi-salon demo
-  discovery-salons.ts   # B2C discovery venues
+  constants.ts          # passwords, business hours, bookingDelay, avatar URLs
+  superadmin.ts         # superadmin@gmail.com
+  subscription-plan.ts  # base plan
+  reza-account.ts       # Reza multi-salon demo
+  spa-royal-account.ts  # Spa Royal multi-salon demo
 ```
 
 ## Notes
 
 - **Destructive** — deletes all tenants, users, clients, RDV, etc.
 - Does not run automatically on `npm run dev`; run manually when needed.
-- Legacy `src/prisma/seed.ts` kept for reference; use `npm run seed` instead.

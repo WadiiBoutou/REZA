@@ -94,6 +94,64 @@ class InvoiceService {
     final res = await apiClient.post('/invoices/sale', body);
     return Map<String, dynamic>.from(res['invoice'] as Map? ?? res);
   }
+
+  // Group billing — list of billable booking groups (>1 participant, not invoiced)
+  Future<List<Map<String, dynamic>>> getPendingGroups() async {
+    if (useMockData) return [];
+    final res = await apiClient.get('/invoices/pending-groups');
+    return List<Map<String, dynamic>>.from((res['groups'] as List?) ?? []);
+  }
+
+  // Group billing — full details of one group (participants, services, employees)
+  Future<Map<String, dynamic>> getGroupDetails(String groupId) async {
+    if (useMockData) return {};
+    final res = await apiClient.get('/invoices/group-details/$groupId');
+    return Map<String, dynamic>.from(res['group'] as Map? ?? res);
+  }
+
+  // Group billing — one combined invoice covering the whole group, paid by one participant
+  Future<Map<String, dynamic>> createGroupSale({
+    required String bookingGroupId,
+    required String payerClientId,
+    required String paymentMethod,
+    double? tax,
+    String? notes,
+    String? tenantId,
+  }) async {
+    if (useMockData) {
+      return {'id': generateId(), 'status': 'PAID'};
+    }
+
+    final body = <String, dynamic>{
+      'bookingGroupId': bookingGroupId,
+      'payerClientId': payerClientId,
+      'paymentMethod': paymentMethod,
+      if (tax != null) 'tax': tax,
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+      if (tenantId != null && tenantId.isNotEmpty) 'tenantId': tenantId,
+    };
+    final res = await apiClient.post('/invoices/group-sale', body);
+    return Map<String, dynamic>.from(res['invoice'] as Map? ?? res);
+  }
+
+  // Group billing — one invoice per participant, each billed to their own client
+  Future<List<Map<String, dynamic>>> separateGroupSale({
+    required String bookingGroupId,
+    required String paymentMethod,
+    double? tax,
+    String? tenantId,
+  }) async {
+    if (useMockData) return [];
+
+    final body = <String, dynamic>{
+      'bookingGroupId': bookingGroupId,
+      'paymentMethod': paymentMethod,
+      if (tax != null) 'tax': tax,
+      if (tenantId != null && tenantId.isNotEmpty) 'tenantId': tenantId,
+    };
+    final res = await apiClient.post('/invoices/separate-group-sale', body);
+    return List<Map<String, dynamic>>.from((res['invoices'] as List?) ?? []);
+  }
 }
 
 final invoiceService = InvoiceService();

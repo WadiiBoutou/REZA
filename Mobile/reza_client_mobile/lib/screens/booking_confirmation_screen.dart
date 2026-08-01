@@ -4,19 +4,16 @@ import '../constants.dart';
 
 class BookingConfirmationScreen extends StatefulWidget {
   final VenueItem venue;
-  final ServiceItem service;
+  final List<ServiceItem> services;
   final String date;
   final String time;
   final Map<String, dynamic>? bookingResult;
-  /// Called when the user taps "Voir mes réservations".
-  /// If provided, pops all routes and invokes the callback so the
-  /// home screen can switch to the Mes RDV tab (index 2).
   final VoidCallback? onGoToBookings;
 
   const BookingConfirmationScreen({
     super.key,
     required this.venue,
-    required this.service,
+    required this.services,
     required this.date,
     required this.time,
     this.bookingResult,
@@ -27,12 +24,22 @@ class BookingConfirmationScreen extends StatefulWidget {
   State<BookingConfirmationScreen> createState() => _BookingConfirmationScreenState();
 }
 
+class _ParticipantInfo {
+  final String displayName;
+  final bool isBooker;
+  final double subtotal;
+  _ParticipantInfo({required this.displayName, required this.isBooker, required this.subtotal});
+}
+
 class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnim;
   late Animation<double> _fadeAnim;
   late Animation<double> _checkAnim;
+
+  late final List<_ParticipantInfo> _participants;
+  late final double _grandTotal;
 
   @override
   void initState() {
@@ -43,7 +50,35 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
     _fadeAnim = CurvedAnimation(parent: _controller, curve: const Interval(0.4, 1.0, curve: Curves.easeIn));
     _checkAnim = CurvedAnimation(parent: _controller, curve: const Interval(0.3, 0.8, curve: Curves.easeOut));
 
+    _parseParticipants();
+
     Future.delayed(const Duration(milliseconds: 100), () => _controller.forward());
+  }
+
+  void _parseParticipants() {
+    final result = widget.bookingResult;
+    if (result == null) {
+      _participants = [];
+      _grandTotal = widget.services.fold(0.0, (s, svc) => s + svc.price);
+      return;
+    }
+
+    final pricing = result['pricing'] as Map<String, dynamic>?;
+    final rawParticipants = pricing?['participants'] as List?;
+    if (rawParticipants != null) {
+      _participants = rawParticipants.map((p) {
+        final data = p as Map<String, dynamic>;
+        return _ParticipantInfo(
+          displayName: (data['displayName'] as String?) ?? '',
+          isBooker: (data['isBooker'] as bool?) ?? false,
+          subtotal: ((data['subtotal'] as num?) ?? 0).toDouble(),
+        );
+      }).toList();
+      _grandTotal = ((pricing?['grandTotal'] as num?) ?? 0).toDouble();
+    } else {
+      _participants = [];
+      _grandTotal = widget.services.fold(0.0, (s, svc) => s + svc.price);
+    }
   }
 
   @override
@@ -57,11 +92,11 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             children: [
-              const Spacer(flex: 2),
+              const SizedBox(height: 40),
 
               // ── Animated Check ────────────────────────────────
               ScaleTransition(
@@ -186,13 +221,100 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
                       const Divider(color: AppColors.border),
                       const SizedBox(height: 16),
 
-                      // Details grid
+                      // Services section header
                       Row(
                         children: [
-                          _ConfirmDetail(icon: Icons.content_cut_rounded, label: 'Service', value: widget.service.name),
-                          _ConfirmDetail(icon: Icons.attach_money_rounded, label: 'Prix', value: '${widget.service.price.toInt()} MAD'),
+                          Icon(Icons.spa_outlined, size: 18, color: AppColors.textGray),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Service${widget.services.length > 1 ? 's' : ''}',
+                            style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray),
+                          ),
+                          const Spacer(),
+                          Icon(Icons.attach_money_rounded, size: 18, color: AppColors.textGray),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Prix',
+                            style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray),
+                          ),
                         ],
                       ),
+                      const SizedBox(height: 8),
+
+                      // Service items
+                      for (var i = 0; i < widget.services.length; i++) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.services[i].name,
+                                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark),
+                              ),
+                            ),
+                            Text(
+                              '${widget.services[i].price.toInt()} MAD',
+                              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark),
+                            ),
+                          ],
+                        ),
+                        if (i < widget.services.length - 1) const SizedBox(height: 10),
+                      ],
+                      // Participants section (group bookings)
+                      if (_participants.length > 1) ...[
+                        const SizedBox(height: 16),
+                        const Divider(color: AppColors.border),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Icon(Icons.people_rounded, size: 18, color: AppColors.textGray),
+                            const SizedBox(width: 8),
+                            Text('Participants', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray)),
+                            const Spacer(),
+                            Text('Sous-total', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        for (final p in _participants) ...[
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  p.isBooker ? Icons.person_rounded : Icons.person_outline_rounded,
+                                  size: 16, color: AppColors.textGray,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    p.isBooker ? 'Vous' : p.displayName,
+                                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark),
+                                  ),
+                                ),
+                                Text(
+                                  '${p.subtotal.toInt()} MAD',
+                                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Divider(height: 1, color: AppColors.border),
+                        ],
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Total groupe',
+                                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textDark),
+                              ),
+                            ),
+                            Text(
+                              '${_grandTotal.toInt()} MAD',
+                              style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textDark),
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 14),
                       Row(
                         children: [
@@ -205,7 +327,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
                 ),
               ),
 
-              const Spacer(flex: 2),
+              const SizedBox(height: 32),
 
               // ── Actions ──────────────────────────────────────
               FadeTransition(
@@ -248,7 +370,7 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),

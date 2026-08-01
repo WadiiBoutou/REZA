@@ -33,7 +33,6 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   google_fonts: ^6.1.0
-  flutter_svg: ^2.0.10
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
   http: ^1.2.2

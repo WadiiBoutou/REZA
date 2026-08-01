@@ -1,10 +1,9 @@
 import type {
-  AppointmentStatus,
   PrismaClient,
   SubscriptionPlan,
 } from '../prisma/generated/prisma/client';
-import { hashPassword } from '../src/utils/password';
 import {
+  avatarUrlFor,
   EMPLOYEE_WORKING_HOURS,
   PASSWORDS,
   REZA_ADMIN,
@@ -36,17 +35,6 @@ type EmployeeDef = {
   role: string;
 };
 
-type AppointmentDef = {
-  clientEmail: string;
-  serviceName: string;
-  /** Days from today (negative = past) */
-  dayOffset: number;
-  hour: number;
-  minute?: number;
-  duration?: number;
-  status: AppointmentStatus;
-};
-
 type SalonDef = {
   subdomain: string;
   name: string;
@@ -62,10 +50,6 @@ type SalonDef = {
   services: ServiceDef[];
   clients: ClientDef[];
   employees: EmployeeDef[];
-  appointments: AppointmentDef[];
-  /** PAID invoices for client spend stats (clientEmail → amount) */
-  paidSales?: Array<{ clientEmail: string; serviceName: string; amount: number }>;
-  cashTransactions?: Array<{ type: 'DEPOSIT' | 'WITHDRAWAL'; amount: number; notes?: string }>;
 };
 
 const REZA_SALON_1: SalonDef = {
@@ -151,51 +135,6 @@ const REZA_SALON_1: SalonDef = {
       role: 'Coloriste',
     },
   ],
-  appointments: [
-    {
-      clientEmail: 'amine.elouazzani@email.ma',
-      serviceName: 'Coupe homme',
-      dayOffset: 0,
-      hour: 10,
-      status: 'CONFIRMED',
-    },
-    {
-      clientEmail: 'leila.haddad@email.ma',
-      serviceName: 'Brushing',
-      dayOffset: 1,
-      hour: 14,
-      status: 'PENDING',
-    },
-    {
-      clientEmail: 'hassan.benali@email.ma',
-      serviceName: 'Coupe homme',
-      dayOffset: -2,
-      hour: 11,
-      status: 'COMPLETED',
-    },
-    {
-      clientEmail: 'leila.haddad@email.ma',
-      serviceName: 'Coloration',
-      dayOffset: 3,
-      hour: 16,
-      status: 'CONFIRMED',
-    },
-    {
-      clientEmail: 'amine.elouazzani@email.ma',
-      serviceName: 'Coupe homme',
-      dayOffset: -5,
-      hour: 15,
-      status: 'NO_SHOW',
-    },
-  ],
-  paidSales: [
-    { clientEmail: 'hassan.benali@email.ma', serviceName: 'Coupe homme', amount: 80 },
-    { clientEmail: 'leila.haddad@email.ma', serviceName: 'Brushing', amount: 100 },
-  ],
-  cashTransactions: [
-    { type: 'DEPOSIT', amount: 500, notes: 'Dépôt initial' },
-    { type: 'WITHDRAWAL', amount: 200, notes: 'Retrait pour fournitures' },
-  ],
 };
 
 const REZA_SALON_2: SalonDef = {
@@ -260,51 +199,12 @@ const REZA_SALON_2: SalonDef = {
       role: 'Barbier',
     },
   ],
-  appointments: [
-    {
-      clientEmail: 'younes.elmansouri@email.ma',
-      serviceName: 'Coupe + rasage',
-      dayOffset: 2,
-      hour: 11,
-      status: 'CONFIRMED',
-    },
-    {
-      clientEmail: 'anas.chraibi@email.ma',
-      serviceName: 'Soin barbe',
-      dayOffset: 4,
-      hour: 15,
-      status: 'PENDING',
-    },
-    {
-      clientEmail: 'younes.elmansouri@email.ma',
-      serviceName: 'Coupe classique',
-      dayOffset: -4,
-      hour: 16,
-      status: 'COMPLETED',
-    },
-  ],
-  paidSales: [
-    { clientEmail: 'younes.elmansouri@email.ma', serviceName: 'Coupe classique', amount: 60 },
-  ],
-  cashTransactions: [
-    { type: 'DEPOSIT', amount: 300, notes: 'Dépôt initial' },
-  ],
 };
-
-function atDayOffset(dayOffset: number, hour: number, minute = 0): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + dayOffset);
-  d.setHours(hour, minute, 0, 0);
-  return d;
-}
 
 async function seedOneSalon(
   prisma: PrismaClient,
   def: SalonDef,
-  accountId: string,
-  adminUserId: string,
-  invoiceSeq: { n: number }
+  accountId: string
 ) {
   const tenant = await prisma.tenant.create({
     data: {
@@ -389,6 +289,7 @@ async function seedOneSalon(
         firstName: e.firstName,
         lastName: e.lastName,
         email: e.email,
+        avatar: avatarUrlFor(e.firstName, e.lastName, e.email),
         phone: '+212600000099',
         isActive: true,
         workingHours: EMPLOYEE_WORKING_HOURS,
@@ -411,101 +312,8 @@ async function seedOneSalon(
     });
   }
 
-  for (const appt of def.appointments) {
-    const clientId = clients.get(appt.clientEmail);
-    const svc = services.get(appt.serviceName);
-    if (!clientId || !svc) continue;
-
-    const start = atDayOffset(appt.dayOffset, appt.hour, appt.minute ?? 0);
-    const duration = appt.duration ?? svc.duration;
-    const end = new Date(start.getTime() + duration * 60_000);
-
-    const row = await prisma.appointment.create({
-      data: {
-        tenantId: tenant.id,
-        clientId,
-        serviceId: svc.id,
-        createdById: adminUserId,
-        startTime: start,
-        endTime: end,
-        duration,
-        status: appt.status,
-        notes: 'Seed demo',
-      },
-    });
-
-    if (appt.status === 'COMPLETED') {
-      invoiceSeq.n += 1;
-      const amount = svc.price ?? 0;
-      await prisma.invoice.create({
-        data: {
-          tenantId: tenant.id,
-          clientId,
-          appointmentId: row.id,
-          invoiceNumber: `INV-${def.subdomain.toUpperCase()}-${String(invoiceSeq.n).padStart(4, '0')}`,
-          amount,
-          tax: 0,
-          total: amount,
-          status: 'PAID',
-          paymentMethod: 'CASH',
-          paidAt: end,
-          items: {
-            create: {
-              serviceId: svc.id,
-              serviceName: appt.serviceName,
-              price: amount,
-              quantity: 1,
-            },
-          },
-        },
-      });
-    }
-  }
-
-  for (const sale of def.paidSales ?? []) {
-    const clientId = clients.get(sale.clientEmail);
-    const svc = services.get(sale.serviceName);
-    if (!clientId) continue;
-
-    invoiceSeq.n += 1;
-    await prisma.invoice.create({
-      data: {
-        tenantId: tenant.id,
-        clientId,
-        invoiceNumber: `INV-${def.subdomain.toUpperCase()}-${String(invoiceSeq.n).padStart(4, '0')}`,
-        amount: sale.amount,
-        tax: 0,
-        total: sale.amount,
-        status: 'PAID',
-        paymentMethod: 'CARD',
-        paidAt: new Date(),
-        items: {
-          create: {
-            serviceId: svc?.id,
-            serviceName: sale.serviceName,
-            price: sale.amount,
-            quantity: 1,
-          },
-        },
-      },
-    });
-  }
-
-  for (const tx of def.cashTransactions ?? []) {
-    await prisma.cashTransaction.create({
-      data: {
-        tenantId: tenant.id,
-        type: tx.type,
-        amount: tx.amount,
-        paymentMethod: 'CASH',
-        notes: tx.notes,
-        createdById: adminUserId,
-      },
-    });
-  }
-
   console.log(
-    `  ✓ ${def.name} — ${def.clients.length} clients, ${def.services.length} services, ${def.appointments.length} RDV`
+    `  ✓ ${def.name} — ${def.clients.length} clients, ${def.services.length} services`
   );
   return tenant;
 }
@@ -548,9 +356,8 @@ export async function seedRezaAccount(prisma: PrismaClient, plan: SubscriptionPl
     },
   });
 
-  const invoiceSeq = { n: 0 };
-  const salon1 = await seedOneSalon(prisma, REZA_SALON_1, account.id, adminUser.id, invoiceSeq);
-  await seedOneSalon(prisma, REZA_SALON_2, account.id, adminUser.id, invoiceSeq);
+  const salon1 = await seedOneSalon(prisma, REZA_SALON_1, account.id);
+  await seedOneSalon(prisma, REZA_SALON_2, account.id);
 
   // Admin JWT tenant = primary salon
   await prisma.user.update({

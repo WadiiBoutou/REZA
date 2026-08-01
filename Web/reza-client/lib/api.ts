@@ -134,12 +134,41 @@ class ApiClient {
   }
 
   // Get available time slots for a tenant
-  async getAvailableSlots(tenantId: string, date: string, serviceIds: string[], employeeId?: string) {
+  async getAvailableSlots(
+    tenantId: string,
+    date: string,
+    serviceIds: string[],
+    employeeId?: string,
+    existingParticipants?: Array<{
+      serviceIds: string[];
+      startTime: string;
+      serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
+    }>,
+    clientEmail?: string,
+    serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>,
+  ) {
     const params = new URLSearchParams();
     params.append('date', date);
     serviceIds.forEach(id => params.append('serviceIds', id));
     if (employeeId) params.append('employeeId', employeeId);
+    if (clientEmail) params.append('clientEmail', clientEmail);
+    if (existingParticipants && existingParticipants.length > 0) {
+      const serialized = JSON.stringify(existingParticipants);
+      params.append('existingParticipants', serialized);
+    }
+    if (serviceEmployees && serviceEmployees.length > 0) {
+      params.append('serviceEmployees', JSON.stringify(serviceEmployees));
+    }
     return this.request<{ slots: string[] }>(`/public/tenant/${tenantId}/available-slots?${params.toString()}`);
+  }
+
+  // Check which days in a date range have at least 1 available slot (lightweight existence check)
+  async getAvailableDays(tenantId: string, from: string, to: string, serviceIds: string[]) {
+    const params = new URLSearchParams();
+    params.append('from', from);
+    params.append('to', to);
+    serviceIds.forEach(id => params.append('serviceIds', id));
+    return this.request<{ days: string[] }>(`/public/tenant/${tenantId}/available-days?${params.toString()}`);
   }
 
   // Get per-employee availability status for date + time + services

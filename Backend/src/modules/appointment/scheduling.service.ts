@@ -1,4 +1,6 @@
 import { prisma } from '../../lib/prisma';
+import { resolveEmployeeUserId } from '../../utils/resolveEmployeeUserId';
+import * as log from '../../utils/logger';
 import type { AppointmentStatus } from '@prisma/client';
 
 type WorkingHoursDay = {
@@ -140,6 +142,9 @@ export class SchedulingService {
     const serviceMap = new Map(services.map((s) => [s.id, s]));
     const orderedServices = serviceIds.map((id) => serviceMap.get(id)).filter(Boolean) as typeof services;
 
+    log.log('[Feasibility] planReservation: date=' + date + ' startTime=' + startTime +
+      ' services=[' + orderedServices.map((s) => s?.name || '?').join(', ') + ']');
+
     // Load employees with skills
     const employees = await prisma.employee.findMany({
       where: { tenantId, isActive: true },
@@ -277,13 +282,17 @@ export class SchedulingService {
     for (const service of orderedServices) {
       const serviceEnd = cursor + service.duration;
       const serviceEmployees: EmployeeAvailability[] = [];
+      const fmtRange = formatMinutes(cursor) + '-' + formatMinutes(serviceEnd);
+
+      log.log('[Feasibility] planReservation service=' + service.name +
+        ' range=' + fmtRange);
 
       let bestEmployee: typeof employees[0] | null = null;
       let bestWorkload = Infinity;
 
       for (const emp of employees) {
-        const empSkills = skillMap.get(emp.id);
-        const hasSkill = !empSkills || empSkills.size === 0 || empSkills.has(service.id);
+        const empSkill = skillMap.get(emp.id);
+        const hasSkill = !empSkill || empSkill.size === 0 || empSkill.has(service.id);
         if (!hasSkill) {
           serviceEmployees.push({
             employeeId: emp.id,
@@ -295,15 +304,15 @@ export class SchedulingService {
           continue;
         }
 
-        // Employee status check (inactive / vacation)
         const empStatus = emp.agendaSettings ? (emp.agendaSettings as any).status : undefined;
         if (empStatus && empStatus !== 'active') {
+          const reason = empStatus === 'inactive' ? REASON_INACTIF : REASON_VACATION;
           serviceEmployees.push({
             employeeId: emp.id,
             employeeName: `${emp.firstName} ${emp.lastName}`,
             available: false,
             recommended: false,
-            reason: empStatus === 'inactive' ? REASON_INACTIF : REASON_VACATION,
+            reason: reason,
           });
           continue;
         }
@@ -371,10 +380,14 @@ export class SchedulingService {
         }
       }
 
+      const availableCount = serviceEmployees.filter((e) => e.available).length;
+      log.log('[Feasibility] planReservation service=' + service.name +
+        ' available=' + availableCount + '/' + employees.length +
+        ' recommended=' + (bestEmployee ? bestEmployee.firstName + ' ' + bestEmployee.lastName : 'none'));
+
       const recommended = serviceEmployees.find((e) => e.employeeId === bestEmployee?.id);
       if (recommended) recommended.recommended = true;
 
-      // Sort serviceEmployees: recommended first, available second, unavailable third
       serviceEmployees.sort((a, b) => {
         if (a.recommended !== b.recommended) return a.recommended ? -1 : 1;
         if (a.available !== b.available) return a.available ? -1 : 1;
@@ -778,8 +791,9 @@ export class SchedulingService {
     date: string;
     startTime: string;
     timeZone?: string;
+    excludeEmployeeIds?: string[];
   }): Promise<{ employeeId: string | null; userEmployeeId: string | null }> {
-    const { tenantId, serviceIds, date, startTime, timeZone = 'Africa/Casablanca' } = params;
+    const { tenantId, serviceIds, date, startTime, timeZone = 'Africa/Casablanca', excludeEmployeeIds = [] } = params;
     const startMinutes = minutesSinceMidnight(startTime);
     const [year, month, dayNum] = date.split('-').map(Number);
     const dayDate = new Date(year, month - 1, dayNum);
@@ -875,7 +889,12 @@ export class SchedulingService {
     let bestEmployee: (typeof employees)[0] | null = null;
     let bestWorkload = Infinity;
 
+    const excludeSet = new Set(excludeEmployeeIds);
+
     for (const emp of employees) {
+      // Skip employees excluded by the caller (e.g., already assigned to another participant)
+      if (excludeSet.has(emp.id)) continue;
+
       const empSkills = skillMap.get(emp.id);
       const hasSkill = !empSkills || empSkills.size === 0 || serviceIds.some((sid) => empSkills.has(sid));
       if (!hasSkill) continue;
@@ -907,7 +926,13 @@ export class SchedulingService {
       return { employeeId: null, userEmployeeId: null };
     }
 
-    const userEmployeeId = employeeToUserMap.get(bestEmployee.id) ?? null;
+    let userEmployeeId = employeeToUserMap.get(bestEmployee.id) ?? null;
+    // resolveAnyone's internal employee-to-user lookup may miss when no User
+    // record matches the employee's email or name. resolveEmployeeUserId handles
+    // this by creating a User record on the fly when the employee has an email.
+    if (!userEmployeeId && bestEmployee.id) {
+      userEmployeeId = await resolveEmployeeUserId(tenantId, bestEmployee.id);
+    }
     return { employeeId: bestEmployee.id, userEmployeeId };
   }
 

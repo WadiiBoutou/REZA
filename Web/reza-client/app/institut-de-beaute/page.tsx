@@ -29,7 +29,6 @@ export default function BeautyInstitutePage() {
         
         // Fetch tenants for Institut de beauté category to count salons per city
         const institutResponse = await api.searchTenants(undefined, 'Institut de beauté', undefined, 10000);
-        console.log('[Institut de beauté] Total tenants from API:', institutResponse.tenants?.length || 0);
         
         // For city counting, we only need category and city fields
         // Filter tenants that have at least category and city (required for counting)
@@ -37,7 +36,6 @@ export default function BeautyInstitutePage() {
           return tenant.category && tenant.category.trim() && 
                  tenant.city && tenant.city.trim();
         });
-        console.log('[Institut de beauté] Tenants with category and city:', tenantsWithCityAndCategory.length);
         
         // Count tenants per city for Institut de beauté category
         const cityCountMap = new Map<string, number>();
