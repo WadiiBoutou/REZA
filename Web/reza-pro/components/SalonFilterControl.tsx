@@ -151,9 +151,6 @@ export function SalonFilterControl({
           <ExternalLink size={14} />
           <span>Modifier</span>
         </Link>
-        <p className="px-2 pt-2 pb-1 text-[11px] text-gray-400 leading-snug">
-          Filtre Agenda, Clients et Caisse. Création → un salon précis requis si plusieurs sélectionnés.
-        </p>
       </PopoverContent>
     </Popover>
   );

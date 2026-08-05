@@ -3,9 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, Check } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import SalonScopeNotice from '@/components/SalonScopeNotice';
 import toast from 'react-hot-toast';
 
 const GestionListeAttentePage = () => {
+  const { isSalonFilterMulti } = useAuth();
   const [activation, setActivation] = useState<'oui' | 'non'>('non');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -46,6 +49,10 @@ const GestionListeAttentePage = () => {
       setSaving(false);
     }
   };
+
+  if (isSalonFilterMulti) {
+    return <SalonScopeNotice title="Activation de la liste d'attente" subtitle="Souhaitez-vous activer la liste d'attente ?" />;
+  }
 
   return (
     <div className="min-h-screen p-0 md:p-0">

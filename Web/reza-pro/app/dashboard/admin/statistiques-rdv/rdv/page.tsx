@@ -314,15 +314,6 @@ function DailyStatisticsPageContent() {
           </table>
         </div>
 
-        {/* Footer Notes */}
-        <div className="bg-gray-50 px-6 py-4 border-t border-gray-100">
-          <p className="text-xs text-gray-500 mb-2">
-            <strong>Attention:</strong> ceci n'est pas le chiffre d'affaire comptable, il s'agit de la somme des prix indiqués dans l'agenda.
-          </p>
-          <p className="text-xs text-gray-500">
-            <strong>À noter:</strong> les statistiques sont calculées toutes les nuits. Par conséquent, les actions effectuées aujourd'hui seront prises en compte le lendemain.
-          </p>
-        </div>
       </div>
     </div>
   );

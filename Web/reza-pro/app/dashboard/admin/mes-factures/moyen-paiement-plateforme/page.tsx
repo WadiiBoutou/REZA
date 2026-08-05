@@ -1,235 +1,124 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { AlertCircle, Plus, X, Check, Loader2 } from 'lucide-react';
-import { api } from '@/lib/api';
+import React, { useState } from 'react';
+import { Landmark, Copy, Check, Building2, UserRound, Hash } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-export default function BillingPaymentMethodPage() {
-  const [mounted, setMounted] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [type, setType] = useState<'SEPA' | 'CARD'>('SEPA');
-  const [iban, setIban] = useState('');
-  const [cardLast4, setCardLast4] = useState('');
-  const [holderName, setHolderName] = useState('');
-  const [hasExisting, setHasExisting] = useState(false);
+/**
+ * PLATFORM-LEVEL bank details (not per-salon): where salons must send their
+ * subscription payments to the platform owner.
+ *
+ * NOTE (v1): these are configured via env vars with placeholder fallbacks.
+ * There is no superadmin settings UI for them yet — the constants below are
+ * the single source of truth until a platform-config area exists.
+ */
+const PLATFORM_BANK = {
+  bankName: process.env.NEXT_PUBLIC_PLATFORM_BANK_NAME || 'Banque Populaire',
+  accountHolder: process.env.NEXT_PUBLIC_PLATFORM_BANK_HOLDER || 'Reza Platform',
+  iban:
+    process.env.NEXT_PUBLIC_PLATFORM_BANK_IBAN ||
+    'MA76 0000 0000 0000 0000 0000 000',
+  swift: process.env.NEXT_PUBLIC_PLATFORM_BANK_SWIFT || '',
+};
 
-  useEffect(() => {
-    setMounted(true);
-    fetchBillingMethod();
-  }, []);
-
-  const fetchBillingMethod = async () => {
+function CopyField({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
     try {
-      setLoading(true);
-      const res = await api.getBillingPaymentMethod();
-      const method = res.method;
-      if (method) {
-        setHasExisting(true);
-        setType(method.type || 'SEPA');
-        setIban(method.iban || '');
-        setCardLast4(method.cardLast4 || '');
-        setHolderName(method.holderName || '');
-      }
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
-  };
-
-  const handleSave = async () => {
-    if (type === 'SEPA' && iban.replace(/\s/g, '').length < 15) {
-      toast.error('Veuillez entrer un IBAN valide');
-      return;
-    }
-    if (type === 'CARD' && (!cardLast4 || cardLast4.length < 4)) {
-      toast.error('Veuillez entrer les 4 derniers chiffres de la carte');
-      return;
-    }
-    setSaving(true);
-    try {
-      await api.setBillingPaymentMethod({
-        type,
-        iban: type === 'SEPA' ? iban.replace(/\s/g, '') : undefined,
-        cardLast4: type === 'CARD' ? cardLast4 : undefined,
-        holderName: holderName || undefined,
-      });
-      toast.success('Moyen de paiement enregistré');
-      setHasExisting(true);
-    } catch (err: any) {
-      toast.error(err.message || 'Erreur');
-    } finally {
-      setSaving(false);
+      await navigator.clipboard.writeText(value.replace(/\s/g, ''));
+      setCopied(true);
+      toast.success(`${label} copié`);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast.error("Impossible de copier — sélectionnez le texte manuellement");
     }
   };
-
-  const formatIBAN = (value: string) => {
-    const cleaned = value.replace(/\s/g, '').toUpperCase();
-    return cleaned.match(/.{1,4}/g)?.join(' ') || cleaned;
-  };
-
-  if (!mounted || loading) {
-    return (
-      <div className="min-h-screen p-0 md:p-0">
-        <div className="flex flex-col items-center justify-center py-20">
-          <Loader2 className="animate-spin text-[#002366] w-8 h-8 mb-4" />
-          <span className="text-gray-600">Chargement...</span>
-        </div>
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-5 py-4">
+      <div className="min-w-0">
+        <p className="text-xs text-gray-500 mb-1">{label}</p>
+        <p className={`text-sm font-medium text-gray-900 break-all ${mono ? 'font-mono' : ''}`}>{value}</p>
       </div>
-    );
-  }
+      <button
+        type="button"
+        onClick={copy}
+        className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-gray-200 bg-white text-xs font-semibold text-gray-700 hover:border-[#002366] hover:text-[#002366] transition-colors"
+      >
+        {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
+        {copied ? 'Copié' : 'Copier'}
+      </button>
+    </div>
+  );
+}
 
+export default function BillingPaymentMethodPage() {
   return (
     <div className="min-h-screen p-0 md:p-0">
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
-        .animate-slideUp { animation: slideUp 0.3s ease-out; }
-      `}</style>
-
-      <div className="mb-8 animate-slideUp">
-        <div className="flex items-center justify-between mb-1">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-2">
           <div>
             <h1 className="text-5xl font-light text-gray-900 tracking-tight mb-2">
               Moyen de paiement plateforme
             </h1>
             <p className="text-sm text-gray-400">
-              Configurez comment vous payez votre abonnement Reza Pro
+              Comment payer votre abonnement Reza Pro
             </p>
           </div>
-          {hasExisting && (
-            <button
-              onClick={() => { setHasExisting(false); setType('SEPA'); setIban(''); setCardLast4(''); setHolderName(''); }}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors underline"
-            >
-              Modifier
-            </button>
-          )}
         </div>
       </div>
 
-      <div className="bg-amber-50 border border-amber-200/50 rounded-xl p-4 flex gap-3 mb-8 animate-fadeIn">
-        <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={18} />
-        <p className="text-xs text-amber-800 leading-relaxed">
-          Ce moyen de paiement est utilisé pour les prélèvements de votre abonnement Reza Pro par la plateforme. 
-          Il est distinct des moyens de paiement que vous acceptez de la part de vos clients 
-          (configurés dans <strong>Paramètre Établissement &gt; Moyen de paiement</strong>).
+      <div className="space-y-6 max-w-2xl">
+        {/* Bank details */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-6 sm:p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-11 h-11 rounded-full bg-[#002366]/5 flex items-center justify-center">
+              <Landmark size={20} className="text-[#002366]" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Coordonnées bancaires Reza</h2>
+              <p className="text-sm text-gray-500">
+                Veuillez effectuer votre virement vers les coordonnées bancaires suivantes :
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 rounded-xl border border-gray-200 px-5 py-4">
+              <Building2 size={18} className="text-gray-400 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 mb-0.5">Banque</p>
+                <p className="text-sm font-medium text-gray-900">{PLATFORM_BANK.bankName}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-xl border border-gray-200 px-5 py-4">
+              <UserRound size={18} className="text-gray-400 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 mb-0.5">Bénéficiaire</p>
+                <p className="text-sm font-medium text-gray-900">{PLATFORM_BANK.accountHolder}</p>
+              </div>
+            </div>
+
+            <CopyField label="RIB / IBAN" value={PLATFORM_BANK.iban} />
+
+            {PLATFORM_BANK.swift && (
+              <div className="flex items-center gap-3 rounded-xl border border-gray-200 px-5 py-4">
+                <Hash size={18} className="text-gray-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-500 mb-0.5">Code SWIFT / BIC</p>
+                  <p className="text-sm font-medium text-gray-900 font-mono">{PLATFORM_BANK.swift}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-400 leading-relaxed">
+          En cas de doute sur la validité de ces coordonnées, contactez le support Reza avant
+          d&apos;effectuer tout virement.
         </p>
       </div>
-
-      {hasExisting ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-6 animate-fadeIn">
-          <div className="flex items-center gap-3 mb-4">
-            <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-full">
-              Enregistré
-            </span>
-          </div>
-          <div className="space-y-3">
-            <div className="text-sm">
-              <span className="text-gray-500">Type : </span>
-              <span className="font-medium">{type === 'SEPA' ? 'Virement (IBAN)' : 'Carte bancaire'}</span>
-            </div>
-            {type === 'SEPA' && iban && (
-              <div className="text-sm">
-                <span className="text-gray-500">IBAN : </span>
-                <span className="font-medium font-mono">{formatIBAN(iban)}</span>
-              </div>
-            )}
-            {type === 'CARD' && cardLast4 && (
-              <div className="text-sm">
-                <span className="text-gray-500">Carte se terminant par : </span>
-                <span className="font-medium font-mono">•••• {cardLast4}</span>
-              </div>
-            )}
-            {holderName && (
-              <div className="text-sm">
-                <span className="text-gray-500">Titulaire : </span>
-                <span className="font-medium">{holderName}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-8 animate-fadeIn max-w-xl">
-          {/* Type selection */}
-          <div className="border-b border-gray-200">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setType('SEPA')}
-                className={`px-6 py-3 text-sm font-medium transition-all relative ${
-                  type === 'SEPA' ? 'text-[#002366]' : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                Virement (IBAN)
-                {type === 'SEPA' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#002366]" />}
-              </button>
-              <button
-                onClick={() => setType('CARD')}
-                className={`px-6 py-3 text-sm font-medium transition-all relative ${
-                  type === 'CARD' ? 'text-[#002366]' : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                Carte bancaire
-                {type === 'CARD' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#002366]" />}
-              </button>
-            </div>
-          </div>
-
-          {/* IBAN form */}
-          {type === 'SEPA' && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Titulaire du compte</label>
-                <input
-                  type="text" value={holderName} onChange={e => setHolderName(e.target.value)}
-                  placeholder="Nom du titulaire"
-                  className="w-full px-6 py-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#002366] focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">IBAN</label>
-                <input
-                  type="text" value={iban} onChange={e => setIban(formatIBAN(e.target.value))}
-                  placeholder="MA76 XXXX XXXX XXXX XXXX XXXX XXX" maxLength={34}
-                  className="w-full px-6 py-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#002366] focus:border-transparent"
-                />
-                <p className="mt-2 text-xs text-gray-400">IBAN marocain commençant par MA</p>
-              </div>
-            </div>
-          )}
-
-          {/* Card form */}
-          {type === 'CARD' && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Titulaire de la carte</label>
-                <input
-                  type="text" value={holderName} onChange={e => setHolderName(e.target.value.toUpperCase())}
-                  placeholder="FATIMA ZAHRA EL AMRANI"
-                  className="w-full px-6 py-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#002366] focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">4 derniers chiffres</label>
-                <input
-                  type="text" value={cardLast4} onChange={e => setCardLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="1234" maxLength={4}
-                  className="w-full px-6 py-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#002366] focus:border-transparent"
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-            <button
-              onClick={handleSave} disabled={saving}
-              className="px-6 py-2.5 bg-[#002366] text-white text-sm font-medium rounded-full hover:bg-gray-800 transition-colors disabled:opacity-50 flex items-center gap-2"
-            >
-              {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Enregistrement...</> : <><Check size={16} /> Enregistrer</>}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

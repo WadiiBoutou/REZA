@@ -1,73 +1,98 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { TrendingUp, Users, Calendar, DollarSign, Download, Printer, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { TrendingUp, Users, Calendar, DollarSign, Download, ChevronLeft, ChevronRight, Loader2, RotateCcw, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 
-export default function AnalyticsDashboard() {
+type SortKey = 'name' | 'occupationRate' | 'workedHours' | 'revenue';
+
+export default function OccupancyCollaborateurs() {
+  const { isAuthenticated } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [compareMode, setCompareMode] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
   const [timeFilter, setTimeFilter] = useState<'week' | 'month' | 'year'>('month');
 
-  const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  // Prestation filters
+  const [services, setServices] = useState<Array<{ id: string; name: string; category: string }>>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [categoryId, setCategoryId] = useState('all');
+  const [serviceId, setServiceId] = useState('all');
+
+  // Sorting
+  const [sortKey, setSortKey] = useState<SortKey>('occupationRate');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Statistics data state
   const [statsData, setStatsData] = useState({
     collaborators: [] as any[],
     totals: {
-      totalServices: 0,
-      inSalon: 0,
-      online: 0,
+      occupationRate: 0,
+      workedHours: 0,
       revenue: 0,
-      onlineRate: 0
+      appointmentCount: 0
     }
   });
 
-  const detailsRef = useRef<HTMLDivElement>(null);
+  const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
+  // Load the service catalog for the category/prestation filters
   useEffect(() => {
-    if (showDetails && detailsRef.current) {
-      detailsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [showDetails]);
-
-  useEffect(() => {
-    setMounted(true);
-    fetchStats();
-  }, [timeFilter, selectedMonth, selectedYear]);
+    if (!isAuthenticated) return;
+    const fetchCatalog = async () => {
+      try {
+        const res = await api.getServices();
+        const svcs = (res.services || []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          category: s.category || 'AUTRE'
+        }));
+        setServices(svcs);
+        setCategories(Array.from(new Set(svcs.map((s) => s.category))));
+      } catch {
+        // keep filters empty on failure
+      }
+    };
+    fetchCatalog();
+  }, [isAuthenticated]);
 
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const data = await api.getCollaborateursStats({
+      const data = await api.getOccupationCollaborateurs({
         period: timeFilter,
         month: selectedMonth,
-        year: selectedYear
+        year: selectedYear,
+        categoryId,
+        serviceId
       });
-      
+
       setStatsData({
         collaborators: data.collaborators || [],
         totals: data.totals || {
-          totalServices: 0,
-          inSalon: 0,
-          online: 0,
+          occupationRate: 0,
+          workedHours: 0,
           revenue: 0,
-          onlineRate: 0
+          appointmentCount: 0
         }
       });
     } catch (err: any) {
-      console.error('Error fetching collaborateurs stats:', err);
+      console.error('Error fetching occupation collaborateurs stats:', err);
       toast.error(err.message || 'Erreur lors du chargement des statistiques');
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    setMounted(true);
+    fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeFilter, selectedMonth, selectedYear, categoryId, serviceId]);
 
   const navigateMonth = (direction: 'prev' | 'next') => {
     if (direction === 'prev') {
@@ -87,6 +112,61 @@ export default function AnalyticsDashboard() {
     }
   };
 
+  const filteredServices = categoryId === 'all'
+    ? services
+    : services.filter((s) => s.category === categoryId);
+
+  const collaborators = useMemo(() => {
+    const arr = [...statsData.collaborators];
+    arr.sort((a: any, b: any) => {
+      let cmp: number;
+      if (sortKey === 'name') {
+        cmp = (a.name || '').localeCompare(b.name || '');
+      } else {
+        cmp = (a[sortKey] ?? 0) - (b[sortKey] ?? 0);
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return arr;
+  }, [statsData.collaborators, sortKey, sortDir]);
+
+  const totals = statsData.totals;
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'name' ? 'asc' : 'desc');
+    }
+  };
+
+  const hasActiveState =
+    categoryId !== 'all' || serviceId !== 'all' || sortKey !== 'occupationRate' || sortDir !== 'desc';
+
+  const clearFilters = () => {
+    setCategoryId('all');
+    setServiceId('all');
+    setSortKey('occupationRate');
+    setSortDir('desc');
+  };
+
+  const SortButton = ({ label, k, align = 'center' }: { label: string; k: SortKey; align?: 'left' | 'center' | 'right' }) => (
+    <button
+      onClick={() => toggleSort(k)}
+      className={`inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider transition-colors ${
+        sortKey === k ? 'text-[#002366]' : 'text-gray-500 hover:text-gray-800'
+      } ${align === 'right' ? 'justify-end' : align === 'left' ? 'justify-start' : 'justify-center'}`}
+    >
+      {label}
+      {sortKey === k ? (
+        sortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />
+      ) : (
+        <ArrowUpDown size={12} className="opacity-40" />
+      )}
+    </button>
+  );
+
   if (!mounted || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 p-6">
@@ -97,9 +177,6 @@ export default function AnalyticsDashboard() {
       </div>
     );
   }
-
-  const collaborators = statsData.collaborators;
-  const totals = statsData.totals;
 
   return (
     <div className="min-h-screen">
@@ -118,14 +195,14 @@ export default function AnalyticsDashboard() {
       `}</style>
 
       {/* Header */}
-      <div className="mb-12 animate-slideUp">
+      <div className="mb-8 animate-slideUp">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-5xl font-light text-gray-900 tracking-tight mb-2">Collaborateurs</h1>
-            <p className="text-sm text-gray-400">Analyse détaillée des performances par collaborateur</p>
+            <h1 className="text-5xl font-light text-gray-900 tracking-tight mb-2">Taux d'occupation</h1>
+            <p className="text-sm text-gray-400">Analyse détaillée des performances par employé</p>
           </div>
           <div className="flex items-center gap-6">
-            {/* Date Navigation - same design as vue-ensemble */}
+            {/* Date Navigation */}
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigateMonth('prev')}
@@ -159,8 +236,8 @@ export default function AnalyticsDashboard() {
                   key={period}
                   onClick={() => setTimeFilter(period)}
                   className={`px-4 py-2 text-xs font-medium transition-all ${
-                    timeFilter === period 
-                      ? 'accent-color' 
+                    timeFilter === period
+                      ? 'accent-color'
                       : 'text-gray-400 hover:text-gray-600'
                   }`}
                 >
@@ -175,6 +252,43 @@ export default function AnalyticsDashboard() {
               Exporter
             </button>
           </div>
+        </div>
+
+        {/* Filters row */}
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <Select value={categoryId} onValueChange={(v) => { setCategoryId(v); setServiceId('all'); }}>
+            <SelectTrigger className="px-4 py-2 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#002366] text-sm bg-white min-w-[180px]">
+              <SelectValue placeholder="Toutes les catégories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toutes les catégories</SelectItem>
+              {categories.map((cat) => (
+                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={serviceId} onValueChange={setServiceId}>
+            <SelectTrigger className="px-4 py-2 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#002366] text-sm bg-white min-w-[180px]">
+              <SelectValue placeholder="Toutes les prestations" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toutes les prestations</SelectItem>
+              {filteredServices.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {hasActiveState && (
+            <button
+              onClick={clearFilters}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
+            >
+              <RotateCcw size={14} />
+              Effacer filtres et tri
+            </button>
+          )}
         </div>
       </div>
 
@@ -191,8 +305,8 @@ export default function AnalyticsDashboard() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium">Total Prestations</p>
-            <p className="text-3xl font-light text-gray-900">{totals.totalServices}</p>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Taux d'occupation moyen</p>
+            <p className="text-3xl font-light text-gray-900">{totals.occupationRate.toFixed(1)}%</p>
           </div>
         </div>
 
@@ -207,8 +321,8 @@ export default function AnalyticsDashboard() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium">Pris en Ligne</p>
-            <p className="text-3xl font-light text-gray-900">{totals.online}</p>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Total heures travaillées</p>
+            <p className="text-3xl font-light text-gray-900">{totals.workedHours} h</p>
           </div>
         </div>
 
@@ -223,8 +337,8 @@ export default function AnalyticsDashboard() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium">Taux en Ligne</p>
-            <p className="text-3xl font-light text-gray-900">{totals.onlineRate}%</p>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Total des RDV</p>
+            <p className="text-3xl font-light text-gray-900">{totals.revenue.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD</p>
           </div>
         </div>
 
@@ -239,8 +353,8 @@ export default function AnalyticsDashboard() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium">Total des RDV</p>
-            <p className="text-3xl font-light text-gray-900">{totals.revenue.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD</p>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Employés actifs</p>
+            <p className="text-3xl font-light text-gray-900">{collaborators.length}</p>
           </div>
         </div>
       </div>
@@ -251,61 +365,43 @@ export default function AnalyticsDashboard() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Collaborateur
+                <th className="px-6 py-4 text-left">
+                  <SortButton label="Employé" k="name" align="left" />
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total Prestations
+                <th className="px-6 py-4 text-center">
+                  <SortButton label="Taux d'occupation" k="occupationRate" />
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Pris en Salon
+                <th className="px-6 py-4 text-center">
+                  <SortButton label="Heures travaillées" k="workedHours" />
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Pris en Ligne
-                </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Taux en Ligne
-                </th>
-                <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total des RDV*
+                <th className="px-6 py-4 text-right">
+                  <SortButton label="Total des RDV" k="revenue" align="right" />
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {collaborators.length > 0 ? (
-                collaborators.map((collab, index) => (
+                collaborators.map((collab) => (
                   <tr key={collab.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{background: collab.color}}>
-                          <span className="text-sm font-medium text-white">
-                            {collab.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
-                          </span>
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden" style={{ background: collab.color }}>
+                          {collab.avatar ? (
+                            <img src={collab.avatar} alt={collab.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-sm font-medium text-white">
+                              {collab.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
+                            </span>
+                          )}
                         </div>
                         <span className="text-sm text-gray-900 font-medium">{collab.name}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className="text-sm font-medium text-gray-900">{collab.totalServices}</span>
+                      <span className="text-sm font-medium text-gray-900">{collab.occupationRate.toFixed(1)} %</span>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className="text-sm font-medium text-gray-900">{collab.inSalon}</span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="text-sm font-medium text-emerald-600">{collab.online}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-center gap-3">
-                        <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full transition-all duration-500"
-                            style={{ width: `${collab.onlineRate}%` }}
-                          />
-                        </div>
-                        <span className="text-sm font-medium text-gray-900 min-w-[45px]">
-                          {collab.onlineRate.toFixed(1)} %
-                        </span>
-                      </div>
+                      <span className="text-sm font-medium text-gray-900">{collab.workedHours} h</span>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <span className="text-sm font-medium text-gray-900">
@@ -316,8 +412,8 @@ export default function AnalyticsDashboard() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
-                    Aucun collaborateur actif avec des prestations pour cette période
+                  <td colSpan={4} className="px-6 py-8 text-center text-sm text-gray-500">
+                    Aucun employé actif avec des données pour cette période
                   </td>
                 </tr>
               )}
@@ -328,16 +424,10 @@ export default function AnalyticsDashboard() {
                   <span className="text-sm text-gray-900 uppercase tracking-wide">Total</span>
                 </td>
                 <td className="px-6 py-4 text-center">
-                  <span className="text-sm text-gray-900">{totals.totalServices}</span>
+                  <span className="text-sm text-gray-900">{totals.occupationRate.toFixed(1)} %</span>
                 </td>
                 <td className="px-6 py-4 text-center">
-                  <span className="text-sm text-gray-900">{totals.inSalon}</span>
-                </td>
-                <td className="px-6 py-4 text-center">
-                  <span className="text-sm text-emerald-600">{totals.online}</span>
-                </td>
-                <td className="px-6 py-4 text-center">
-                  <span className="text-sm text-gray-900">{totals.onlineRate} %</span>
+                  <span className="text-sm text-gray-900">{totals.workedHours} h</span>
                 </td>
                 <td className="px-6 py-4 text-right">
                   <span className="text-sm text-gray-900">
@@ -347,16 +437,6 @@ export default function AnalyticsDashboard() {
               </tr>
             </tbody>
           </table>
-        </div>
-
-        {/* Footer Notes */}
-        <div className="bg-gray-50 px-6 py-4 border-t border-gray-100">
-          <p className="text-xs text-gray-500 mb-2">
-            <strong>Attention:</strong> ceci n'est pas le chiffre d'affaire comptable, il s'agit de la somme des prix indiqués dans l'agenda.
-          </p>
-          <p className="text-xs text-gray-500">
-            <strong>À noter:</strong> les statistiques sont calculées toutes les nuits. Par conséquent, les actions effectuées aujourd'hui seront prises en compte le lendemain.
-          </p>
         </div>
       </div>
     </div>

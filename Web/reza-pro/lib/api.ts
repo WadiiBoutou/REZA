@@ -1276,6 +1276,8 @@ class ApiClient {
     endDate?: string;
     month?: number;
     year?: number;
+    categoryId?: string;
+    serviceId?: string;
   }) {
     const query = new URLSearchParams();
     if (params?.period) query.append('period', params.period);
@@ -1283,6 +1285,8 @@ class ApiClient {
     if (params?.endDate) query.append('endDate', params.endDate);
     if (params?.month !== undefined) query.append('month', params.month.toString());
     if (params?.year !== undefined) query.append('year', params.year.toString());
+    if (params?.categoryId) query.append('categoryId', params.categoryId);
+    if (params?.serviceId) query.append('serviceId', params.serviceId);
     return this.request<any>(`/stats/collaborateurs?${query.toString()}`);
   }
 
@@ -1339,6 +1343,8 @@ class ApiClient {
     endDate?: string;
     month?: number;
     year?: number;
+    categoryId?: string;
+    serviceId?: string;
   }) {
     const query = new URLSearchParams();
     if (params?.period) query.append('period', params.period);
@@ -1346,6 +1352,8 @@ class ApiClient {
     if (params?.endDate) query.append('endDate', params.endDate);
     if (params?.month !== undefined) query.append('month', params.month.toString());
     if (params?.year !== undefined) query.append('year', params.year.toString());
+    if (params?.categoryId) query.append('categoryId', params.categoryId);
+    if (params?.serviceId) query.append('serviceId', params.serviceId);
     return this.request<any>(`/stats/occupation/collaborateurs?${query.toString()}`);
   }
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Home, Trash2, Users, Settings, File, BarChart3, LogOut, Settings2, ChevronRight, LayoutPanelLeft, Calendar, Filter, UserCheck, Building, TrendingUp, FileText, ChevronDown, Bell, Menu, CreditCard, LifeBuoy, X } from 'lucide-react';
+import { Home, Trash2, Users, Settings, File, BarChart3, LogOut, Settings2, ChevronRight, LayoutPanelLeft, Calendar, Filter, UserCheck, Building, TrendingUp, FileText, ChevronDown, Bell, Menu, CreditCard, LifeBuoy, X, Check, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
@@ -12,7 +12,7 @@ import { SalonFilterControl } from '@/components/SalonFilterControl';
 
 const menuItems = [
 	{ name: 'Agenda', href: '/dashboard/rendez-vous', icon: Home },
-	{ name: 'Personnels', href: '/dashboard/clients/personels', icon: UserCheck },
+	{ name: 'Personnels', href: '/dashboard/personels/gestion', icon: UserCheck },
 	{ name: 'Clients', href: '/dashboard/clients/fichier-client/gestion', icon: Users },
 	{ name: 'Caisse', href: '/dashboard/caisse', icon: CreditCard },
 	{ name: 'Admin', href: '/dashboard/admin/param-agenda/gestion-de-prestations', icon: Settings2 },
@@ -37,26 +37,89 @@ function appointmentEmployeeName(apt: { employee?: { firstName?: string; lastNam
 	return `${apt.employee.firstName || ''} ${apt.employee.lastName || ''}`.trim();
 }
 
-/** Same rules as agenda grid: status + employee filters. */
+/** Same rules as agenda grid: status + employee filters (multi-select by name). */
 function matchesAgendaFilters(
-	apt: { status: string; employee?: { firstName?: string; lastName?: string } | null },
+	apt: {
+		status: string;
+		employee?: { firstName?: string; lastName?: string } | null;
+		services?: Array<{ employee?: { firstName?: string; lastName?: string } | null } | null> | null;
+	},
 	statusFilter: string,
-	selectedEmployee: string
+	selectedEmployees: string[]
 ): boolean {
 	const status = toAgendaFilterStatus(apt.status);
 	if (statusFilter !== 'all' && status !== statusFilter) return false;
 
-	if (selectedEmployee !== 'all') {
+	if (selectedEmployees.length > 0) {
+		const target = selectedEmployees.map((s) => s.trim().toLowerCase());
+		// Check per-service employees first (multi-service appointments), then legacy single employee
+		if (Array.isArray(apt.services)) {
+			for (const s of apt.services) {
+				if (s?.employee) {
+					const name = `${s.employee.firstName || ''} ${s.employee.lastName || ''}`.trim().toLowerCase();
+					if (name && target.includes(name)) return true;
+				}
+			}
+		}
 		const name = appointmentEmployeeName(apt);
-		if (!name) return false;
-		return name.toLowerCase() === selectedEmployee.trim().toLowerCase();
+		if (name && target.includes(name.trim().toLowerCase())) return true;
+		return false;
 	}
 	return true;
 }
 
+// Single checkbox row used in the sidebar list and the employee picker modal.
+const AgendaEmployeeRow = ({
+	checked,
+	onClick,
+	label,
+	subtitle,
+	color,
+	avatar,
+	showDot = true,
+}: {
+	checked: boolean;
+	onClick: () => void;
+	label: string;
+	subtitle?: string;
+	color?: string;
+	avatar?: string;
+	showDot?: boolean;
+}) => (
+	<button
+		onClick={onClick}
+		className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-sm transition-colors ${
+			checked ? 'bg-[#002366]/5' : 'hover:bg-gray-50'
+		}`}
+	>
+		<span
+			className={`w-4 h-4 rounded border grid place-content-center shrink-0 transition-colors ${
+				checked ? 'bg-[#002366] border-[#002366]' : 'border-gray-300 bg-white'
+			}`}
+		>
+			{checked && <Check size={10} className="text-white" />}
+		</span>
+		{showDot &&
+			(avatar ? (
+				<img src={avatar} alt={label} className="w-4 h-4 rounded-full object-cover shrink-0" />
+			) : (
+				<span
+					className="w-4 h-4 rounded-full shrink-0"
+					style={{ backgroundColor: color || '#3B82F6' }}
+				/>
+			))}
+		<span className="min-w-0">
+			<span className={`block truncate ${checked ? 'text-[#002366] font-medium' : 'text-gray-700'}`}>
+				{label}
+			</span>
+			{subtitle && <span className="block truncate text-[11px] text-gray-400">{subtitle}</span>}
+		</span>
+	</button>
+);
+
 // Sidebar content components remain the same
 const RendezVousSidebar = () => {
-	const { isAuthenticated, salonFilter, effectiveSalonIds } = useAuth();
+	const { isAuthenticated, salonFilter, effectiveSalonIds, isSalonFilterMulti, salons } = useAuth();
 	const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
 	const [mounted, setMounted] = useState(false);
 	const [selectedDate, setSelectedDate] = useState(() => {
@@ -64,14 +127,17 @@ const RendezVousSidebar = () => {
 		date.setHours(0, 0, 0, 0);
 		return date;
 	});
-	const [selectedEmployee, setSelectedEmployee] = useState('all');
+	// Multi-select employee filter: empty array = show everyone ('Tous').
+	const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+	const [showEmployeeModal, setShowEmployeeModal] = useState(false);
+	const [employeeModalSearch, setEmployeeModalSearch] = useState('');
 	const [statusFilter, setStatusFilter] = useState('all');
 	const [monthYear, setMonthYear] = useState('');
-	const [employees, setEmployees] = useState<Array<{id: string, name: string, color: string}>>([]);
+	const [employees, setEmployees] = useState<Array<{id: string, name: string, color: string, avatar?: string, salonName?: string}>>([]);
 	const [monthAppointments, setMonthAppointments] = useState<any[]>([]);
 	const [loading, setLoading] = useState(false);
 
-	// Fetch employees from API
+	// Fetch employees from API (all salons — the filter also works with 'Tous les salons')
 	useEffect(() => {
 		if (!isAuthenticated) return;
 		
@@ -85,23 +151,55 @@ const RendezVousSidebar = () => {
 					const agendaSettings = emp.agendaSettings || {};
 					const name = `${emp.firstName} ${emp.lastName}`;
 					const color = agendaSettings.color || '#3B82F6';
-					return { id: emp.id, name, color };
+					return {
+						id: emp.id,
+						name,
+						color,
+						avatar: emp.avatar || undefined,
+						salonName: salons.find((s) => s.id === emp.tenantId)?.name,
+					};
 				});
 				
-				// Add "Tous" option at the beginning
-				setEmployees([{ id: 'all', name: 'Tous', color: '#3B82F6' }, ...transformed]);
+				setEmployees(transformed);
 			} catch (err) {
 				console.error('Error fetching employees:', err);
-				// Fallback to empty array
-				setEmployees([{ id: 'all', name: 'Tous', color: '#3B82F6' }]);
+				setEmployees([]);
 			} finally {
 				setLoading(false);
 			}
 		};
 		
 		fetchEmployees();
-	}, [isAuthenticated, salonFilterKey]);
-	
+	}, [isAuthenticated, salonFilterKey, salons]);
+
+	// Broadcast the employee + status filters. The agenda page listens for these;
+	// after a salon switch the page remounts (layout salonKey), so we re-emit on
+	// salon change and answer the page's 'rendezVousPageReady' request to stay in sync.
+	const dispatchEmployeeFilter = (next: string[]) => {
+		setSelectedEmployees(next);
+		window.dispatchEvent(new CustomEvent('employeeFilterChange', { detail: next }));
+	};
+
+	const toggleAllEmployees = () => {
+		dispatchEmployeeFilter([]);
+	};
+
+	const toggleEmployee = (name: string) => {
+		const has = selectedEmployees.includes(name);
+		const next = has ? selectedEmployees.filter((n) => n !== name) : [...selectedEmployees, name];
+		dispatchEmployeeFilter(next);
+	};
+
+	useEffect(() => {
+		const syncFilters = () => {
+			window.dispatchEvent(new CustomEvent('employeeFilterChange', { detail: selectedEmployees }));
+			window.dispatchEvent(new CustomEvent('statusFilterChange', { detail: statusFilter }));
+		};
+		syncFilters();
+		window.addEventListener('rendezVousPageReady', syncFilters);
+		return () => window.removeEventListener('rendezVousPageReady', syncFilters);
+	}, [selectedEmployees, statusFilter, salonFilterKey]);
+
 	// Fetch month appointments; day dots derived from filtered set below
 	useEffect(() => {
 		if (!isAuthenticated || !mounted) return;
@@ -133,13 +231,13 @@ const RendezVousSidebar = () => {
 	const appointmentsByDate = useMemo(() => {
 		const counts: Record<string, number> = {};
 		monthAppointments.forEach((apt: any) => {
-			if (!matchesAgendaFilters(apt, statusFilter, selectedEmployee)) return;
+			if (!matchesAgendaFilters(apt, statusFilter, selectedEmployees)) return;
 			const date = new Date(apt.startTime);
 			const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 			counts[dateKey] = (counts[dateKey] || 0) + 1;
 		});
 		return counts;
-	}, [monthAppointments, statusFilter, selectedEmployee]);
+	}, [monthAppointments, statusFilter, selectedEmployees]);
 	
 	useEffect(() => {
 		setMounted(true);
@@ -208,9 +306,10 @@ const RendezVousSidebar = () => {
 	}
 
 	return (
-		<div className="flex-1 overflow-y-auto p-6">
-			<div className="space-y-6">
-				<div className="bg-white">
+		<>
+			<div className="flex-1 overflow-y-auto p-6">
+				<div className="space-y-6">
+					<div className="bg-white">
 					<div className="flex items-center justify-between mb-4">
 						<button
 							onClick={() => changeMonth(-1)}
@@ -269,62 +368,49 @@ const RendezVousSidebar = () => {
 					<h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2">
 						<UserCheck size={14} />
 						Employés
+						{selectedEmployees.length > 0 && (
+							<span className="ml-auto text-[10px] font-semibold bg-[#002366] text-white rounded-full px-2 py-0.5">
+								{selectedEmployees.length} sélectionné{selectedEmployees.length > 1 ? 's' : ''}
+							</span>
+						)}
 					</h3>
 					{loading ? (
 						<div className="flex items-center justify-center py-4">
 							<div className="animate-pulse text-xs text-gray-400">Chargement...</div>
 						</div>
-					) : employees.length > 10 ? (
-						<Select value={selectedEmployee} onValueChange={value => {
-							setSelectedEmployee(value);
-							window.dispatchEvent(new CustomEvent('employeeFilterChange', { detail: value }));
-						}}>
-							<SelectTrigger className="w-full px-4 py-2 rounded-full bg-gray-50 border border-gray-200 text-sm mt-2">
-								<SelectValue placeholder="Sélectionner l'employé" />
-							</SelectTrigger>
-							<SelectContent>
-								{employees.map((employee) => (
-									<SelectItem key={employee.id} value={employee.id === 'all' ? 'all' : employee.name}>
-										<div className="flex items-center gap-2">
-											<div 
-												className="w-3 h-3 rounded-full" 
-												style={{ backgroundColor: employee.color }}
-											></div>
-											{employee.name}
-										</div>
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
 					) : (
-						<div className="flex flex-wrap gap-2">
-							{employees.map((employee) => {
-								const value = employee.id === 'all' ? 'all' : employee.name;
-								const isSelected = (employee.id === 'all' && selectedEmployee === 'all') || selectedEmployee === employee.name;
-								return (
-									<button
+						<>
+							<div className="space-y-0.5">
+								<AgendaEmployeeRow
+									checked={selectedEmployees.length === 0}
+									onClick={toggleAllEmployees}
+									label="Tous"
+									showDot={false}
+								/>
+								{employees.slice(0, 5).map((employee) => (
+									<AgendaEmployeeRow
 										key={employee.id}
-										onClick={() => {
-											setSelectedEmployee(value);
-											window.dispatchEvent(new CustomEvent('employeeFilterChange', { detail: value }));
-										}}
-										className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 hover:scale-105 flex items-center gap-1.5 ${
-											isSelected
-												? 'bg-[#002366] text-white'
-												: 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-										}`}
-									>
-										{employee.id !== 'all' && (
-											<div 
-												className="w-2 h-2 rounded-full" 
-												style={{ backgroundColor: employee.color }}
-											></div>
-										)}
-										{employee.name}
-									</button>
-								);
-							})}
-						</div>
+										checked={selectedEmployees.includes(employee.name)}
+										onClick={() => toggleEmployee(employee.name)}
+										label={employee.name}
+										subtitle={isSalonFilterMulti ? employee.salonName : undefined}
+										color={employee.color}
+										avatar={employee.avatar}
+									/>
+								))}
+							</div>
+							{employees.length > 5 && (
+								<button
+									onClick={() => setShowEmployeeModal(true)}
+									className="w-full text-left px-2 py-1.5 text-xs font-semibold text-[#002366] hover:bg-[#002366]/5 rounded-lg transition-colors"
+								>
+									+{employees.length - 5} Afficher plus
+								</button>
+							)}
+							{employees.length === 0 && (
+								<p className="text-xs text-gray-400 px-2">Aucun employé actif</p>
+							)}
+						</>
 					)}
 				</div>
 
@@ -367,7 +453,87 @@ const RendezVousSidebar = () => {
 					</div>
 				</div>
 			</div>
-		</div>
+
+				{/* Employee filter modal (shared selection state with the sidebar list) */}
+				{showEmployeeModal && (
+					<div
+						className="fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-4"
+						onClick={() => setShowEmployeeModal(false)}
+					>
+						<div
+							className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden"
+							onClick={(e) => e.stopPropagation()}
+						>
+							<div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+								<h3 className="text-lg font-semibold text-gray-900">Filtrer par employé</h3>
+								<button
+									onClick={() => setShowEmployeeModal(false)}
+									className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 transition-colors"
+								>
+									<X size={18} />
+								</button>
+							</div>
+
+							<div className="px-6 py-3 border-b border-gray-100">
+								<div className="relative">
+									<Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+									<input
+										type="text"
+										value={employeeModalSearch}
+										onChange={(e) => setEmployeeModalSearch(e.target.value)}
+										placeholder="Rechercher un employé..."
+										className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#002366] focus:border-transparent"
+									/>
+								</div>
+							</div>
+
+							<div className="flex-1 overflow-y-auto px-3 py-2">
+								<AgendaEmployeeRow
+									checked={selectedEmployees.length === 0}
+									onClick={toggleAllEmployees}
+									label="Tous"
+									showDot={false}
+								/>
+								{employees
+									.filter((emp) =>
+										emp.name.toLowerCase().includes(employeeModalSearch.trim().toLowerCase()) ||
+										(emp.salonName || '').toLowerCase().includes(employeeModalSearch.trim().toLowerCase())
+									)
+									.map((emp) => (
+										<AgendaEmployeeRow
+											key={emp.id}
+											checked={selectedEmployees.includes(emp.name)}
+											onClick={() => toggleEmployee(emp.name)}
+											label={emp.name}
+											subtitle={isSalonFilterMulti ? emp.salonName : undefined}
+											color={emp.color}
+											avatar={emp.avatar}
+										/>
+									))}
+								{employees.filter((emp) =>
+									emp.name.toLowerCase().includes(employeeModalSearch.trim().toLowerCase()) ||
+									(emp.salonName || '').toLowerCase().includes(employeeModalSearch.trim().toLowerCase())
+								).length === 0 && (
+									<p className="px-2 py-4 text-center text-xs text-gray-400">Aucun employé trouvé</p>
+								)}
+							</div>
+
+							<div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+								<span className="text-xs text-gray-500">
+									{selectedEmployees.length} sélectionné{selectedEmployees.length > 1 ? 's' : ''}
+								</span>
+								<button
+									onClick={() => setShowEmployeeModal(false)}
+									className="px-5 py-2 bg-[#002366] text-white text-sm font-medium rounded-full hover:bg-gray-800 transition-colors"
+								>
+									Terminé
+								</button>
+							</div>
+						</div>
+					</div>
+				)}
+			</div>
+		</>
 	);
 };
 
@@ -504,6 +670,50 @@ const ClientsSidebar = () => {
 	);
 };
 
+const PersonnelsSidebar = () => {
+	const [mounted, setMounted] = useState(false);
+	const pathname = usePathname();
+
+	const linkClass = (href: string) =>
+		`block w-full px-3 py-2 text-left text-sm rounded-full transition-all ${pathname?.startsWith(href) ? 'bg-[#002366] text-white' : 'text-gray-700 hover:bg-gray-100'}`;
+
+	useEffect(() => {
+		setMounted(true);
+	}, []);
+
+	if (!mounted) {
+		return (
+			<div className="flex-1 overflow-y-auto p-6">
+				<div className="space-y-6">
+					<div className="animate-pulse bg-gray-200 h-64 rounded-xl"></div>
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className="flex-1 overflow-y-auto p-6">
+			<div className="space-y-1">
+				<Link href="/dashboard/personels/gestion" className={linkClass('/dashboard/personels/gestion')}>
+					Gestion des employés
+				</Link>
+				<Link
+					href="/dashboard/personels/statistiques"
+					className={linkClass('/dashboard/personels/statistiques')}
+				>
+					Statistiques
+				</Link>
+				<Link
+					href="/dashboard/personels/taux-occupation"
+					className={linkClass('/dashboard/personels/taux-occupation')}
+				>
+					Taux d'occupation
+				</Link>
+			</div>
+		</div>
+	);
+};
+
 const AdminSidebar = () => {
 	const [mounted, setMounted] = useState(false);
 	const [showParamAgenda, setShowParamAgenda] = useState(true);
@@ -534,7 +744,6 @@ const AdminSidebar = () => {
 	    { label: 'Indicateurs clés', path: '/dashboard/admin/statistiques-rdv/indicateurs-cles' },
 	    { label: 'Autres indicateurs', path: '/dashboard/admin/statistiques-rdv/autres' },
 	    { label: 'Prestations', path: '/dashboard/admin/statistiques-rdv/prestations' },
-	    { label: 'Collaborateurs', path: '/dashboard/admin/statistiques-rdv/collaborateurs' },
 	    { label: 'RDV', path: '/dashboard/admin/statistiques-rdv/rdv' },
 	    { label: 'RDV pas venus', path: '/dashboard/admin/statistiques-rdv/rdv-pas-venus' },
 	];
@@ -683,12 +892,6 @@ const AdminSidebar = () => {
                                 className={`block w-full px-3 py-2 text-left text-sm rounded-full transition-all ${pathname === '/dashboard/admin/taux-occupation/vue-ensemble' ? 'bg-[#002366] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
                             >
                                 Vue d'ensemble
-                            </Link>
-                            <Link
-                                href="/dashboard/admin/taux-occupation/collaborateurs"
-                                className={`block w-full px-3 py-2 text-left text-sm rounded-full transition-all ${pathname === '/dashboard/admin/taux-occupation/collaborateurs' ? 'bg-[#002366] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-                            >
-                                Collaborateurs
                             </Link>
                             <Link
                                 href="/dashboard/admin/taux-occupation/prestations"
@@ -1051,12 +1254,13 @@ export default function Sidebar() {
 						</p>
 					</div>
 				</div>
-			);
-		} else if (pathname?.startsWith('/dashboard/admin')) {
-			return <AdminSidebar />;
-		} else if (pathname === '/dashboard' || pathname === '/dashboard/rendez-vous') {
-			return <RendezVousSidebar />;
-		} else if (pathname?.startsWith('/dashboard/clients')) {
+			);			} else if (pathname?.startsWith('/dashboard/personels')) {
+				return <PersonnelsSidebar />;
+			} else if (pathname?.startsWith('/dashboard/admin')) {
+				return <AdminSidebar />;
+			} else if (pathname === '/dashboard' || pathname === '/dashboard/rendez-vous') {
+				return <RendezVousSidebar />;
+			} else if (pathname?.startsWith('/dashboard/clients')) {
 			return <ClientsSidebar />;
 		} else if (pathname?.startsWith('/dashboard/caisse')) {
 			return (
@@ -1085,7 +1289,7 @@ export default function Sidebar() {
 							// Make 'Clients' active for all /dashboard/clients routes
 							// Make 'Salons' active for horaires (nested under Mes salons)
 							const isActive = item.href === '/dashboard/clients/fichier-client/gestion'
-							  ? pathname?.startsWith('/dashboard/clients') && !pathname?.startsWith('/dashboard/clients/personels')
+							  ? pathname?.startsWith('/dashboard/clients')
 							  : item.href === '/dashboard/mes-salons'
 							  ? pathname === item.href ||
 							    pathname?.startsWith('/dashboard/admin/param-etablissement/gestion-horaires-delais')

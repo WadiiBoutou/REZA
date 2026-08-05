@@ -92,6 +92,7 @@ export class TenantService {
       appointmentDisplaySettings,
       description,
       photos,
+      coverImages,
       paymentMethods,
       amenities,
       socialMedia,
@@ -114,6 +115,7 @@ export class TenantService {
     if (description !== undefined) updateData.description = description;
     updateData.emailNotifications = finalEmailNotifications !== undefined ? finalEmailNotifications : undefined;
     if (photos !== undefined) updateData.photos = photos;
+    if (coverImages !== undefined) updateData.coverImages = coverImages;
     if (paymentMethods !== undefined) updateData.paymentMethods = paymentMethods;
     if (amenities !== undefined) updateData.amenities = amenities;
     if (socialMedia !== undefined) updateData.socialMedia = socialMedia;

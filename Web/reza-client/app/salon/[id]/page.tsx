@@ -1,7 +1,20 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { MapPin, Star, ArrowLeft, Heart, Gift, Phone, Mail, X, ChevronLeft, ChevronRight, Check, User, Users, Clock, Calendar, Globe, Instagram, Facebook, Twitter, Linkedin, Map } from 'lucide-react';
+import { MapPin, Star, ArrowLeft, Heart, Gift, Phone, Mail, X, ChevronLeft, ChevronRight, Check, User, Users, Clock, Calendar, Globe, Instagram, Facebook, Linkedin, Map } from 'lucide-react';
+
+// Brand icons for X and TikTok (not provided by lucide)
+const XBrandIcon = ({ size = 16, className }: { size?: number; className?: string }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" className={className} aria-hidden="true">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
+
+const TikTokBrandIcon = ({ size = 16, className }: { size?: number; className?: string }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" className={className} aria-hidden="true">
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
+  </svg>
+);
 import { useParams, useRouter } from 'next/navigation';
 import RezaNavbar from '../../../components/Header';
 import Footer from '../../../components/Footer';
@@ -238,8 +251,11 @@ export default function SalonDetail() {
     images: (() => {
       const defaultImage = 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&q=80';
       const coverImage = salon.coverImage;
+      const coverImages = salon.settings?.coverImages || [];
       const photos = salon.settings?.photos || [];
-      const allImages = coverImage ? [coverImage, ...photos] : photos;
+      const allImages = coverImage
+        ? [coverImage, ...coverImages, ...photos]
+        : [...coverImages, ...photos];
       // Filter out any null/undefined/empty strings and ensure we have at least one image
       const validImages = allImages
         .filter((img: any) => {
@@ -911,15 +927,26 @@ export default function SalonDetail() {
                           <span>Facebook</span>
                         </a>
                       )}
-                      {salonData.socialMedia.twitter && (
+                      {(salonData.socialMedia.x || salonData.socialMedia.twitter) && (
                         <a 
-                          href={String(salonData.socialMedia.twitter).startsWith('http') ? String(salonData.socialMedia.twitter) : `https://twitter.com/${salonData.socialMedia.twitter}`}
+                          href={String(salonData.socialMedia.x || salonData.socialMedia.twitter).startsWith('http') ? String(salonData.socialMedia.x || salonData.socialMedia.twitter) : `https://x.com/${String(salonData.socialMedia.x || salonData.socialMedia.twitter)}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-sky-500 text-white rounded-full hover:opacity-90 transition-opacity text-xs sm:text-sm"
+                          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-900 text-white rounded-full hover:opacity-90 transition-opacity text-xs sm:text-sm"
                         >
-                          <Twitter className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                          <span>Twitter</span>
+                          <XBrandIcon size={16} />
+                          <span>X</span>
+                        </a>
+                      )}
+                      {salonData.socialMedia.tiktok && (
+                        <a 
+                          href={String(salonData.socialMedia.tiktok).startsWith('http') ? String(salonData.socialMedia.tiktok) : `https://tiktok.com/@${String(salonData.socialMedia.tiktok)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-950 text-white rounded-full hover:opacity-90 transition-opacity text-xs sm:text-sm"
+                        >
+                          <TikTokBrandIcon size={16} />
+                          <span>TikTok</span>
                         </a>
                       )}
                       {salonData.socialMedia.linkedin && (

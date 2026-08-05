@@ -4,9 +4,12 @@ import React, { useState, useRef, use, useEffect } from 'react';
 import { Upload, Image, Trash2, Edit3, Grid, List, Search, Filter, Download, Eye, X, Check, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, MoreVertical, FolderOpen, Star, Calendar, Tag, Crop } from 'lucide-react';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import SalonScopeNotice from '@/components/SalonScopeNotice';
 import toast from 'react-hot-toast';
 
 const PhotoManagement = () => {
+  const { isSalonFilterMulti } = useAuth();
   const [viewMode, setViewMode] = useState('grid');
   const [selectedTab, setSelectedTab] = useState('validated'); // validated or rejected
   const [selectedPhotos, setSelectedPhotos] = useState<(number | string)[]>([]);
@@ -492,6 +495,11 @@ const PhotoManagement = () => {
         </div>
       </div>
     );
+  }
+
+  // Photos are salon-scoped: require a single salon selection.
+  if (isSalonFilterMulti) {
+    return <SalonScopeNotice title="Gestion photos" subtitle="Gérez les photos de votre établissement" />;
   }
 
   if (error && photos.length === 0) {

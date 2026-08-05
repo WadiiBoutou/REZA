@@ -15,7 +15,9 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:seed": "tsx seed/index.ts",
-    "seed": "tsx seed/index.ts"
+    "seed": "tsx seed/index.ts",
+    "rdv:check": "tsx scripts/check-and-clear.ts check",
+    "rdv:clear": "tsx scripts/check-and-clear.ts clear"
   },
   "keywords": [
     "saas",

@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma';
+import { tenantIdFilter } from '../../utils/salonScope';
 
 interface DateRange {
   start: Date;
@@ -669,15 +670,22 @@ export class StatsService {
     return { totalPrestations, prisEnSalon: totalSalon, prisEnLigne: totalLigne, tauxEnLigne: tauxLigne, prestationsData };
   }
 
-  async getCollaborateursStats(tenantId: string, period?: string, startDate?: string, endDate?: string, month?: string, year?: string) {
+  async getCollaborateursStats(tenantIds: string | string[], period?: string, startDate?: string, endDate?: string, month?: string, year?: string, categoryId?: string, serviceId?: string) {
     const { start, end } = this.parseDateRange({ period, startDate, endDate, month, year });
 
-    const tenantWhere = { tenantId };
-    const appointmentWhere = { ...tenantWhere, startTime: { gte: start, lte: end } };
+    const tenantWhere = { tenantId: tenantIdFilter(tenantIds) };
+    const appointmentWhere: any = { ...tenantWhere, startTime: { gte: start, lte: end } };
+
+    // Optional per-service filters (category string / service id) — match on the appointment's service items
+    const serviceFilters: any[] = [];
+    if (categoryId && categoryId !== 'all') serviceFilters.push({ service: { category: categoryId } });
+    if (serviceId && serviceId !== 'all') serviceFilters.push({ service: { id: serviceId } });
+    if (serviceFilters.length === 1) appointmentWhere.services = { some: serviceFilters[0] };
+    else if (serviceFilters.length > 1) appointmentWhere.services = { some: { AND: serviceFilters } };
 
     const appointments = await prisma.appointment.findMany({
       where: appointmentWhere,
-      include: { employee: true, client: true, invoice: true }
+      include: { employee: true, client: true, invoice: true, services: { include: { service: true } } }
     });
 
     const allEmployees = await prisma.employee.findMany({
@@ -686,13 +694,26 @@ export class StatsService {
 
     const employeeStats: any = {};
     allEmployees.forEach(emp => {
-      employeeStats[emp.id] = { id: emp.id, name: `${emp.firstName} ${emp.lastName}`, totalServices: 0, inSalon: 0, online: 0, revenue: 0 };
+      employeeStats[emp.id] = { id: emp.id, name: `${emp.firstName} ${emp.lastName}`, avatar: emp.avatar || null, totalServices: 0, inSalon: 0, online: 0, revenue: 0 };
     });
 
-    appointments.forEach(apt => {
-      if (apt.employeeId && employeeStats[apt.employeeId]) {
+    appointments.forEach((apt: any) => {
+      const isSalon = apt.createdById || new Date(apt.client.createdAt) < start;
+      const items = apt.services && apt.services.length > 0 ? apt.services : null;
+      if (items) {
+        items.forEach((item: any) => {
+          if (item.employeeId && employeeStats[item.employeeId]) {
+            employeeStats[item.employeeId].totalServices++;
+            if (isSalon) employeeStats[item.employeeId].inSalon++;
+            else employeeStats[item.employeeId].online++;
+            // Prefer the per-service price; fall back to the invoice total for single-service items
+            employeeStats[item.employeeId].revenue += item.price > 0
+              ? item.price
+              : (items.length === 1 && apt.invoice ? (apt.invoice.total || 0) : 0);
+          }
+        });
+      } else if (apt.employeeId && employeeStats[apt.employeeId]) {
         employeeStats[apt.employeeId].totalServices++;
-        const isSalon = apt.createdById || new Date(apt.client.createdAt) < start;
         if (isSalon) employeeStats[apt.employeeId].inSalon++;
         else employeeStats[apt.employeeId].online++;
         if (apt.invoice) employeeStats[apt.employeeId].revenue += apt.invoice.total || 0;
@@ -703,7 +724,7 @@ export class StatsService {
     const collaborators = Object.values(employeeStats)
       .filter((emp: any) => emp.totalServices > 0)
       .map((emp: any, idx: number) => ({
-        id: emp.id, name: emp.name, color: colors[idx % colors.length],
+        id: emp.id, name: emp.name, avatar: emp.avatar, color: colors[idx % colors.length],
         totalServices: emp.totalServices, inSalon: emp.inSalon, online: emp.online,
         onlineRate: emp.totalServices > 0 ? Math.round((emp.online / emp.totalServices) * 100 * 10) / 10 : 0,
         revenue: Math.round(emp.revenue * 100) / 100
@@ -931,15 +952,22 @@ export class StatsService {
     };
   }
 
-  async getOccupancyCollaborateurs(tenantId: string, period?: string, startDate?: string, endDate?: string, month?: string, year?: string) {
+  async getOccupancyCollaborateurs(tenantIds: string | string[], period?: string, startDate?: string, endDate?: string, month?: string, year?: string, categoryId?: string, serviceId?: string) {
     const { start, end } = this.parseDateRange({ period, startDate, endDate, month, year });
 
-    const tenantWhere = { tenantId };
-    const appointmentWhere = {
+    const tenantWhere = { tenantId: tenantIdFilter(tenantIds) };
+    const appointmentWhere: any = {
       ...tenantWhere,
       startTime: { gte: start, lte: end },
       status: { not: 'CANCELLED' as const }
     };
+
+    // Optional per-service filters (category string / service id) — match on the appointment's service items
+    const serviceFilters: any[] = [];
+    if (categoryId && categoryId !== 'all') serviceFilters.push({ service: { category: categoryId } });
+    if (serviceId && serviceId !== 'all') serviceFilters.push({ service: { id: serviceId } });
+    if (serviceFilters.length === 1) appointmentWhere.services = { some: serviceFilters[0] };
+    else if (serviceFilters.length > 1) appointmentWhere.services = { some: { AND: serviceFilters } };
 
     const allEmployees = await prisma.employee.findMany({
       where: { ...tenantWhere, isActive: true }
@@ -947,16 +975,28 @@ export class StatsService {
 
     const appointments = await prisma.appointment.findMany({
       where: appointmentWhere,
-      include: { employee: true, invoice: true }
+      include: { employee: true, invoice: true, services: { include: { service: true } } }
     });
 
     const employeeStats: any = {};
     allEmployees.forEach(emp => {
-      employeeStats[emp.id] = { id: emp.id, name: `${emp.firstName} ${emp.lastName}`, totalMinutes: 0, revenue: 0, appointmentCount: 0 };
+      employeeStats[emp.id] = { id: emp.id, name: `${emp.firstName} ${emp.lastName}`, avatar: emp.avatar || null, totalMinutes: 0, revenue: 0, appointmentCount: 0 };
     });
 
     appointments.forEach((apt: any) => {
-      if (apt.employeeId && employeeStats[apt.employeeId]) {
+      const items = apt.services && apt.services.length > 0 ? apt.services : null;
+      if (items) {
+        items.forEach((item: any) => {
+          if (item.employeeId && employeeStats[item.employeeId]) {
+            employeeStats[item.employeeId].totalMinutes += item.duration || 0;
+            employeeStats[item.employeeId].appointmentCount++;
+            // Prefer the per-service price; fall back to the invoice total for single-service items
+            employeeStats[item.employeeId].revenue += item.price > 0
+              ? item.price
+              : (items.length === 1 && apt.invoice ? (apt.invoice.total || 0) : 0);
+          }
+        });
+      } else if (apt.employeeId && employeeStats[apt.employeeId]) {
         employeeStats[apt.employeeId].totalMinutes += apt.duration || 0;
         employeeStats[apt.employeeId].appointmentCount++;
         if (apt.invoice) employeeStats[apt.employeeId].revenue += apt.invoice.total || 0;
@@ -974,7 +1014,7 @@ export class StatsService {
           ? Math.round((emp.totalMinutes / estimatedWorkingMinutes) * 100 * 10) / 10
           : 0;
         return {
-          id: emp.id, name: emp.name, color: colors[idx % colors.length],
+          id: emp.id, name: emp.name, avatar: emp.avatar, color: colors[idx % colors.length],
           occupationRate, workedHours, revenue: Math.round(emp.revenue * 100) / 100,
           appointmentCount: emp.appointmentCount
         };

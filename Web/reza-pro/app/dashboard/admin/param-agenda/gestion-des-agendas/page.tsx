@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, X, Copy } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Copy, Building } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Sketch } from '@uiw/react-color';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -26,9 +26,9 @@ type EmployeeAgenda = {
   role: string;
   workingHours: WorkingHours[];
   allowOnlineBooking: boolean;
-  services: string[];
-  status: 'active' | 'inactive' | 'vacation';
-  avatar?: string;
+  services: string[];	  status: 'active' | 'inactive' | 'vacation';
+	  avatar?: string;
+	  tenantId?: string;
 };
 
 const defaultWorkingHours: WorkingHours[] = [
@@ -64,9 +64,9 @@ const transformEmployeeToAgenda = (employee: any): EmployeeAgenda => {
     workingHours: Array.isArray(workingHours) ? workingHours : defaultWorkingHours,
     allowOnlineBooking: agendaSettings.allowOnlineBooking !== false,
     services,
-    status,
-    avatar: employee.avatar || undefined
-  };
+    status,	    avatar: employee.avatar || undefined,
+	    tenantId: employee.tenantId || undefined
+	  };
 };
 
 // Transform frontend agenda to API employee format
@@ -93,7 +93,8 @@ const transformAgendaToEmployee = (agenda: EmployeeAgenda, existingEmployee?: an
 };
 
 const GestionDesAgendas = () => {
-  const { isAuthenticated, salons, effectiveSalonIds, isSalonFilterMulti } = useAuth();
+  const { isAuthenticated, salons, effectiveSalonIds, isSalonFilterMulti, salonFilter } = useAuth();
+  const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
   const [mounted, setMounted] = useState(false);
   const [agendas, setAgendas] = useState<EmployeeAgenda[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -107,8 +108,17 @@ const GestionDesAgendas = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [agendaToDelete, setAgendaToDelete] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Client-side pagination: show the first N cards, then "Afficher plus".
+  const PAGE_SIZE = 6;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);	  // Reset pagination whenever the search/status filters change
+	  useEffect(() => {
+		setVisibleCount(PAGE_SIZE);
+	  }, [searchQuery, filterStatus]);
 
-  // Fetch employees and services
+	  // Salon name lookup (useful when listing employees across all salons)
+	  const salonNameById = React.useMemo(() => new Map(salons.map((s) => [s.id, s.name])), [salons]);
+
+  // Fetch employees and services (re-runs when the salon filter changes)
   useEffect(() => {
     if (!isAuthenticated) return;
     
@@ -139,7 +149,7 @@ const GestionDesAgendas = () => {
     };
 
     fetchData();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, salonFilterKey]);
 
   const handleDeleteAgenda = (id: string) => {
     const agenda = agendas.find(a => a.id === id);
@@ -276,15 +286,27 @@ const GestionDesAgendas = () => {
     }
   };
 
-  const filteredAgendas = agendas.filter(agenda => {
-    const matchesSearch = agenda.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         agenda.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         agenda.role.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredAgendas = agendas.filter(agenda => {	const matchesSearch = searchQuery === '' ||
+					   agenda.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+					   agenda.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+					   agenda.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
+					   (agenda.tenantId ? (salonNameById.get(agenda.tenantId) || '').toLowerCase().includes(searchQuery.toLowerCase()) : false);
     const matchesStatus = filterStatus === 'all' || agenda.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
-  if (!mounted || loading) {
+  if (!mounted) {
+    return (
+      <div className="min-h-screen p-0">
+        <div className="animate-pulse space-y-4">
+          <div className="bg-gray-200 h-12 rounded-xl w-1/3"></div>
+          <div className="bg-gray-200 h-96 rounded-2xl"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
     return (
       <div className="min-h-screen p-0">
         <div className="animate-pulse space-y-4">
@@ -329,13 +351,12 @@ const GestionDesAgendas = () => {
       {/* Header */}
       <div className="mb-8 animate-slideUp">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-4xl md:text-5xl font-light text-gray-900 tracking-tight mb-2">
-              Gestion des Agendas
-            </h1>
-            <p className="text-sm text-gray-500">
-              Gérez les horaires, disponibilités et paramètres des employés
-            </p>
+          <div>			<h1 className="text-4xl md:text-5xl font-light text-gray-900 tracking-tight mb-2">
+			  Gestion des employés
+			</h1>
+			<p className="text-sm text-gray-500">
+			  Gérez les horaires, disponibilités et paramètres des employés
+			</p>
           </div>
           
           <button
@@ -380,11 +401,11 @@ const GestionDesAgendas = () => {
 
       {/* Agendas List */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fadeIn">
-        {filteredAgendas.map(agenda => (
-          <AgendaCard
-            key={agenda.id}
-            agenda={agenda}
-            onEdit={() => {
+        {filteredAgendas.slice(0, visibleCount).map(agenda => (		  <AgendaCard
+			key={agenda.id}
+			agenda={agenda}
+			salonName={isSalonFilterMulti && agenda.tenantId ? salonNameById.get(agenda.tenantId) : undefined}
+			onEdit={() => {
               setEditingAgenda(agenda);
               setShowModal(true);
             }}
@@ -393,6 +414,18 @@ const GestionDesAgendas = () => {
           />
         ))}
       </div>
+
+      {/* Load more (client-side pagination) */}
+      {filteredAgendas.length > visibleCount && (
+        <div className="mt-8 text-center">
+          <button
+            onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}
+            className="px-6 py-2.5 bg-white border border-gray-200 text-sm font-medium text-gray-700 rounded-full hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm"
+          >
+            Afficher plus ({filteredAgendas.length - visibleCount} restant{filteredAgendas.length - visibleCount > 1 ? 's' : ''})
+          </button>
+        </div>
+      )}
 
       {filteredAgendas.length === 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
@@ -488,11 +521,12 @@ const GestionDesAgendas = () => {
 };
 
 // Agenda Card Component
-const AgendaCard = ({ agenda, onEdit, onDelete, onDuplicate }: {
+const AgendaCard = ({ agenda, onEdit, onDelete, onDuplicate, salonName }: {
   agenda: EmployeeAgenda;
   onEdit: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
+  salonName?: string;
 }) => {
   const [avatarFailed, setAvatarFailed] = useState(false);
   const workingDays = agenda.workingHours.filter(h => h.isWorking);
@@ -546,11 +580,16 @@ const AgendaCard = ({ agenda, onEdit, onDelete, onDuplicate }: {
                 {agenda.name.charAt(0).toUpperCase()}
               </span>
             </div>
-          )}
-          <div>
-            <h3 className="font-semibold text-gray-900">{agenda.name}</h3>
-            <p className="text-sm text-gray-500">{agenda.role}</p>
-          </div>
+          )}		  <div>
+			<h3 className="font-semibold text-gray-900">{agenda.name}</h3>
+			<p className="text-sm text-gray-500">{agenda.role}</p>
+			{salonName && (
+			  <span className="mt-1 inline-flex items-center gap-1 text-xs text-[#002366] bg-[#002366]/5 border border-[#002366]/10 rounded-full px-2 py-0.5">
+				<Building size={12} />
+				{salonName}
+			  </span>
+			)}
+		  </div>
         </div>
         
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

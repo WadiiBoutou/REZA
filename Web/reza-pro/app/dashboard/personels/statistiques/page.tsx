@@ -1,64 +1,61 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { TrendingUp, Users, Calendar, DollarSign, Download, Printer, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import React, { useState, useEffect } from 'react';
+import { TrendingUp, Users, Calendar, DollarSign, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 
-export default function AnalyticsDashboard() {
+export default function CollaborateurStats() {
+  const { isAuthenticated } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [compareMode, setCompareMode] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
   const [timeFilter, setTimeFilter] = useState<'week' | 'month' | 'year'>('month');
+
+  const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
   // Statistics data state
   const [statsData, setStatsData] = useState({
     collaborators: [] as any[],
     totals: {
-      occupationRate: 0,
-      workedHours: 0,
-      revenue: 0
+      totalServices: 0,
+      inSalon: 0,
+      online: 0,
+      revenue: 0,
+      onlineRate: 0
     }
   });
 
-  const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-
-  const detailsRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
-    if (showDetails && detailsRef.current) {
-      detailsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [showDetails]);
-
-  useEffect(() => {
+    if (!isAuthenticated) return;
     setMounted(true);
     fetchStats();
-  }, [timeFilter, selectedMonth, selectedYear]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, timeFilter, selectedMonth, selectedYear]);
 
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const data = await api.getOccupationCollaborateurs({
+      const data = await api.getCollaborateursStats({
         period: timeFilter,
         month: selectedMonth,
         year: selectedYear
       });
-      
+
       setStatsData({
         collaborators: data.collaborators || [],
         totals: data.totals || {
-          occupationRate: 0,
-          workedHours: 0,
-          revenue: 0
+          totalServices: 0,
+          inSalon: 0,
+          online: 0,
+          revenue: 0,
+          onlineRate: 0
         }
       });
     } catch (err: any) {
-      console.error('Error fetching occupation collaborateurs stats:', err);
+      console.error('Error fetching collaborateurs stats:', err);
       toast.error(err.message || 'Erreur lors du chargement des statistiques');
     } finally {
       setLoading(false);
@@ -118,10 +115,10 @@ export default function AnalyticsDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-5xl font-light text-gray-900 tracking-tight mb-2">Statistiques</h1>
-            <p className="text-sm text-gray-400">Analyse détaillée des performances par collaborateur</p>
+            <p className="text-sm text-gray-400">Analyse détaillée des performances par employé</p>
           </div>
           <div className="flex items-center gap-6">
-            {/* Date Navigation - same design as vue-ensemble */}
+            {/* Date Navigation */}
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigateMonth('prev')}
@@ -155,8 +152,8 @@ export default function AnalyticsDashboard() {
                   key={period}
                   onClick={() => setTimeFilter(period)}
                   className={`px-4 py-2 text-xs font-medium transition-all ${
-                    timeFilter === period 
-                      ? 'accent-color' 
+                    timeFilter === period
+                      ? 'accent-color'
                       : 'text-gray-400 hover:text-gray-600'
                   }`}
                 >
@@ -187,8 +184,8 @@ export default function AnalyticsDashboard() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium">Taux d'occupation moyen</p>
-            <p className="text-3xl font-light text-gray-900">{totals.occupationRate.toFixed(1)}%</p>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Total Prestations</p>
+            <p className="text-3xl font-light text-gray-900">{totals.totalServices}</p>
           </div>
         </div>
 
@@ -203,8 +200,8 @@ export default function AnalyticsDashboard() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium">Total heures travaillées</p>
-            <p className="text-3xl font-light text-gray-900">{totals.workedHours} h</p>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Pris en Ligne</p>
+            <p className="text-3xl font-light text-gray-900">{totals.online}</p>
           </div>
         </div>
 
@@ -219,8 +216,8 @@ export default function AnalyticsDashboard() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium">Total des RDV</p>
-            <p className="text-3xl font-light text-gray-900">{totals.revenue.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD</p>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Taux en Ligne</p>
+            <p className="text-3xl font-light text-gray-900">{totals.onlineRate}%</p>
           </div>
         </div>
 
@@ -235,8 +232,8 @@ export default function AnalyticsDashboard() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium">Collaborateurs actifs</p>
-            <p className="text-3xl font-light text-gray-900">{collaborators.length}</p>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Total des RDV</p>
+            <p className="text-3xl font-light text-gray-900">{totals.revenue.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD</p>
           </div>
         </div>
       </div>
@@ -248,38 +245,64 @@ export default function AnalyticsDashboard() {
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Collaborateur
+                  Employé
                 </th>
                 <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  TAUX D&apos;OCCUPATION*
+                  Total Prestations
                 </th>
                 <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  HEURES TRAVAILLÉES*
+                  Pris en Salon
+                </th>
+                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Pris en Ligne
+                </th>
+                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Taux en Ligne
                 </th>
                 <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total des RDV*
+                  Total des RDV
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {collaborators.length > 0 ? (
-                collaborators.map((collab) => (
+                collaborators.map((collab, index) => (
                   <tr key={collab.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{background: collab.color}}>
-                          <span className="text-sm font-medium text-white">
-                            {collab.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
-                          </span>
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ background: collab.color }}>
+                          {collab.avatar ? (
+                            <img src={collab.avatar} alt={collab.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-sm font-medium text-white">
+                              {collab.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2)}
+                            </span>
+                          )}
                         </div>
                         <span className="text-sm text-gray-900 font-medium">{collab.name}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className="text-sm font-medium text-gray-900">{collab.occupationRate.toFixed(1)} %</span>
+                      <span className="text-sm font-medium text-gray-900">{collab.totalServices}</span>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className="text-sm font-medium text-gray-900">{collab.workedHours} h</span>
+                      <span className="text-sm font-medium text-gray-900">{collab.inSalon}</span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="text-sm font-medium text-emerald-600">{collab.online}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-3">
+                        <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full transition-all duration-500"
+                            style={{ width: `${collab.onlineRate}%` }}
+                          />
+                        </div>
+                        <span className="text-sm font-medium text-gray-900 min-w-[45px]">
+                          {collab.onlineRate.toFixed(1)} %
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <span className="text-sm font-medium text-gray-900">
@@ -290,8 +313,8 @@ export default function AnalyticsDashboard() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-sm text-gray-500">
-                    Aucun collaborateur actif avec des données pour cette période
+                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
+                    Aucun employé actif avec des prestations pour cette période
                   </td>
                 </tr>
               )}
@@ -302,10 +325,16 @@ export default function AnalyticsDashboard() {
                   <span className="text-sm text-gray-900 uppercase tracking-wide">Total</span>
                 </td>
                 <td className="px-6 py-4 text-center">
-                  <span className="text-sm text-gray-900">{totals.occupationRate.toFixed(1)} %</span>
+                  <span className="text-sm text-gray-900">{totals.totalServices}</span>
                 </td>
                 <td className="px-6 py-4 text-center">
-                  <span className="text-sm text-gray-900">{totals.workedHours} h</span>
+                  <span className="text-sm text-gray-900">{totals.inSalon}</span>
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <span className="text-sm text-emerald-600">{totals.online}</span>
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <span className="text-sm text-gray-900">{totals.onlineRate} %</span>
                 </td>
                 <td className="px-6 py-4 text-right">
                   <span className="text-sm text-gray-900">
@@ -315,16 +344,6 @@ export default function AnalyticsDashboard() {
               </tr>
             </tbody>
           </table>
-        </div>
-
-        {/* Footer Notes */}
-        <div className="bg-gray-50 px-6 py-4 border-t border-gray-100">
-          <p className="text-xs text-gray-500 mb-2">
-            <strong>Attention:</strong> ceci n'est pas le chiffre d'affaire comptable, il s'agit de la somme des prix indiqués dans l'agenda.
-          </p>
-          <p className="text-xs text-gray-500">
-            <strong>À noter:</strong> les statistiques sont calculées toutes les nuits. Par conséquent, les actions effectuées aujourd'hui seront prises en compte le lendemain.
-          </p>
         </div>
       </div>
     </div>
