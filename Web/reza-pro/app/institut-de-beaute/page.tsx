@@ -401,7 +401,7 @@ export default function BeautyInstitutePage() {
               </div>
               <div>
                 <p className="text-lg text-gray-700 leading-relaxed mb-6">
-                  Pour découvrir comment Planity peut vous aider à optimiser la gestion de vos 
+                  Pour découvrir comment REZA peut vous aider à optimiser la gestion de vos 
                   rendez-vous, attirer une nouvelle clientèle et développer votre activité 
                   d'institut de beauté à Casablanca ou Marrakech, rendez-vous sur notre espace 
                   dédié aux professionnels de l'esthétique et du bien-être.
