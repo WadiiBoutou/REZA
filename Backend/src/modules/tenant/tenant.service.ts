@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { transformImageUrl } from '../../utils/imageUrl';
 import { CreateTenantInput } from './tenant.schema';
+import * as log from '../../utils/logger';
 
 export class TenantService {
   async getTenant(tenantId: string) {
@@ -91,6 +92,7 @@ export class TenantService {
       appointmentDisplaySettings,
       description,
       photos,
+      coverImages,
       paymentMethods,
       amenities,
       socialMedia,
@@ -113,6 +115,7 @@ export class TenantService {
     if (description !== undefined) updateData.description = description;
     updateData.emailNotifications = finalEmailNotifications !== undefined ? finalEmailNotifications : undefined;
     if (photos !== undefined) updateData.photos = photos;
+    if (coverImages !== undefined) updateData.coverImages = coverImages;
     if (paymentMethods !== undefined) updateData.paymentMethods = paymentMethods;
     if (amenities !== undefined) updateData.amenities = amenities;
     if (socialMedia !== undefined) updateData.socialMedia = socialMedia;
@@ -740,7 +743,7 @@ export class TenantService {
   }
 
   async getHeaderImage(tenantId: string) {
-    console.log('[Tenant Service] Header image GET for tenantId:', tenantId);
+    log.log('[Tenant Service] Header image GET for tenantId:', tenantId);
 
     const settings = await prisma.tenantSettings.findUnique({
       where: { tenantId }
@@ -828,7 +831,7 @@ export class TenantService {
           });
           finalUrl = response.url || url;
         } catch (fetchError) {
-          console.warn('[Tenant Service] Could not follow redirect');
+          log.warn('[Tenant Service] Could not follow redirect');
           finalUrl = url;
         }
 
@@ -861,7 +864,7 @@ export class TenantService {
         }
       }
     } catch (error) {
-      console.warn('[Tenant Service] Error extracting coordinates:', error);
+      log.warn('[Tenant Service] Error extracting coordinates:', error);
     }
     return null;
   }

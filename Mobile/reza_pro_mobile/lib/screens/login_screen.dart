@@ -126,12 +126,15 @@ class _LoginScreenState extends State<LoginScreen>
       backgroundColor: Colors.white,
       body: _loading
           ? _buildLoadingScreen()
-          : SingleChildScrollView(
-              child: Column(
-                children: [
-                  _buildHeroSection(),
-                  _buildFormSection(),
-                ],
+          : SafeArea(
+              bottom: false,
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    _buildHeroSection(),
+                    _buildFormSection(),
+                  ],
+                ),
               ),
             ),
     );
@@ -188,8 +191,8 @@ class _LoginScreenState extends State<LoginScreen>
 
   Widget _buildHeroSection() {
     return Container(
-      height: 320,
-      margin: const EdgeInsets.all(16),
+      height: 260,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -234,7 +237,7 @@ class _LoginScreenState extends State<LoginScreen>
           ),
           // Content
           Padding(
-            padding: const EdgeInsets.all(28),
+            padding: const EdgeInsets.all(24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -270,7 +273,7 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
                   ],
                 ),
-                const Spacer(),
+                const SizedBox(height: 20),
                 // Animated message
                 FadeTransition(
                   opacity: _fadeAnim.drive(
@@ -300,7 +303,7 @@ class _LoginScreenState extends State<LoginScreen>
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const Spacer(),
                 // Progress dots
                 Row(
                   children: List.generate(_messages.length, (i) {
@@ -328,7 +331,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   Widget _buildFormSection() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -569,97 +572,6 @@ class _LoginScreenState extends State<LoginScreen>
             ),
           ),
 
-          const SizedBox(height: 24),
-
-          Row(
-            children: [
-              const Expanded(child: Divider()),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text(
-                  'OU',
-                  style: GoogleFonts.outfit(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textLight,
-                  ),
-                ),
-              ),
-              const Expanded(child: Divider()),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          // Google button
-          SizedBox(
-            width: double.infinity,
-            height: 54,
-            child: OutlinedButton.icon(
-              onPressed: () {},
-              icon: _googleIcon(),
-              label: Text(
-                'Se connecter avec Google',
-                style: GoogleFonts.outfit(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: AppColors.border, width: 1.5),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(27),
-                ),
-                backgroundColor: Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              'SSL Connexion sécurisée et privée',
-              style: GoogleFonts.outfit(
-                fontSize: 11,
-                color: AppColors.textLight,
-              ),
-            ),
-          ),
-
-          // Demo hint
-          const SizedBox(height: 20),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.2),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '🔑 Accès démo',
-                  style: GoogleFonts.outfit(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Email: admin@wellbepro.com\nMot de passe: password123',
-                  style: GoogleFonts.outfit(
-                    fontSize: 12,
-                    color: AppColors.textGray,
-                    height: 1.6,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -727,41 +639,4 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _googleIcon() {
-    return SizedBox(
-      width: 20,
-      height: 20,
-      child: CustomPaint(painter: _GoogleIconPainter()),
-    );
-  }
-}
-
-class _GoogleIconPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..style = PaintingStyle.fill;
-
-    // Blue
-    paint.color = const Color(0xFF4285F4);
-    canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), -1.57, 3.14, true, paint);
-
-    // Red
-    paint.color = const Color(0xFFEA4335);
-    canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), -1.57, -3.14, true, paint);
-
-    // Green
-    paint.color = const Color(0xFF34A853);
-    canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 1.57, 1.57, true, paint);
-
-    // Yellow
-    paint.color = const Color(0xFFFBBC05);
-    canvas.drawArc(Rect.fromLTWH(0, 0, size.width, size.height), 1.57, -1.57, true, paint);
-
-    // Center white
-    paint.color = Colors.white;
-    canvas.drawCircle(Offset(size.width / 2, size.height / 2), size.width * 0.35, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

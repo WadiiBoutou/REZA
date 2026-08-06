@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt';
 import { prisma } from '../lib/prisma';
 import { accountService } from '../modules/account/account.service';
+import * as log from '../utils/logger';
 
 export type AuthResult =
   | { ok: true }
@@ -240,7 +241,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
     }
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    log.error('Auth middleware error:', error);
     return res.status(401).json({
       error: 'Authentication failed',
       message: 'An error occurred while verifying your authentication'
@@ -302,7 +303,7 @@ export const superAdminAuthMiddleware = async (
     };
     next();
   } catch (error) {
-    console.error('SuperAdmin auth middleware error:', error);
+    log.error('SuperAdmin auth middleware error:', error);
     return res.status(401).json({
       error: 'Authentication failed',
       message: 'An error occurred while verifying your authentication'

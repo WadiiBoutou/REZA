@@ -98,19 +98,16 @@ function LoginPageContent() {
 
 
   const handleSubmit = async (e?: React.FormEvent) => {
-    console.log('[Login] handleSubmit called', { mode, loading, password: password ? '***' : 'empty', confirmPassword: confirmPassword ? '***' : 'empty' });
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
     
     if (loading) {
-      console.log('[Login] Already loading, ignoring submit');
       return;
     }
     
     // Clear previous errors IMMEDIATELY and forcefully
-    console.log('[Login] Clearing all previous errors at start of handleSubmit');
     setError('');
     setFieldErrors({});
     
@@ -134,23 +131,11 @@ function LoginPageContent() {
         // Only use DOM values if state values are empty (shouldn't happen with controlled inputs)
         if (!currentPassword && passwordInput?.value) {
           currentPassword = passwordInput.value;
-          console.log('[Signup] Using password from DOM (state was empty)');
         }
         if (!currentConfirmPassword && confirmPasswordInput?.value) {
           currentConfirmPassword = confirmPasswordInput.value;
-          console.log('[Signup] Using confirmPassword from DOM (state was empty)');
         }
       }
-      
-      console.log('[Signup] Values for validation:', {
-        password: currentPassword ? '***' : 'empty',
-        passwordLength: currentPassword.length,
-        confirmPassword: currentConfirmPassword ? '***' : 'empty',
-        confirmPasswordLength: currentConfirmPassword.length,
-        email: currentEmail ? `${currentEmail.substring(0, 3)}***` : 'empty',
-        firstName: currentFirstName ? `${currentFirstName.substring(0, 1)}***` : 'empty',
-        lastName: currentLastName ? `${currentLastName.substring(0, 1)}***` : 'empty'
-      });
       
       // Trim all values
       const trimmedFirstName = String(currentFirstName || '').trim();
@@ -159,41 +144,15 @@ function LoginPageContent() {
       const trimmedPassword = String(currentPassword || '').trim();
       const trimmedConfirmPassword = String(currentConfirmPassword || '').trim();
       
-      // Debug logging with detailed info
-      console.log('[Signup Validation] Raw values:', {
-        passwordRaw: currentPassword,
-        passwordRawType: typeof currentPassword,
-        passwordRawLength: currentPassword?.length,
-        confirmPasswordRaw: currentConfirmPassword,
-        confirmPasswordRawType: typeof currentConfirmPassword,
-        confirmPasswordRawLength: currentConfirmPassword?.length
-      });
-      
-      console.log('[Signup Validation] Trimmed values:', {
-        firstName: trimmedFirstName ? `${trimmedFirstName.substring(0, 1)}***` : 'empty',
-        lastName: trimmedLastName ? `${trimmedLastName.substring(0, 1)}***` : 'empty',
-        email: trimmedEmail ? `${trimmedEmail.substring(0, 3)}***` : 'empty',
-        password: trimmedPassword ? '***' : 'empty',
-        confirmPassword: trimmedConfirmPassword ? '***' : 'empty',
-        passwordLength: trimmedPassword.length,
-        confirmPasswordLength: trimmedConfirmPassword.length,
-        passwordIsTruthy: !!trimmedPassword,
-        passwordIsEmpty: trimmedPassword === '',
-        passwordIsFalsy: !trimmedPassword
-      });
-      
       // Validate each field independently - only set error if field is actually empty
       if (!trimmedFirstName) {
         errors.firstName = 'Le prénom est requis';
-        console.log('[Signup Validation] FirstName is empty');
       }
       if (!trimmedLastName) {
         errors.lastName = 'Le nom est requis';
-        console.log('[Signup Validation] LastName is empty');
       }
       if (!trimmedEmail) {
         errors.email = 'L\'email est requis';
-        console.log('[Signup Validation] Email is empty');
       }
       // Only validate password if it's actually empty - use explicit check
       // Double check: make sure we're not validating a non-empty password
@@ -202,24 +161,17 @@ function LoginPageContent() {
       
       if (isPasswordEmpty) {
         errors.password = 'Le mot de passe est requis';
-        console.log('[Signup Validation] Password is empty - length:', trimmedPassword.length, 'value:', trimmedPassword, 'isPasswordEmpty:', isPasswordEmpty);
-      } else {
-        console.log('[Signup Validation] Password is NOT empty - length:', trimmedPassword.length, 'value exists:', !!trimmedPassword);
       }
       
       if (isConfirmPasswordEmpty) {
         errors.confirmPassword = 'Veuillez confirmer votre mot de passe';
-        console.log('[Signup Validation] ConfirmPassword is empty');
       }
       
       // Only set errors if there are actual errors
       if (Object.keys(errors).length > 0) {
-        console.log('[Signup Validation] Errors found:', errors);
-        console.log('[Signup Validation] About to set fieldErrors and return - this will prevent form submission');
         setFieldErrors(errors);
         setError(''); // Clear general error when showing field errors
         setLoading(false); // Make sure loading is false
-        console.log('[Signup Validation] Returning early due to validation errors - form will NOT be submitted');
         return;
       }
 
@@ -269,10 +221,8 @@ function LoginPageContent() {
         }
 
         // Success! Clear all errors immediately before doing anything else
-        console.log('[Signup] Account created successfully (201), clearing all errors immediately');
         setFieldErrors({}); // Clear all field errors FIRST
         setError(''); // Clear general error
-        console.log('[Signup] All errors cleared, proceeding with post-registration flow');
 
         // Check if email verification is required
         if (responseData.requiresEmailVerification) {
@@ -293,12 +243,10 @@ function LoginPageContent() {
         // If email verification is skipped (development mode), login automatically
         // After successful registration, login the user to update the context
         // This ensures the AuthContext is properly updated with the new user data
-        console.log('[Signup] Attempting automatic login after successful registration');
         // Use the trimmed password that was validated and sent to the API
         const loginResult = await login(currentEmail.trim(), trimmedPassword);
         
         if (loginResult.success) {
-          console.log('[Signup] Automatic login successful, redirecting');
           // Clear all errors before redirecting
           setError('');
           setFieldErrors({});
@@ -307,7 +255,6 @@ function LoginPageContent() {
           const redirectUrl = searchParams.get('redirect') || '/account';
           router.push(redirectUrl);
         } else {
-          console.log('[Signup] Automatic login failed:', loginResult.error);
           // Don't show error for automatic login failure - just redirect to login page
           // The user can manually login with their credentials
           setError('');
@@ -338,14 +285,11 @@ function LoginPageContent() {
       }
       
       setLoading(true);
-      console.log('[Login] Attempting login for:', email.trim());
       
       try {
         const result = await login(email.trim(), password.trim());
-        console.log('[Login] Login result:', result);
         
         if (result.success) {
-          console.log('[Login] Redirecting to /account');
           const searchParams = new URLSearchParams(window.location.search);
           const redirectUrl = searchParams.get('redirect') || '/account';
           router.push(redirectUrl);
@@ -826,7 +770,6 @@ function LoginPageContent() {
                   // Pass the frontend URL so backend knows where to redirect after auth
                   const frontendUrl = window.location.origin;
                   const url = `${API_URL}/public/auth/google/url?frontend_url=${encodeURIComponent(frontendUrl)}`;
-                  console.log('[Login Client] Frontend URL:', frontendUrl);
                   const response = await fetch(url);
                   
                   if (!response.ok) {

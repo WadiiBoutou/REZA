@@ -275,11 +275,8 @@ function LuxurySearchResultsContent() {
 					50,
 					geo
 				);
-				console.log('Search API response:', response);
-				console.log('Total tenants from API:', response.tenants?.length || 0);
 				// Filter to only show tenants with complete information (all required fields from landing page)
 				const completeTenants = filterCompleteTenants(response.tenants || []);
-				console.log('Complete tenants after filter:', completeTenants.length);
 				
 				// Extract coordinates from googleMapsLink if coordinates are not set
 				const tenantsWithCoords = await Promise.all(

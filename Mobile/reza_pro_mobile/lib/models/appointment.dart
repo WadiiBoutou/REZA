@@ -36,6 +36,8 @@ class Appointment {
   final String? notes;
   final DateTime? startTime;
   final String? tenantId;
+  /// Booking group this appointment belongs to (multi-participant reservation).
+  final String? bookingGroupId;
 
   Appointment({
     required this.id,
@@ -58,6 +60,7 @@ class Appointment {
     this.notes,
     this.startTime,
     this.tenantId,
+    this.bookingGroupId,
   });
 
   Appointment copyWith({
@@ -81,6 +84,7 @@ class Appointment {
     String? notes,
     DateTime? startTime,
     String? tenantId,
+    String? bookingGroupId,
   }) {
     return Appointment(
       id: id ?? this.id,
@@ -103,6 +107,7 @@ class Appointment {
       notes: notes ?? this.notes,
       startTime: startTime ?? this.startTime,
       tenantId: tenantId ?? this.tenantId,
+      bookingGroupId: bookingGroupId ?? this.bookingGroupId,
     );
   }
 
@@ -170,7 +175,6 @@ class Appointment {
 
   factory Appointment.fromJson(Map<String, dynamic> json) {
     final client = json['client'] as Map<String, dynamic>?;
-    final service = json['service'] as Map<String, dynamic>?;
     final employee = json['employee'] as Map<String, dynamic>?;
     final start = DateTime.tryParse(json['startTime']?.toString() ?? '')?.toLocal();
     final date = start != null
@@ -185,8 +189,6 @@ class Appointment {
     final employeeName = employee != null
         ? '${employee['firstName'] ?? ''} ${employee['lastName'] ?? ''}'.trim()
         : '—';
-    final price = (service?['price'] as num?)?.toDouble() ??
-        (service?['priceFrom'] as num?)?.toDouble();
     final serviceLines = (json['services'] as List?)?.map((item) {
       final map = item as Map<String, dynamic>;
       return AppointmentServiceLine(
@@ -198,29 +200,31 @@ class Appointment {
       );
     }).toList() ?? const <AppointmentServiceLine>[];
 
+    // Derive primary serviceId and price from services[] array
+    final primaryServiceId = serviceLines.isNotEmpty ? (serviceLines.first.serviceId ?? '') : '';
+    final primaryPrice = serviceLines.isNotEmpty ? serviceLines.first.price : null;
+
+    final bookingGroup = json['bookingGroup'] as Map<String, dynamic>?;
+
     return Appointment(
       id: json['id']?.toString() ?? '',
       clientId: client?['id']?.toString() ?? json['clientId']?.toString() ?? '',
       clientName: clientName.isEmpty ? 'Client' : clientName,
-      serviceId: service?['id']?.toString() ?? json['serviceId']?.toString() ?? '',
+      serviceId: primaryServiceId,
       service: serviceLines.isNotEmpty
           ? serviceLines.first.name
-          : service?['name']?.toString() ?? 'Service',
-      servicePrice: price,
+          : 'Service',
+      servicePrice: primaryPrice,
       services: serviceLines,
       totalDuration: (json['totalDuration'] as num?)?.toInt() ??
           (json['duration'] as num?)?.toInt() ??
-          (service?['duration'] as num?)?.toInt() ??
           60,
       totalPrice: (json['totalPrice'] as num?)?.toDouble() ??
-          (service?['price'] as num?)?.toDouble() ??
-          0,
-      employeeId: employee?['id']?.toString() ?? json['employeeId']?.toString(),
+          (primaryPrice ?? 0),
+      employeeId: employee?['id']?.toString(),
       employee: employeeName.isEmpty ? '—' : employeeName,
       time: time,
-      duration: (json['duration'] as num?)?.toInt() ??
-          (service?['duration'] as num?)?.toInt() ??
-          60,
+      duration: (json['duration'] as num?)?.toInt() ?? 60,
       status: uiStatus(json['status']?.toString()),
       phone: client?['phone']?.toString(),
       email: client?['email']?.toString(),
@@ -228,6 +232,8 @@ class Appointment {
       notes: json['notes']?.toString(),
       startTime: start,
       tenantId: json['tenantId']?.toString(),
+      bookingGroupId: json['bookingGroupId']?.toString() ??
+          bookingGroup?['id']?.toString(),
     );
   }
 }

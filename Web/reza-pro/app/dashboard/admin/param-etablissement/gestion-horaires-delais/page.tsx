@@ -28,6 +28,7 @@ import { TimePicker } from '@/components/ui/time-picker';
 import { DatePicker } from '@/components/ui/date-picker';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import SalonScopeNotice from '@/components/SalonScopeNotice';
 import toast from 'react-hot-toast';
 
 type DaySchedule = {
@@ -311,7 +312,7 @@ const GestionHoraires = () => {
   };
 
 
-  if (!mounted || !scopedSalonId) {
+  if (!mounted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 p-4 md:p-6">
         <div className="animate-pulse space-y-4">
@@ -319,6 +320,16 @@ const GestionHoraires = () => {
           <div className="bg-gray-200 h-96 rounded-2xl"></div>
         </div>
       </div>
+    );
+  }
+
+  // Hours/delays are salon-specific — require one salon to be scoped (query param or single selection).
+  if (!scopedSalonId) {
+    return (
+      <SalonScopeNotice
+        title="Horaires & délais"
+        subtitle="Configurez les horaires d'ouverture et les délais de réservation par salon"
+      />
     );
   }
 

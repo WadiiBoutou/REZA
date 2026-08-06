@@ -41,14 +41,11 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
   // Only sync when NOT editing and skipSyncRef is false
   useEffect(() => {
     if (skipSyncRef.current) {
-      console.log('[ProfileTab] Skipping sync due to skipSyncRef');
       // Don't reset skipSyncRef here - let it be reset by the code that set it
       return;
     }
     
     if (!isEditing) {
-      console.log('[ProfileTab] Syncing formData with userData:', userData);
-      console.log('[ProfileTab] userData.phone:', userData.phone, 'userData.address:', userData.address);
       const syncedFormData = {
         firstName: userData.firstName || '',
         lastName: userData.lastName || '',
@@ -57,7 +54,6 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
         address: userData.address || '',
         profileImage: userData.avatar || null
       };
-      console.log('[ProfileTab] About to set formData to:', syncedFormData);
       setFormData(syncedFormData);
       setPreviewImage(userData.avatar || null);
     }
@@ -90,7 +86,6 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
   };
 
   const handleEditClick = () => {
-    console.log('[ProfileTab] handleEditClick called');
     // Set skip flag to prevent useEffect from interfering
     skipSyncRef.current = true;
     
@@ -110,7 +105,6 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
     setSaveError(null);
     setSaveSuccess(null);
     setFormErrors({});
-    console.log('[ProfileTab] isEditing set to true');
   };
 
   const handleCancel = () => {
@@ -164,9 +158,6 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
 
     setFormErrors(errors);
     const isValid = Object.keys(errors).length === 0;
-    if (!isValid) {
-      console.log('[ProfileTab] Validation failed:', errors);
-    }
     return isValid;
   };
 
@@ -236,13 +227,10 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
 
       updateData.avatar = formData.profileImage || null;
 
-      console.log('[ProfileTab] Updating profile with data:', updateData);
-      console.log('[ProfileTab] User email:', user.email);
       
       let response;
       try {
         response = await api.updateClientProfile(user.email, updateData);
-        console.log('[ProfileTab] Update response:', response);
       } catch (apiError: any) {
         console.error('[ProfileTab] API call failed:', apiError);
         throw apiError;
@@ -252,9 +240,6 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
         const updatedClient = response.client;
         const savedAvatar = (updatedClient as any).avatar;
         
-        console.log('[ProfileTab] Updated client data from API:', updatedClient);
-        console.log('[ProfileTab] Phone value:', updatedClient.phone, 'Type:', typeof updatedClient.phone);
-        console.log('[ProfileTab] Address value:', (updatedClient as any).address, 'Type:', typeof (updatedClient as any).address);
         
         // Update local form data with response - use values from API response
         // Always use the API response values, even if they're empty strings
@@ -267,13 +252,9 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
           profileImage: savedAvatar || null,
         };
         
-        console.log('[ProfileTab] Created updatedFormData:', updatedFormData);
-        console.log('[ProfileTab] Phone in updatedFormData:', updatedFormData.phone);
-        console.log('[ProfileTab] Address in updatedFormData:', updatedFormData.address);
         
         // Set skip flag BEFORE updating formData to prevent useEffect from overwriting
         skipSyncRef.current = true;
-        console.log('[ProfileTab] Set skipSyncRef to true');
         
         // Update formData first with the response data
         setFormData(updatedFormData);
@@ -281,7 +262,6 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
         
         // Verify formData was set by checking it in next tick
         setTimeout(() => {
-          console.log('[ProfileTab] formData after setState (in next tick)');
         }, 0);
         
         // Exit editing mode
@@ -290,9 +270,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
         
         // Call onUpdate to update parent component's userData
         if (onUpdate) {
-          console.log('[ProfileTab] Calling onUpdate with updated client data');
           await onUpdate(updatedClient);
-          console.log('[ProfileTab] onUpdate completed');
         }
         
         setSaveSuccess('Profil mis à jour avec succès');
@@ -301,7 +279,6 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
         // Keep skip flag true longer to ensure userData is updated in parent
         // Wait for userData to be updated, then allow sync
         setTimeout(() => {
-          console.log('[ProfileTab] Resetting skipSyncRef after delay, userData should be updated now');
           skipSyncRef.current = false;
         }, 500);
 
@@ -454,7 +431,6 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
                     const displayValue = formValue || userValue || '-';
                     // Log for debugging
                     if (field.value === 'phone' || field.value === 'address') {
-                      console.log(`[ProfileTab] Displaying ${field.value}: formData="${formValue}", userData="${userValue}", showing="${displayValue}"`);
                     }
                     return displayValue;
                   })()}

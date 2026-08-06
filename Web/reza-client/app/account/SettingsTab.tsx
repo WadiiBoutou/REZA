@@ -57,13 +57,11 @@ const SettingsTab = () => {
     setPasswordSaved(false);
 
     try {
-      console.log('[SettingsTab] Changing password for:', user.email);
       const response = await api.changeClientPassword(user.email, {
         currentPassword: passwordForm.currentPassword,
         newPassword: passwordForm.newPassword
       });
 
-      console.log('[SettingsTab] Password change response:', response);
       setPasswordSaved(true);
       setPasswordError(null);
       

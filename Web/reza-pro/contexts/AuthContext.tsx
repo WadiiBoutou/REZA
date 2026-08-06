@@ -78,6 +78,8 @@ interface AuthContextType {
   activeTenantId: string | null;
   salonFilter: SalonFilter;
   setSalonFilter: (filter: SalonFilter) => void;
+  /** Increments each time the salon filter is changed by the user (not on hydration). */
+  salonFilterVersion: number;
   effectiveSalonIds: string[];
   isSalonFilterMulti: boolean;
   subscription: SubscriptionInfo | null;
@@ -142,9 +144,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [salonLimit, setSalonLimit] = useState(3);
   const [salonFilter, setSalonFilterState] = useState<SalonFilter>('all');
+  // Bumped on every user-initiated filter change so the dashboard layout can
+  // remount pages exactly when the filter changes (not during localStorage hydration).
+  const [salonFilterVersion, setSalonFilterVersion] = useState(0);
 
   const setSalonFilter = useCallback((filter: SalonFilter) => {
     setSalonFilterState(filter);
+    setSalonFilterVersion((v) => v + 1);
     persistSalonFilter(filter);
   }, []);
 
@@ -428,6 +434,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       activeTenantId,
       salonFilter,
       setSalonFilter,
+      salonFilterVersion,
       effectiveSalonIds,
       isSalonFilterMulti,
       subscription,

@@ -119,6 +119,15 @@ export class DiscoveryService {
       }
     });
 
+    // Preserve top-level booking configuration that the frontend calendar needs
+    // to preemptively grey out days within min lead time or explicitly blocked dates.
+    if ((businessHours as any)?.bookingDelay) {
+      formattedBusinessHours.bookingDelay = (businessHours as any).bookingDelay;
+    }
+    if ((businessHours as any)?.blockedDates) {
+      formattedBusinessHours.blockedDates = (businessHours as any).blockedDates;
+    }
+
     // Transform photos array if it exists
     const photos = tenant.settings?.photos;
     const photosArray = Array.isArray(photos) ? photos : [];
@@ -171,12 +180,14 @@ export class DiscoveryService {
           })(),
           businessHours: formattedBusinessHours,
           photos: transformedPhotos,
+          coverImages: (tenant.settings as any)?.coverImages || [],
           socialMedia: tenant.settings?.socialMedia || {},
           amenities: tenant.settings?.amenities || [],
-          onlineReservationEnabled: tenant.settings?.onlineReservationEnabled !== false,
+        onlineReservationEnabled: tenant.settings?.onlineReservationEnabled !== false,
           showMap: tenant.settings?.showMap !== false,
           showOpeningHours: tenant.settings?.showOpeningHours !== false,
-          showReviews: tenant.settings?.showReviews !== false
+          showReviews: tenant.settings?.showReviews !== false,
+          bookingAdvanceDays: tenant.settings?.bookingAdvanceDays ?? 30,
         }
       }
     };
@@ -308,6 +319,7 @@ export class DiscoveryService {
           category: tenant.category || (tenant.settings as any)?.category || 'Établissement',
           coverImage: transformImageUrl(tenant.coverImage),
           shortDescription: tenant.shortDescription,
+          createdAt: tenant.createdAt,
           website: tenant.website,
           city: tenant.city,
           googleMapsLink: tenant.googleMapsLink,

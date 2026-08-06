@@ -45,3 +45,8 @@ export const planAppointmentSchema = z.object({
     employeeId: z.string().nullable(),
   })).optional(),
 });
+
+export const validateMoveSchema = z.object({
+  startTime: z.string().datetime(),
+  tenantId: z.string().optional(),
+});

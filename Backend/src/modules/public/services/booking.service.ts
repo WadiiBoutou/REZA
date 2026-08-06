@@ -3,11 +3,48 @@ import { formatDateForNotification } from '../../../utils/dateTime';
 import { validateAppointmentRules } from '../../../utils/schedulingValidation';
 import { resolveEmployeeUserId } from '../../../utils/resolveEmployeeUserId';
 import { schedulingService } from '../../appointment/scheduling.service';
-import { getServicePrice, stripGeneratedServicesNotes } from '../../../utils/appointmentServiceItems';
+import { getServicePrice } from '../../../utils/appointmentServiceItems';
 import { fail } from '../utils/http';
 import { HttpError } from '../../../lib/errors';
 import { createPublicBookingSchema } from '../schemas/public.schema';
+import * as log from '../../../utils/logger';
 import type { Service } from '../../../../prisma/generated/prisma/client';
+import fs from 'fs';
+import path from 'path';
+
+const BOOKING_TRACE = process.env.REZA_BOOKING_TRACE === '1';
+const TRACE_FILE = path.join(process.cwd(), 'logs', 'booking-conflict.log');
+
+/** File-appended trace of the cross-participant interval checks (env REZA_BOOKING_TRACE=1). */
+function traceBooking(line: string): void {
+  if (!BOOKING_TRACE) return;
+  try {
+    fs.mkdirSync(path.dirname(TRACE_FILE), { recursive: true });
+    fs.appendFileSync(TRACE_FILE, `[${new Date().toISOString()}] ${line}\n`);
+  } catch {
+    /* trace is best-effort */
+  }
+}
+
+type FeasibilityContext = {
+  tenantId: string;
+  employees: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    workingHours: unknown;
+    agendaSettings: unknown;
+    employeeServices: { serviceId: string }[];
+  }>;
+  skillMap: Map<string, Set<string>>;
+  employeeToUserMap: Map<string, string | null>;
+  occupiedRanges: Map<string, { start: number; end: number }[]>;
+  serviceDurationMap: Map<string, number>;
+  dayIndex: number;
+  /** Client's own occupied ranges on this day (keyed by clientId). */
+  clientOccupiedRanges: { start: number; end: number }[];
+};
 
 type ResolvedParticipant = {
   displayName: string;
@@ -26,22 +63,20 @@ type ResolvedParticipant = {
   serviceEmployees?: { serviceId: string; employeeId: string | null; userEmployeeId: string | null }[];
 };
 
-function buildServicesList(services: Service[]): string {
-  return services
-    .map((s) => `${s.name} (${s.duration} min - ${getServicePrice(s)} MAD)`)
-    .join(', ');
-}
-
 export class BookingService {
   async createBooking(body: unknown) {
+    let parsedSuccess = false;
     try {
       const parsed = createPublicBookingSchema.safeParse(body);
       if (!parsed.success) {
+        const zodMsg = parsed.error.errors.map((e) => `${e.path.join('.') || '<root>'}: ${e.message}`).join(' ; ');
+        log.error(`[createBooking] ÉCHEC validation Zod: ${zodMsg || (parsed.error.errors[0]?.message ?? 'Invalid booking payload')}`);
         fail(400, {
           error: 'Validation error',
-          message: parsed.error.errors[0]?.message || 'Invalid booking payload',
+          message: zodMsg || parsed.error.errors[0]?.message || 'Invalid booking payload',
         });
       }
+      parsedSuccess = true;
 
       const {
         tenantId,
@@ -57,6 +92,10 @@ export class BookingService {
         participants: extraParticipants = [],
       } = parsed.data;
 
+      traceBooking(`REQ booker="${firstName} ${lastName}" phone=${phone} email=${email ?? 'N/A'} startTime=${startTime} includeBooker=${includeBooker} participants=${JSON.stringify(extraParticipants)}`);
+
+      log.log(`[Booking] createBooking START: tenant=${tenantId} booker="${firstName} ${lastName}" phone=${phone} email=${email ?? 'N/A'} services=${serviceIds.length} participants=${extraParticipants.length + (includeBooker !== false ? 1 : 0)} start=${startTime}`);
+
       const tenant = await prisma.tenant.findFirst({
         where: {
           OR: [{ subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
@@ -71,6 +110,8 @@ export class BookingService {
           message: 'The requested salon or establishment was not found.',
         });
       }
+
+      log.log(`[Booking] Tenant resolved: id=${tenant.id} name=${tenant.name}`);
 
       const settings = await prisma.tenantSettings.findUnique({
         where: { tenantId: tenant.id },
@@ -107,16 +148,20 @@ export class BookingService {
           },
         });
       } else {
+        // SAFETY: never overwrite an existing client's name with request data.
+        // The request's firstName/lastName may come from a guest participant being
+        // configured in the group-booking UI rather than the actual booker's identity.
+        // Only update email/phone (the lookup fields) if provided.
         bookerClient = await prisma.client.update({
           where: { id: bookerClient.id },
           data: {
-            firstName,
-            lastName,
             email: normalizedEmail ?? bookerClient.email,
             phone: phone || bookerClient.phone,
           },
         });
       }
+
+      log.log(`[Booking] Booker client resolved: id=${bookerClient.id} name=${bookerClient.firstName} ${bookerClient.lastName} phone=${bookerClient.phone}`);
 
       const loadServices = async (ids: string[]) => {
         const services = await prisma.service.findMany({
@@ -132,7 +177,12 @@ export class BookingService {
             message: 'One or more services are not available for booking.',
           });
         }
-        return services;
+        // Prisma `in` returns rows in DB order — reorder to the requested order so
+        // the cumulative interval chain matches what the frontend computed/shown.
+        const byId = new Map(services.map((s) => [s.id, s]));
+        return ids
+          .map((id) => byId.get(id))
+          .filter((s): s is Service => !!s);
       };
 
       const bookerServices = await loadServices(serviceIds);
@@ -196,6 +246,61 @@ export class BookingService {
           }
         }
 
+        // If no linked client found, create or reuse a lightweight Client for this guest
+        if (!linkedClientId) {
+          const guestName = (participant.name || '').trim();
+          const guestPhone = participant.phone?.trim() || '';
+          const guestEmail = participant.email?.trim() || null;
+
+          if (guestName) {
+            const nameParts = guestName.split(' ');
+            const guestFirstName = nameParts[0] || guestName;
+            const guestLastName = nameParts.slice(1).join(' ') || '';
+
+            // 1) Try to reuse an existing client by phone (idempotent)
+            let guestClient = guestPhone
+              ? await prisma.client.findFirst({
+                  where: { phone: guestPhone, tenantId: tenant.id },
+                })
+              : null;
+
+            // 2) Try by email if provided
+            if (!guestClient && guestEmail) {
+              guestClient = await prisma.client.findFirst({
+                where: { email: guestEmail.toLowerCase(), tenantId: tenant.id },
+              });
+            }
+
+            // 3) Try by firstName+lastName within the same tenant (name-based dedup)
+            if (!guestClient) {
+              guestClient = await prisma.client.findFirst({
+                where: {
+                  tenantId: tenant.id,
+                  firstName: guestFirstName,
+                  lastName: guestLastName,
+                },
+              });
+            }
+
+            if (!guestClient) {
+              // Create a new lightweight client record for this guest
+              guestClient = await prisma.client.create({
+                data: {
+                  tenantId: tenant.id,
+                  firstName: guestFirstName,
+                  lastName: guestLastName,
+                  phone: guestPhone || `guest_${Date.now()}`,
+                  email: guestEmail?.toLowerCase() || null,
+                  status: 'ACTIVE',
+                },
+              });
+            }
+
+            appointmentClientId = guestClient.id;
+            linkedClientId = guestClient.id;
+          }
+        }
+
         const participantStart = participant.startTime
           ? new Date(participant.startTime)
           : defaultStart;
@@ -233,80 +338,235 @@ export class BookingService {
         });
       }
 
-      // Auto-assign employee for any participant with no employeeId ("N'importe qui")
-      // Skip auto-assignment when per-service employees are already resolved
-      const bookingDate = defaultStart.toISOString().slice(0, 10);
-      const bookingTime = `${String(defaultStart.getHours()).padStart(2, '0')}:${String(defaultStart.getMinutes()).padStart(2, '0')}`;
+      log.log(`[Booking] All participants resolved: total=${resolved.length} (booker=${resolved.filter(p => p.isBooker).length}, guests=${resolved.filter(p => !p.isBooker).length})`);
 
-      for (const p of resolved) {
-        if (p.serviceEmployees) continue; // per-service already assigned
-        if (p.userEmployeeId) continue;
-        const pDate = p.startTime.toISOString().slice(0, 10);
-        const pTime = `${String(p.startTime.getHours()).padStart(2, '0')}:${String(p.startTime.getMinutes()).padStart(2, '0')}`;
-        const assigned = await schedulingService.resolveAnyone({
-          tenantId: tenant.id,
-          serviceIds: p.serviceIds,
-          date: pDate,
-          startTime: pTime,
-        });
-        if (!assigned.employeeId) {
-          const prefix = p.isBooker ? '' : `Pour ${p.displayName} : `;
-          fail(409, {
-            error: 'No available employee',
-            message: `${prefix}Aucun professionnel disponible à ce créneau.`,
-          });
-        }
-        p.employeeId = assigned.employeeId;
-        p.userEmployeeId = assigned.userEmployeeId;
-      }
+      // Auto-assign + per-participant validation is now done in the interval-walk loop below,
+      // correctly handling BOTH per-service (distinct employees) and aggregate (one employee
+      // for all services) modes. The legacy per-participant aggregate blocks were moved.
 
-      // ─── Cross-participant conflict resolution ──────────────
-      // Run the solver on all participants to produce authoritative assignments.
-      // The solver re-validates skills, hours, breaks, overlap, and workload.
-      // Every participant goes through the solver — the participant-level
-      // employeeId is used for conflict avoidance. Per-service employees
-      // are preserved separately and validated individually below.
-      if (resolved.length >= 2) {
-        // Build solver input, preserving original resolved[] index
-        interface SolverEntry { resolvedIndex: number; index: number; serviceIds: string[]; startTime: string; duration: number; currentEmployeeId: string | null; }
-        const solverEntries: SolverEntry[] = [];
-        for (let ri = 0; ri < resolved.length; ri++) {
-          const p = resolved[ri];
-          solverEntries.push({
-            resolvedIndex: ri,
-            index: solverEntries.length,
-            serviceIds: p.serviceIds,
-            startTime: `${String(p.startTime.getHours()).padStart(2, '0')}:${String(p.startTime.getMinutes()).padStart(2, '0')}`,
-            duration: p.duration,
-            currentEmployeeId: p.employeeId,
-          });
-        }
+      // ─── Per-interval auto-assign: no solver needed ──────────
+      // Each participant is always in per-service mode (sameEmployeeForAll removed).
+      // Each participant's serviceEmployees[] is already populated from the frontend.
+      // Any service with employeeId=null gets auto-assigned below.
 
-        if (solverEntries.length >= 2) {
-          const solverResult = await this.resolveParticipantConflicts(tenant.id, {
-            date: defaultStart.toISOString().slice(0, 10),
-            changedParticipantIndex: 0,
-            selectedEmployeeId: solverEntries[0].currentEmployeeId,
-            participants: solverEntries,
-          });
+      // ─── Per-interval (per-service) auto-assign remaining gaps, then strict validation ──
+      // For every participant, walk the ordered sequence of services with their explicit
+      // serviceEmployees[] assignments (per-service mode) or single aggregate employeeId.
+      // Any service still having employeeId = null → scheduleService.resolveAnyone(serviceId).
+      // Then call validateAppointmentRules ONCE PER SERVICE INTERVAL (not once per participant
+      // with all serviceIds — that was incorrectly requiring one employee qualified for ALL
+      // services in per-service mode where each svc had a DIFFERENT employee).
+      //
+      // CROSS-PARTICIPANT CONFLICT TRACKING:
+      // localAssignments tracks all employee assignments made within THIS booking request.
+      // When auto-assigning or validating, we check both DB appointments AND localAssignments
+      // to prevent the same employee from being assigned to overlapping intervals across
+      // different participants in the same group booking.
+      {
+        const bookingDateIso = defaultStart.toISOString().slice(0, 10);
+        // Map<employeeId, Array<{start: number, end: number}>> — tracks in-request assignments
+        const localAssignments = new Map<string, Array<{ start: number; end: number }>>();
 
-          if (!solverResult.resolved || solverResult.conflict) {
-            fail(409, {
-              error: 'Employee conflict',
-              message: solverResult.message || 'Conflit entre les collaborateurs sélectionnés. Veuillez modifier votre sélection.',
-            });
-          }
-
-          // Overwrite assignments with solver's authoritative output
-          for (const a of solverResult.assignments!) {
-            const entry = solverEntries.find((e) => e.index === a.index);
-            if (entry) {
-              resolved[entry.resolvedIndex].employeeId = a.employeeId;
-              resolved[entry.resolvedIndex].userEmployeeId = a.employeeId
-                ? await resolveEmployeeUserId(tenant.id, a.employeeId)
-                : null;
+        function localOverlap(empId: string, uid: string | null, startMs: number, endMs: number): boolean {
+          const ids = [empId];
+          if (uid) ids.push(uid);
+          for (const id of ids) {
+            const ranges = localAssignments.get(id);
+            if (ranges) {
+              for (const r of ranges) {
+                if (r.start < endMs && r.end > startMs) return true;
+              }
             }
           }
+          return false;
+        }
+
+        // Build employee name map for clear conflict error messages
+        const allEmpIds = [...new Set(resolved.flatMap((r: any) =>
+          (r.serviceEmployees || []).map((se: any) => se.employeeId).filter(Boolean)
+        ))];
+        const empRecords = allEmpIds.length > 0
+          ? await prisma.employee.findMany({ where: { id: { in: allEmpIds } }, select: { id: true, firstName: true, lastName: true } })
+          : [];
+        const employeeNameMap = new Map(empRecords.map((e: any) => [e.id, `${e.firstName} ${e.lastName}`.trim()]));
+
+        for (const p of resolved) {
+          // Normalize / guarantee serviceEmployees[] presence with correct per-svc entries.
+          if (!p.serviceEmployees || p.serviceEmployees.length === 0) {
+            // Legacy aggregate mode → replicate employeeId to all services.
+            // Then validateAppointmentRules below will treat as distinct intervals, same emp.
+            p.serviceEmployees = p.services.map((s) => ({
+              serviceId: s.id,
+              employeeId: p.employeeId ?? null,
+              userEmployeeId: p.userEmployeeId ?? null,
+            }));
+          }
+
+            // Walk services in order tracking cumulative startTime minutes from p.startTime.
+          let intervalCursor = new Date(p.startTime.getTime());
+          traceBooking(`WALK participant="${p.displayName}" rawStart="${p.startTime.toISOString()}" ms=${p.startTime.getTime()} services=${p.services.map((s: any) => `${s.name}(${s.duration}min)`).join(',')}`);
+          for (let si = 0; si < p.services.length; si++) {
+            const svc = p.services[si];
+            const intervalStart = new Date(intervalCursor.getTime());
+            const intervalEnd = new Date(intervalStart.getTime() + svc.duration * 60000);
+            const existingIdx = p.serviceEmployees.findIndex((se) => se.serviceId === svc.id);
+            let se = existingIdx >= 0 ? p.serviceEmployees[existingIdx] : undefined;
+            if (!se) {
+              se = { serviceId: svc.id, employeeId: null, userEmployeeId: null };
+              p.serviceEmployees.push(se);
+            }
+            traceBooking(`  INTERVAL svc="${svc.name}" [${intervalStart.toISOString()} → ${intervalEnd.toISOString()}] (${intervalStart.getTime()}..${intervalEnd.getTime()}) se.employeeId=${se.employeeId ?? 'null'}`);
+
+            const pTime = `${String(intervalStart.getHours()).padStart(2, '0')}:${String(intervalStart.getMinutes()).padStart(2, '0')}`;
+
+            if (se.employeeId) {
+              // CLIENT EXPLICITLY CHOSE AN EMPLOYEE → validate, never silently reassign
+              const conflictRange = (() => {
+                const ids = [se.employeeId];
+                if (se.userEmployeeId) ids.push(se.userEmployeeId);
+                for (const id of ids) {
+                  const ranges = localAssignments.get(id);
+                  if (ranges) {
+                    for (const r of ranges) {
+                      if (r.start < intervalEnd.getTime() && r.end > intervalStart.getTime()) return { id, r };
+                    }
+                  }
+                }
+                return null;
+              })();
+              if (conflictRange) {
+                traceBooking(`  ✗ CONFLICT participant="${p.displayName}" svc="${svc.name}" interval=[${intervalStart.toISOString()} → ${intervalEnd.toISOString()}] overlapped by localAssignment emp=${conflictRange.id} range=[${new Date(conflictRange.r.start).toISOString()} → ${new Date(conflictRange.r.end).toISOString()}] (${conflictRange.r.start}..${conflictRange.r.end}) check: ${conflictRange.r.start} < ${intervalEnd.getTime()} && ${conflictRange.r.end} > ${intervalStart.getTime()}`);
+                const empName = employeeNameMap.get(se.employeeId) || se.employeeId;
+                const prefix = p.isBooker ? '' : `Pour ${p.displayName} : `;
+                fail(409, {
+                  error: 'Employee conflict',
+                  message: `${prefix}${empName} n'est pas disponible pour ${svc.name} à ${pTime} — déjà réservé sur cet intervalle.`,
+                });
+              }
+            } else {
+              // Sans préférence → auto-assign via resolveAnyone
+              const excludeIds: string[] = [];
+              for (const [empId, ranges] of localAssignments) {
+                for (const r of ranges) {
+                  if (r.start < intervalEnd.getTime() && r.end > intervalStart.getTime()) {
+                    excludeIds.push(empId);
+                    break;
+                  }
+                }
+              }
+
+              const assigned = await schedulingService.resolveAnyone({
+                tenantId: tenant.id,
+                serviceIds: [svc.id],
+                date: bookingDateIso,
+                startTime: pTime,
+                excludeEmployeeIds: excludeIds,
+              });
+              if (!assigned.employeeId) {
+                const prefix = p.isBooker ? '' : `Pour ${p.displayName} : `;
+                fail(409, {
+                  error: 'No available employee',
+                  message: `${prefix}Aucun professionnel disponible pour ${svc.name} à ${pTime}.`,
+                });
+              }
+
+              // Check if the auto-assigned employee conflicts with another participant
+              if (localOverlap(assigned.employeeId, assigned.userEmployeeId, intervalStart.getTime(), intervalEnd.getTime())) {
+                const prefix = p.isBooker ? '' : `Pour ${p.displayName} : `;
+                fail(409, {
+                  error: 'Employee conflict',
+                  message: `${prefix}Le professionnel assigné à ${svc.name} à ${pTime} est déjà occupé sur cet intervalle dans cette réservation.`,
+                });
+              }
+
+              se.employeeId = assigned.employeeId;
+              se.userEmployeeId = assigned.userEmployeeId;
+              if (p.employeeId == null) {
+                p.employeeId = se.employeeId;
+                p.userEmployeeId = se.userEmployeeId;
+              } else if (p.employeeId !== se.employeeId) {
+                p.employeeId = null;
+                p.userEmployeeId = null;
+              }
+            }
+
+            // Record this assignment in local tracking to catch cross-participant conflicts
+            const empId = se.employeeId!;
+            const uid = se.userEmployeeId;
+            if (!localAssignments.has(empId)) localAssignments.set(empId, []);
+            localAssignments.get(empId)!.push({ start: intervalStart.getTime(), end: intervalEnd.getTime() });
+            if (uid && uid !== empId) {
+              if (!localAssignments.has(uid)) localAssignments.set(uid, []);
+              localAssignments.get(uid)!.push({ start: intervalStart.getTime(), end: intervalEnd.getTime() });
+            }
+            traceBooking(`  ✓ RECORDED emp=${empId} interval=[${new Date(intervalStart.getTime()).toISOString()} → ${new Date(intervalEnd.getTime()).toISOString()}] (${intervalStart.getTime()}..${intervalEnd.getTime()}) for participant="${p.displayName}" svc="${svc.name}"`);
+
+            // Validate this interval: employee works during intervalStart..intervalEnd,
+            // is qualified for this svc, no overlapping existing appointment.
+            const vr = await validateAppointmentRules({
+              tenantId: tenant.id,
+              employeeId: se.userEmployeeId,
+              serviceIds: [svc.id],
+              startTime: intervalStart,
+              endTime: intervalEnd,
+              isPublicBooking: true,
+            });
+            if (!vr.isValid) {
+              fail(vr.status || 400, {
+                error: vr.error || 'Overlapping appointment',
+                message: p.isBooker
+                  ? `(${svc.name}) ${vr.message}`
+                  : `Pour ${p.displayName} — (${svc.name}) ${vr.message}`,
+              });
+            }
+            intervalCursor = intervalEnd;
+          }
+          // p.endTime was already set to sum of all durations during the resolved[] build.
+          // Clamp / sanity check: cursor at end of last service must match p.endTime (±ms).
+          // (If a service item has a different duration than the aggregate reduced sum, we
+          //  prefer the per-service sum since that's what validateAppointmentRules scanned.)
+          p.endTime = new Date(intervalCursor.getTime());
+        }
+      }
+      // Run the same feasibility check that was used to show the slot as available.
+      // Another client may have booked this slot in the meantime.
+      // Split participants into same-time groups based on their startTime:
+      // the isFeasible solver checks cross-interval conflicts within each group,
+      // but participants at different times are non-overlapping so don't conflict.
+      // This re-validation catches race conditions where a slot was available
+      // when shown but booked by another client milliseconds before this request.
+      for (const rp of resolved) {
+        const svcs = rp.serviceEmployees.map(se => {
+          const svcObj = rp.services.find((s: any) => s.id === se.serviceId);
+          return `${svcObj?.name || se.serviceId}→emp=${se.employeeId || 'null'}`;
+        }).join(', ');
+        log.log(`[Feasibility] RESOLVED participant: ${rp.displayName} start=${rp.startTime.toISOString()} svcs=[${svcs}]`);
+      }
+      const timeGroups = new Map<string, Array<{ serviceIds: string[]; startTime: string }>>();
+      for (const p of resolved) {
+        const key = p.startTime.getTime().toString();
+        if (!timeGroups.has(key)) timeGroups.set(key, []);
+        timeGroups.get(key)!.push({
+          serviceIds: p.serviceIds,
+          startTime: `${String(p.startTime.getHours()).padStart(2, '0')}:${String(p.startTime.getMinutes()).padStart(2, '0')}`,
+        });
+      }
+
+      for (const [, group] of timeGroups) {
+        log.log('[Feasibility] BOOKING-CREATION re-validation: participants=' + group.length +
+          ' date=' + defaultStart.toISOString().slice(0, 10) +
+          ' startTime=' + group[0].startTime +
+          ' clientId=' + (bookerClient.id || 'none') +
+          ' services=' + group.map(g => g.serviceIds.join('+')).join(','));
+        const fResult = await this.isFeasible(tenant.id, defaultStart.toISOString().slice(0, 10), group, undefined, bookerClient.id);
+        log.log('[Feasibility] BOOKING-CREATION re-validation: ' +
+          (fResult.feasible ? 'FEASIBLE — proceeding' : 'INFEASIBLE — rejecting'));
+        if (!fResult.feasible) {
+          fail(409, {
+            error: 'Slot no longer available',
+            message: 'Ce créneau n\'est plus disponible. Veuillez choisir un autre horaire.',
+            details: 'La vérification de disponibilité a échoué au moment de la réservation. Consultez les logs serveur pour plus de détails.',
+          });
         }
       }
 
@@ -318,26 +578,13 @@ export class BookingService {
         });
       }
 
-      // Validate each participant independently with strict public validation rules
-      for (const p of resolved) {
-        const validationResult = await validateAppointmentRules({
-          tenantId: tenant.id,
-          employeeId: p.userEmployeeId,
-          serviceIds: p.serviceIds,
-          startTime: p.startTime,
-          endTime: p.endTime,
-          isPublicBooking: true,
-        });
-
-        if (!validationResult.isValid) {
-          fail(validationResult.status || 400, {
-            error: validationResult.error || 'Overlapping appointment',
-            message: p.isBooker
-              ? validationResult.message
-              : `Pour ${p.displayName} : ${validationResult.message}`,
-          });
-        }
-      }
+      // Note: per-interval (per-service) employee validation (working hours,
+      //       service qualification, overlap, public-booking constraints) has already
+      //       been run per service interval in the loop above using serviceEmployees[]
+      //       data. Do NOT re-run per-participant aggregate validation here because
+      //       participants in distinct-per-service mode will have userEmployeeId=null
+      //       and a single aggregate check against ALL serviceIds would incorrectly
+      //       require one employee qualified for everything.
 
       let systemUser = await prisma.user.findFirst({
         where: {
@@ -389,15 +636,18 @@ export class BookingService {
         },
       });
 
+      log.log(`[Booking] BookingGroup created: id=${bookingGroup.id} grandTotal=${grandTotal}`);
+
       const appointments = [];
 
       for (const participant of resolved) {
         let appointmentNotes = notes?.trim() || '';
 
         if (!participant.isBooker) {
+          const bookerName = `${firstName} ${lastName}`.trim();
           appointmentNotes = appointmentNotes
-            ? `Participant: ${participant.displayName}\n${appointmentNotes}`
-            : `Participant: ${participant.displayName}`;
+            ? `Réservation prise par ${bookerName}\n${appointmentNotes}`
+            : `Réservation prise par ${bookerName}`;
         }
 
         // Build per-service employee map if provided
@@ -460,6 +710,8 @@ export class BookingService {
         appointments.push(appointment);
       }
 
+      log.log(`[Booking] All appointments created: ${appointments.length} for group ${bookingGroup.id}`);
+
       try {
         const tenantSettings = await prisma.tenantSettings.findUnique({
           where: { tenantId: tenant.id },
@@ -506,7 +758,7 @@ export class BookingService {
           );
         }
       } catch (notificationError) {
-        console.error('Error creating notification for new booking:', notificationError);
+        log.error('Error creating notification for new booking:', notificationError);
       }
 
       // ---- Auto-confirm logic ----
@@ -561,12 +813,14 @@ export class BookingService {
           }
         }
       } catch (autoConfirmError) {
-        console.error('[Auto-Confirm] Error:', autoConfirmError);
+        log.error('[Auto-Confirm] Error:', autoConfirmError);
       }
 
       const messageText = globalAutoConfirm
         ? 'Réservation créée et confirmée avec succès.'
         : 'Réservation créée avec succès. Elle apparaîtra dans le calendrier du salon et sera confirmée par l\'établissement.';
+
+      log.log(`[Booking] createBooking SUCCESS: group=${bookingGroup.id} appointments=${appointments.length} autoConfirm=${globalAutoConfirm}`);
 
       return {
         bookingGroup,
@@ -579,17 +833,35 @@ export class BookingService {
         message: messageText,
       };
     } catch (error: unknown) {
-      // Only log unexpected errors — HttpError is normal flow for validation failures
-      if (!(error instanceof HttpError)) {
-        console.error('[Public Booking] Unexpected error:', error);
+      if (error instanceof HttpError) {
+        const payloadAny = (error as any).payload as Record<string, unknown> | undefined;
+        const status = (error as any).status as number;
+        const errId = payloadAny?.error as string | undefined;
+        const errMsg = payloadAny?.message as string | undefined;
+        log.error(
+          `[createBooking] ÉCHEC (${status}) [${errId ?? 'unknown'}] ${errMsg ?? ''}${parsedSuccess ? '' : ' (Zod pré-val)'}`,
+        );
+      } else {
+        log.error('[Public Booking] Unexpected error:', error);
       }
       throw error;
     }
   }
 
   async getAvailableSlots(tenantId: string, query: Record<string, unknown>) {
-    try {
-    const { date, serviceIds, employeeId } = query;
+    const { date, serviceIds, employeeId, participants, existingParticipants, clientId: rawClientId, clientPhone, clientEmail } = query;
+
+    // Resolve clientId: use explicit clientId if provided, otherwise look up by phone/email.
+    // This ensures the client-conflict check works even when the caller doesn't have the
+    // clientId directly (e.g. mobile non-logged-in flow sends phone/email instead).
+    let clientId = rawClientId as string | undefined;
+    if (!clientId && (clientPhone || clientEmail)) {
+      const whereClause: any = { tenantId };
+      if (clientPhone) whereClause.phone = clientPhone as string;
+      if (clientEmail) whereClause.email = (clientEmail as string).trim().toLowerCase();
+      const resolvedClient = await prisma.client.findFirst({ where: whereClause, select: { id: true } });
+      if (resolvedClient) clientId = resolvedClient.id;
+    }
 
     if (!date) {
       fail(400, {
@@ -600,9 +872,48 @@ export class BookingService {
 
     const serviceIdsArray = Array.isArray(serviceIds) 
       ? serviceIds as string[]
-      : serviceIds 
-        ? [serviceIds as string]
+      : typeof serviceIds === 'string'
+        ? serviceIds.split(',').filter(Boolean)
         : [];
+
+    // Parse participants if provided (JSON string or array from query/POST body)
+    const participantList: Array<{ serviceIds: string[]; startTime: string }> =
+      participants
+        ? typeof participants === 'string'
+          ? JSON.parse(participants)
+          : (participants as any[])
+        : [];
+
+    // Normalize: if no participants explicitly provided, treat as a single-participant (booker) request
+    const hasExplicitParticipants = participantList.length > 0;
+
+    // Parse existing participants (already-confirmed group members) to treat their
+    // locked employees as busy during their intervals. These are NOT persisted in DB
+    // yet — they are virtual constraints from the in-progress group booking session.
+    const existingParticipantsList: Array<{
+      serviceIds: string[];
+      startTime: string;
+      duration: number;
+      serviceEmployees: Array<{ serviceId: string; employeeId: string | null }>;
+    }> = existingParticipants
+      ? typeof existingParticipants === 'string'
+        ? JSON.parse(existingParticipants)
+        : (existingParticipants as any[])
+      : [];
+
+    if (existingParticipantsList.length > 0) {
+      log.log('[Feasibility] RAW existingParticipants: ' + JSON.stringify(existingParticipantsList));
+    }
+
+    // Parse the current participant's explicit employee selections (from per-service step).
+    // These are the client's EXPLICIT choices ("Sans préférence" entries with null employeeId
+    // are included so we know which services still need auto-assignment).
+    const currentServiceEmployees: Array<{ serviceId: string; employeeId: string | null }> | undefined =
+      query.serviceEmployees
+        ? typeof query.serviceEmployees === 'string'
+          ? JSON.parse(query.serviceEmployees)
+          : (query.serviceEmployees as any[])
+        : undefined;
 
     // Verify tenant
     const tenant = await prisma.tenant.findFirst({
@@ -625,17 +936,11 @@ export class BookingService {
       });
     }
 
-    // Get services and calculate total duration
-    let totalDuration = 60; // Default 1 hour
-    if (serviceIdsArray.length > 0) {
-      const services = await prisma.service.findMany({
-        where: {
-          id: { in: serviceIdsArray },
-          tenantId: tenant.id
-        }
-      });
-      totalDuration = services.reduce((sum, s) => sum + s.duration, 0);
-    }
+    // Get services and calculate total duration (for single-participant lead-time check)
+    const services = await prisma.service.findMany({
+      where: { id: { in: serviceIdsArray }, tenantId: tenant.id },
+    });
+    const totalDuration = services.reduce((sum, s) => sum + s.duration, 0) || 60;
 
     const businessHours = tenant.settings?.businessHours as any || {};
     
@@ -685,21 +990,119 @@ export class BookingService {
     const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
     const isToday = today.getTime() === selectedDay.getTime();
 
-    // Calculate minimum lead time date
-    let minLeadDate = new Date(today);
+    // Calculate minimum bookable time based on lead time (must match createBooking logic)
+    let minStartTime: Date | null = null;
     if (bookingDelay && bookingDelay.value && bookingDelay.unit && !bookingDelay.allowLastMoment) {
+      minStartTime = new Date(now);
       if (bookingDelay.unit === 'heures') {
-        minLeadDate.setHours(minLeadDate.getHours() + parseInt(bookingDelay.value));
+        minStartTime.setHours(minStartTime.getHours() + parseInt(bookingDelay.value));
       } else if (bookingDelay.unit === 'jours') {
-        minLeadDate.setDate(minLeadDate.getDate() + parseInt(bookingDelay.value));
+        minStartTime.setDate(minStartTime.getDate() + parseInt(bookingDelay.value));
       } else if (bookingDelay.unit === 'semaines') {
-        minLeadDate.setDate(minLeadDate.getDate() + parseInt(bookingDelay.value) * 7);
+        minStartTime.setDate(minStartTime.getDate() + parseInt(bookingDelay.value) * 7);
       }
     }
-    const isBeforeLeadTime = selectedDay.getTime() < new Date(minLeadDate.getFullYear(), minLeadDate.getMonth(), minLeadDate.getDate()).getTime();
+    // Quick date-level bail: if the entire selected day is before the lead time, skip it
+    if (minStartTime) {
+      const minLeadDay = new Date(minStartTime.getFullYear(), minStartTime.getMonth(), minStartTime.getDate());
+      if (selectedDay.getTime() < minLeadDay.getTime()) {
+        return { slots: [] };
+      }
+    }
 
-    if (isBeforeLeadTime) {
-      return { slots: [] }; // Date is within lead time window
+    // Pre-load feasibility data once for the entire day so each slot check
+    // reuses the same employee/user/appointment/service data instead of
+    // running 5 independent DB queries per candidate slot.
+    // Collect all service IDs referenced across any participant for the duration-map.
+    const allSvcIds = hasExplicitParticipants
+      ? [...new Set(participantList.flatMap((p: any) => p.serviceIds))]
+      : serviceIdsArray;
+    const feasibilityCtx = await this.loadFeasibilityContext(tenant.id, dateStr, allSvcIds, clientId as string | undefined);
+
+    log.log('[Feasibility] Computing slots for ' + dateStr + ' | services=' + serviceIdsArray.join(',') + ' | existingParticipants=' + existingParticipantsList.length + ' | clientId=' + (clientId || 'none'));
+
+    // Inject virtual occupied ranges from existing participants (in-progress group session).
+    // These participants are NOT in the database yet, but their locked employee assignments
+    // must block those employees for overlapping intervals.
+    // When employeeId is null ("Sans préférence"), simulate auto-assignment via resolveAnyone
+    // to find which employee the backend would assign and block that employee.
+    const autoAssignedByEP = new Map<string, string[]>(); // empId -> [svcIds] tracked per EP for logging
+    for (const ep of existingParticipantsList) {
+      log.log('[Feasibility] ' + dateStr + ' EP: startTime=' + ep.startTime + ' serviceIds=' + JSON.stringify(ep.serviceIds) + ' serviceEmployees=' + JSON.stringify(ep.serviceEmployees));
+      // Parse startTime — could be "HH:MM" or ISO "YYYY-MM-DDTHH:MM:SS"
+      let h = 0, m = 0;
+      if (ep.startTime && ep.startTime.includes('T')) {
+        const timePart = ep.startTime.split('T')[1]; // "11:15:00"
+        [h, m] = timePart.split(':').map(Number);
+      } else if (ep.startTime) {
+        [h, m] = ep.startTime.split(':').map(Number);
+      }
+      if (isNaN(h) || isNaN(m)) {
+        log.log('[Feasibility] ' + dateStr + ' EP SKIP — invalid startTime format: ' + ep.startTime);
+        continue;
+      }
+      let cursor = h * 60 + m;
+      const excludeIds: string[] = []; // track auto-assigned employees within this EP to avoid double-assignment
+      for (let si = 0; si < ep.serviceIds.length; si++) {
+        const svcId = ep.serviceIds[si];
+        const empEntry = ep.serviceEmployees?.find((se: any) => se.serviceId === svcId);
+        const empId = empEntry?.employeeId;
+        // Use service duration from the context's duration map
+        const dur = feasibilityCtx.serviceDurationMap.get(svcId) || 30;
+        const sMin = cursor;
+        const eMin = cursor + dur;
+        log.log('[Feasibility] ' + dateStr + ' EP svc=' + svcId + ' empEntry=' + JSON.stringify(empEntry) + ' empId=' + empId + ' range=' + sMin + '-' + eMin);
+
+        let resolvedEmpId = empId;
+        let resolvedUserEmpId: string | null = null;
+
+        if (!resolvedEmpId) {
+          // "Sans préférence" — simulate auto-assignment to find who would be assigned
+          const timeStr = `${String(Math.floor(sMin / 60)).padStart(2, '0')}:${String(sMin % 60).padStart(2, '0')}`;
+          try {
+            const resolved = await schedulingService.resolveAnyone({
+              tenantId: feasibilityCtx.tenantId,
+              serviceIds: [svcId],
+              date: dateStr,
+              startTime: timeStr,
+              excludeEmployeeIds: excludeIds,
+            });
+            if (resolved.employeeId) {
+              resolvedEmpId = resolved.employeeId;
+              resolvedUserEmpId = resolved.userEmployeeId;
+              log.log('[Feasibility] ' + dateStr + ' EP AUTO-RESOLVED svc=' + svcId + ' -> emp=' + resolvedEmpId + ' userEmp=' + resolvedUserEmpId + ' range=' + sMin + '-' + eMin);
+            } else {
+              log.log('[Feasibility] ' + dateStr + ' EP AUTO-RESOLVE FAILED svc=' + svcId + ' no employee available');
+            }
+          } catch (err) {
+            log.log('[Feasibility] ' + dateStr + ' EP AUTO-RESOLVE ERROR svc=' + svcId + ': ' + (err as Error).message);
+          }
+        }
+
+        if (resolvedEmpId) {
+          if (!feasibilityCtx.occupiedRanges.has(resolvedEmpId)) {
+            feasibilityCtx.occupiedRanges.set(resolvedEmpId, []);
+          }
+          feasibilityCtx.occupiedRanges.get(resolvedEmpId)!.push({ start: sMin, end: eMin });
+          excludeIds.push(resolvedEmpId);
+          // Also track the user employee ID if different
+          if (resolvedUserEmpId && resolvedUserEmpId !== resolvedEmpId) {
+            if (!feasibilityCtx.occupiedRanges.has(resolvedUserEmpId)) {
+              feasibilityCtx.occupiedRanges.set(resolvedUserEmpId, []);
+            }
+            feasibilityCtx.occupiedRanges.get(resolvedUserEmpId)!.push({ start: sMin, end: eMin });
+          }
+          if (!autoAssignedByEP.has(resolvedEmpId)) autoAssignedByEP.set(resolvedEmpId, []);
+          autoAssignedByEP.get(resolvedEmpId)!.push(svcId);
+        }
+        cursor = eMin;
+      }
+    }
+
+    if (existingParticipantsList.length > 0) {
+      const virtualCount = Array.from(feasibilityCtx.occupiedRanges.values()).reduce((sum, r) => sum + r.length, 0);
+      log.log('[Feasibility] ' + dateStr + ' Injected ' + virtualCount + ' virtual occupied ranges from ' + existingParticipantsList.length + ' existing participants' +
+        (autoAssignedByEP.size > 0 ? ' (auto-resolved: ' + Array.from(autoAssignedByEP.entries()).map(([eid, svcs]) => eid + '=[' + svcs.join(',') + ']').join(', ') + ')' : ''));
     }
 
     // Generate 30-minute slots
@@ -707,37 +1110,286 @@ export class BookingService {
     let currentTime = new Date(openTime);
     
     while (currentTime.getTime() + totalDuration * 60000 <= closeTime.getTime()) {
-      // If the selected date is today, filter out past time slots
-      if (isToday && currentTime.getTime() <= now.getTime()) {
+      // Filter out past time slots and slots within lead time window
+      if (currentTime.getTime() <= now.getTime() || (minStartTime && currentTime.getTime() < minStartTime.getTime())) {
         currentTime = new Date(currentTime.getTime() + slotDuration * 60000);
         continue;
       }
 
       const timeStr = `${String(currentTime.getHours()).padStart(2, '0')}:${String(currentTime.getMinutes()).padStart(2, '0')}`;
 
-      // Use the scheduling engine to check if this start time is feasible
-      const slotCheck = await schedulingService.checkSlotAvailability({
-        tenantId: tenant.id,
-        serviceIds: serviceIdsArray,
-        date: dateStr,
-        startTime: timeStr,
-      });
+      // Unified feasibility check: ALL paths (single-participant, group, POST)
+      // use the same sequential-chain isFeasible() solver.
+      const participantsForSlot = hasExplicitParticipants
+        ? participantList.map((p) => ({
+            serviceIds: p.serviceIds,
+            startTime: p.startTime || timeStr,
+          }))
+        : [{ serviceIds: serviceIdsArray, startTime: timeStr, serviceEmployees: currentServiceEmployees }];
+      const { feasible } = await this.isFeasible(tenant.id, dateStr, participantsForSlot, feasibilityCtx, clientId as string | undefined);
 
-      if (slotCheck.available) {
+      if (!feasible) {
+        log.log('[Feasibility] ' + dateStr + ' Slot ' + timeStr + ' -> UNAVAILABLE');
+      }
+
+      if (feasible) {
         slots.push(timeStr);
       }
 
       currentTime = new Date(currentTime.getTime() + slotDuration * 60000);
     }
 
+    // ── DYNAMIC BOUNDARY SLOTS ──────────────────────────────────
+    // After the standard 30-min grid, inject exact boundary times where
+    // a busy period ends between two grid points. This lets clients
+    // book the exact moment a previous appointment finishes (e.g. 9:35)
+    // instead of losing the window until the next grid point (10:00).
+    const boundaryMinutes = new Set<number>();
+    for (const [, ranges] of feasibilityCtx.occupiedRanges) {
+      for (const r of ranges) {
+        // Only consider end times that fall strictly between grid points
+        if (r.end % slotDuration !== 0) {
+          boundaryMinutes.add(r.end);
+        }
+      }
+    }
+    // Also check client occupied ranges for boundary slots
+    for (const r of feasibilityCtx.clientOccupiedRanges) {
+      if (r.end % slotDuration !== 0) {
+        boundaryMinutes.add(r.end);
+      }
+    }
+
+    const slotTimeSet = new Set(slots);
+    for (const endMin of boundaryMinutes) {
+      const [bH, bM] = [Math.floor(endMin / 60), endMin % 60];
+      const boundaryTime = new Date(selectedDate);
+      boundaryTime.setHours(bH, bM, 0, 0);
+
+      // Skip if outside business hours, in the past, or within lead time
+      if (boundaryTime.getTime() < openTime.getTime()) continue;
+      if (boundaryTime.getTime() + totalDuration * 60000 > closeTime.getTime()) continue;
+      if (boundaryTime.getTime() <= now.getTime()) continue;
+      if (minStartTime && boundaryTime.getTime() < minStartTime.getTime()) continue;
+
+      const bTimeStr = `${String(bH).padStart(2, '0')}:${String(bM).padStart(2, '0')}`;
+      if (slotTimeSet.has(bTimeStr)) continue; // already in the grid
+
+      // Run full feasibility check on this boundary slot
+      const bParticipants = hasExplicitParticipants
+        ? participantList.map((p) => ({
+            serviceIds: p.serviceIds,
+            startTime: p.startTime || bTimeStr,
+          }))
+        : [{ serviceIds: serviceIdsArray, startTime: bTimeStr, serviceEmployees: currentServiceEmployees }];
+      const { feasible } = await this.isFeasible(tenant.id, dateStr, bParticipants, feasibilityCtx, clientId as string | undefined);
+
+      if (feasible) {
+        slots.push(bTimeStr);
+        slotTimeSet.add(bTimeStr);
+        log.log('[Feasibility] Boundary slot INJECTED: ' + bTimeStr);
+      }
+    }
+
+    // Sort slots chronologically before returning
+    slots.sort();
+
     return { slots };
-  } catch (error) {
-    throw error;
   }
+
+  /**
+   * Lightweight existence check: for each day in the given range,
+   * determine whether at least ONE feasible slot exists.
+   * Used by the frontend calendar to pre-grey days with zero availability.
+   * Much cheaper than getAvailableSlots because:
+   *   - Loads feasibility context once per tenant (not per day)
+   *   - Stops at the first feasible slot per day
+   *   - Skips days that fail date-level rules (lead time, max window, blocked, closed)
+   */
+  async getAvailableDays(
+    tenantId: string,
+    query: Record<string, unknown>
+  ): Promise<{ days: string[] }> {
+    const { from, to, serviceIds } = query;
+
+    if (!from || !to) {
+      fail(400, {
+        error: 'Date range required',
+        message: 'Both `from` and `to` (YYYY-MM-DD) query params are required',
+      });
+    }
+
+    const tenant = await prisma.tenant.findFirst({
+      where: {
+        OR: [{ subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
+        isActive: true,
+      },
+      include: { settings: true },
+    });
+
+    if (!tenant) {
+      fail(404, { error: 'Tenant not found' });
+    }
+
+    const businessHours = (tenant.settings?.businessHours as any) || {};
+    const blockedDates: string[] = businessHours.blockedDates || [];
+    const bookingDelay = businessHours.bookingDelay || null;
+    const bookingAdvanceDays = tenant.settings?.bookingAdvanceDays ?? 30;
+
+    const serviceIdsArray = Array.isArray(serviceIds)
+      ? (serviceIds as string[])
+      : typeof serviceIds === 'string'
+        ? serviceIds.split(',').filter(Boolean)
+        : [];
+
+    // Early exit: without any services there's nothing to check
+    if (serviceIdsArray.length === 0) return { days: [] };
+
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const defaultHours: Record<string, { open: string; close: string } | null> = {
+      monday: { open: '09:00', close: '18:00' },
+      tuesday: { open: '09:00', close: '18:00' },
+      wednesday: { open: '09:00', close: '18:00' },
+      thursday: { open: '09:00', close: '18:00' },
+      friday: { open: '09:00', close: '18:00' },
+      saturday: { open: '09:00', close: '18:00' },
+      sunday: null,
+    };
+
+    const fromDate = new Date(from as string);
+    const toDate = new Date(to as string);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Compute min lead time boundary (date-level)
+    let minLeadDay: Date | null = null;
+    if (bookingDelay && bookingDelay.value && bookingDelay.unit && !bookingDelay.allowLastMoment) {
+      minLeadDay = new Date(today);
+      if (bookingDelay.unit === 'jours') {
+        minLeadDay.setDate(minLeadDay.getDate() + parseInt(bookingDelay.value));
+      } else if (bookingDelay.unit === 'semaines') {
+        minLeadDay.setDate(minLeadDay.getDate() + parseInt(bookingDelay.value) * 7);
+      } else if (bookingDelay.unit === 'heures') {
+        // For hours, only same-day slots are filtered; the day itself stays available
+        minLeadDay = null;
+      }
+    }
+
+    // Compute max advance boundary (date-level)
+    const maxDay = new Date(today);
+    maxDay.setDate(maxDay.getDate() + bookingAdvanceDays);
+
+    const resultDays: string[] = [];
+
+    // Iterate day by day
+    const cursorDay = new Date(fromDate);
+    while (cursorDay <= toDate) {
+      const dateStr = cursorDay.toISOString().slice(0, 10);
+
+      // 1) Date-level rules (no DB needed)
+      if (blockedDates.includes(dateStr)) {
+        cursorDay.setDate(cursorDay.getDate() + 1);
+        continue;
+      }
+
+      const dayIndex = cursorDay.getDay();
+      const dayName = dayNames[dayIndex];
+      const hours = businessHours[dayName] || defaultHours[dayName];
+      if (!hours || !hours.open || !hours.close) {
+        cursorDay.setDate(cursorDay.getDate() + 1);
+        continue;
+      }
+
+      const selectedDay = new Date(cursorDay.getFullYear(), cursorDay.getMonth(), cursorDay.getDate());
+      if (selectedDay < today) {
+        cursorDay.setDate(cursorDay.getDate() + 1);
+        continue;
+      }
+
+      if (minLeadDay && selectedDay < minLeadDay) {
+        cursorDay.setDate(cursorDay.getDate() + 1);
+        continue;
+      }
+
+      if (selectedDay > maxDay) {
+        // Days beyond max window are unreachable — stop iteration entirely
+        break;
+      }
+
+      // 2) Compute time-level lead time boundary (must match getAvailableSlots logic).
+      // Reuse the outer `now` captured at request-start so lead time is consistent
+      // across all days in the range (same as getAvailableSlots behaviour).
+      let minSlotTime: Date | null = null;
+      if (bookingDelay && bookingDelay.value && bookingDelay.unit && !bookingDelay.allowLastMoment) {
+        minSlotTime = new Date(now);
+        if (bookingDelay.unit === 'heures') {
+          minSlotTime.setHours(minSlotTime.getHours() + parseInt(bookingDelay.value));
+        } else if (bookingDelay.unit === 'jours') {
+          minSlotTime.setDate(minSlotTime.getDate() + parseInt(bookingDelay.value));
+        } else if (bookingDelay.unit === 'semaines') {
+          minSlotTime.setDate(minSlotTime.getDate() + parseInt(bookingDelay.value) * 7);
+        }
+      }
+
+      // Load feasibility context for this day
+      const ctx = await this.loadFeasibilityContext(tenant.id, dateStr, serviceIdsArray.length ? serviceIdsArray : undefined);
+
+      const [openHour, openMin] = hours.open.split(':').map(Number);
+      const [closeHour, closeMin] = hours.close.split(':').map(Number);
+      const openTime = new Date(cursorDay);
+      openTime.setHours(openHour, openMin, 0, 0);
+      const closeTime = new Date(cursorDay);
+      closeTime.setHours(closeHour, closeMin, 0, 0);
+
+      // Get total duration for the requested services
+      let totalDuration = 60;
+      if (serviceIdsArray.length > 0 && ctx.serviceDurationMap.size > 0) {
+        totalDuration = serviceIdsArray.reduce((sum, sid) => sum + (ctx.serviceDurationMap.get(sid) || 0), 0);
+      }
+
+      // Scan slots — stop at first feasible one that also passes the time-level lead time
+      const slotDuration = 30;
+      let found = false;
+      const startMinutes = openTime.getHours() * 60 + openTime.getMinutes();
+      const endMinutes = closeTime.getHours() * 60 + closeTime.getMinutes();
+
+      for (let mins = startMinutes; mins + totalDuration <= endMinutes; mins += slotDuration) {
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+
+        // Apply time-level lead time filter (same as getAvailableSlots)
+        const slotDate = new Date(cursorDay);
+        slotDate.setHours(h, m, 0, 0);
+        if (slotDate.getTime() <= now.getTime() || (minSlotTime && slotDate.getTime() < minSlotTime.getTime())) {
+          continue;
+        }
+
+        const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+        const { feasible } = await this.isFeasible(
+          tenant.id,
+          dateStr,
+          [{ serviceIds: serviceIdsArray, startTime: timeStr }],
+          ctx,
+        );
+
+        if (feasible) {
+          found = true;
+          break;
+        }
+      }
+
+      if (found) {
+        resultDays.push(dateStr);
+      }
+
+      cursorDay.setDate(cursorDay.getDate() + 1);
+    }
+
+    return { days: resultDays };
   }
 
   async cancelAppointment(id: string, body: any) {
-    try {
     const { email } = body;
 
     if (!email) {
@@ -801,14 +1453,10 @@ export class BookingService {
       appointment: cancelledAppointment,
       message: 'Appointment cancelled successfully'
     };
-  } catch (error) {
-    throw error;
-  }
   }
 
   async getEmployeeAvailability(tenantId: string, query: Record<string, unknown>) {
-    try {
-      const { date, startTime, serviceIds } = query;
+    const { date, startTime, serviceIds, existingParticipants } = query;
 
       if (!date || !startTime) {
         fail(400, {
@@ -835,6 +1483,70 @@ export class BookingService {
         ? serviceIds.split(',').filter(Boolean)
         : [];
 
+      // Parse existing participants (already-confirmed group members) to treat their
+      // locked employees as busy during their intervals.
+      const existingParticipantsList: Array<{
+        serviceIds: string[];
+        startTime: string;
+        duration: number;
+        serviceEmployees: Array<{ serviceId: string; employeeId: string | null }>;
+      }> = existingParticipants
+        ? typeof existingParticipants === 'string'
+          ? JSON.parse(existingParticipants)
+          : (existingParticipants as any[])
+        : [];
+
+      // Build virtual occupied ranges from existing participants.
+      // Load actual service durations from the DB to compute correct time ranges.
+      const allEpSvcIds = [...new Set(existingParticipantsList.flatMap((ep) => ep.serviceIds))];
+      const epSvcDurations = allEpSvcIds.length > 0
+        ? await prisma.service.findMany({ where: { id: { in: allEpSvcIds }, tenantId: tenant.id }, select: { id: true, duration: true } })
+        : [];
+      const epDurationMap = new Map(epSvcDurations.map((s) => [s.id, s.duration]));
+
+      const virtualOccupied = new Map<string, Array<{ start: number; end: number }>>();
+      const epAutoResolved: string[] = [];
+      for (const ep of existingParticipantsList) {
+        const [h, m] = ep.startTime.split(':').map(Number);
+        let cursor = h * 60 + m;
+        const excludeIds: string[] = [];
+        for (let si = 0; si < ep.serviceIds.length; si++) {
+          const svcId = ep.serviceIds[si];
+          const empEntry = ep.serviceEmployees?.find((se) => se.serviceId === svcId);
+          const empId = empEntry?.employeeId;
+          const dur = epDurationMap.get(svcId) || 30;
+          const sMin = cursor;
+          const eMin = cursor + dur;
+
+          let resolvedEmpId = empId;
+
+          if (!resolvedEmpId) {
+            // "Sans préférence" — simulate auto-assignment
+            const timeStr = `${String(Math.floor(sMin / 60)).padStart(2, '0')}:${String(sMin % 60).padStart(2, '0')}`;
+            try {
+              const resolved = await schedulingService.resolveAnyone({
+                tenantId: tenant.id,
+                serviceIds: [svcId],
+                date: date as string,
+                startTime: timeStr,
+                excludeEmployeeIds: excludeIds,
+              });
+              if (resolved.employeeId) {
+                resolvedEmpId = resolved.employeeId;
+                epAutoResolved.push(svcId + '→' + resolvedEmpId);
+              }
+            } catch (_) {}
+          }
+
+          if (resolvedEmpId) {
+            if (!virtualOccupied.has(resolvedEmpId)) virtualOccupied.set(resolvedEmpId, []);
+            virtualOccupied.get(resolvedEmpId)!.push({ start: sMin, end: eMin });
+            excludeIds.push(resolvedEmpId);
+          }
+          cursor = eMin;
+        }
+      }
+
       const planResult = await schedulingService.planReservation({
         tenantId: tenant.id,
         serviceIds: serviceIdsArray,
@@ -860,7 +1572,20 @@ export class BookingService {
         });
       }
 
+      // Check virtual occupation from existing participants
+      const [startH, startM] = (startTime as string).split(':').map(Number);
+      const startMin = startH * 60 + startM;
+
       for (const sPlan of planResult.services) {
+        // Compute interval for this service
+        const svcIdx = serviceIdsArray.indexOf(sPlan.serviceId);
+        let svcStart = startMin;
+        for (let i = 0; i < svcIdx; i++) {
+          const prevDur = planResult.services[i]?.duration || 30;
+          svcStart += prevDur;
+        }
+        const svcEnd = svcStart + (sPlan.duration || 30);
+
         for (const empAvail of sPlan.employees) {
           const existing = empMap.get(empAvail.employeeId);
           if (existing) {
@@ -871,23 +1596,13 @@ export class BookingService {
             if (empAvail.recommended) {
               existing.recommended = true;
             }
+            // Check virtual occupation from existing participants
+            const ranges = virtualOccupied.get(empAvail.employeeId);
+            if (ranges && ranges.some((r) => r.start < svcEnd && r.end > svcStart)) {
+              existing.available = false;
+              existing.reason = 'Déjà assigné à un autre participant du groupe';
+            }
           }
-        }
-      }
-
-      // Compute employees who are available for ALL services in the bundle
-      const commonEmployeeIds: string[] = [];
-      if (planResult.services.length > 0) {
-        const serviceAvailableSets = planResult.services.map((s) => {
-          const ids = s.employees.filter((e) => e.available).map((e) => e.employeeId);
-          return new Set(ids);
-        });
-        const firstSet = serviceAvailableSets[0];
-        if (firstSet && firstSet.size > 0) {
-          const intersection = [...firstSet].filter((id) =>
-            serviceAvailableSets.every((set) => set.has(id)),
-          );
-          commonEmployeeIds.push(...intersection);
         }
       }
 
@@ -907,36 +1622,455 @@ export class BookingService {
         })),
       }));
 
-      return { employees: Array.from(empMap.values()), commonEmployeeIds, services: serviceEmployees };
-    } catch (error) {
-      throw error;
+      return { employees: Array.from(empMap.values()), services: serviceEmployees };
+  }
+
+  // ─── Shared helpers (reused by feasibility check and conflict solver) ─────
+
+  private DAY_NAMES: Record<number, string[]> = {
+    0: ['dimanche', 'sunday'],
+    1: ['lundi', 'monday'],
+    2: ['mardi', 'tuesday'],
+    3: ['mercredi', 'wednesday'],
+    4: ['jeudi', 'thursday'],
+    5: ['vendredi', 'friday'],
+    6: ['samedi', 'saturday'],
+  };
+
+  private async loadNameMaps(tenantId: string, serviceIds?: string[]) {
+    const empQ: any = { where: { tenantId, isActive: true }, select: { id: true, firstName: true, lastName: true } };
+    const svcQ: any = serviceIds && serviceIds.length
+      ? { where: { tenantId, id: { in: serviceIds } }, select: { id: true, name: true } }
+      : { where: { tenantId }, select: { id: true, name: true } };
+    const [emps, svcs] = await Promise.all([prisma.employee.findMany(empQ), prisma.service.findMany(svcQ)]);
+    const empName = new Map<string, string>();
+    for (const e of emps) empName.set(e.id, `${e.firstName} ${e.lastName}`.trim() || e.id);
+    const svcName = new Map<string, string>();
+    for (const s of svcs) svcName.set(s.id, s.name || s.id);
+    return { empName, svcName };
+  }
+
+  private isSameDay(dayInDb: string | undefined | null, idx: number): boolean {
+    if (!dayInDb) return false;
+    return (this.DAY_NAMES[idx] || []).includes(dayInDb.trim().toLowerCase());
+  }
+
+  private mins(time: string): number {
+    const [h, m] = time.split(':').map(Number);
+    return h * 60 + m;
+  }
+
+  private overlapsBreak(
+    wh: unknown, idx: number, rs: number, re: number,
+  ): boolean {
+    const arr = wh as Array<{
+      day: string;
+      breaks?: Array<{ start: string; end: string }>;
+    }> | null;
+    const dayData = arr?.find((d) => this.isSameDay(d.day, idx));
+    if (!dayData?.breaks) return false;
+    return dayData.breaks.some((b) => {
+      const bs = this.mins(b.start);
+      const be = this.mins(b.end);
+      return rs < be && re > bs;
+    });
+  }
+
+  // ─── Pre-loaded context for per-request caching (available-slots) ──────
+
+  private async loadFeasibilityContext(
+    tenantId: string, date: string, serviceIds?: string[], clientId?: string,
+  ): Promise<FeasibilityContext & { tenantId: string }> {
+    const [year, month, dayNum] = date.split('-').map(Number);
+    const dayDate = new Date(year, month - 1, dayNum);
+    const dayIndex = dayDate.getDay();
+
+    const employees = await prisma.employee.findMany({
+      where: { tenantId, isActive: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        workingHours: true,
+        agendaSettings: true,
+        employeeServices: { select: { serviceId: true } },
+      },
+    });
+
+    const skillMap = new Map<string, Set<string>>();
+    for (const emp of employees) {
+      skillMap.set(emp.id, new Set(emp.employeeServices.map((es) => es.serviceId)));
     }
+
+    const employeeToUserMap = new Map<string, string | null>();
+    {
+      const tenantUsers = await prisma.user.findMany({
+        where: { tenantId },
+        select: { id: true, email: true, firstName: true, lastName: true },
+      });
+      const emailToUserId = new Map(
+        tenantUsers.filter((u) => u.email).map((u) => [u.email!.toLowerCase(), u.id]),
+      );
+      const nameToUserId = new Map(
+        tenantUsers.map((u) => [
+          `${u.firstName.toLowerCase()} ${u.lastName.toLowerCase()}`,
+          u.id,
+        ]),
+      );
+      for (const emp of employees) {
+        let uid: string | null = null;
+        if (emp.email) uid = emailToUserId.get(emp.email.toLowerCase()) ?? null;
+        if (!uid)
+          uid = nameToUserId.get(`${emp.firstName.toLowerCase()} ${emp.lastName.toLowerCase()}`) ?? null;
+        if (uid) employeeToUserMap.set(emp.id, uid);
+      }
+    }
+
+    const dayStart = new Date(dayDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayDate);
+    dayEnd.setHours(23, 59, 59, 999);
+    const existingAppointments = await prisma.appointment.findMany({
+      where: {
+        tenantId,
+        status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] as any },
+        startTime: { gte: dayStart, lte: dayEnd },
+      },
+      select: {
+        employeeId: true,
+        startTime: true,
+        endTime: true,
+        services: { select: { employeeId: true } },
+      },
+    });
+
+    const occupiedRanges = new Map<string, { start: number; end: number }[]>();
+    for (const apt of existingAppointments) {
+      const s = apt.startTime.getHours() * 60 + apt.startTime.getMinutes();
+      const e = apt.endTime.getHours() * 60 + apt.endTime.getMinutes();
+      const addRange = (eid: string | null) => {
+        if (!eid) return;
+        if (!occupiedRanges.has(eid)) occupiedRanges.set(eid, []);
+        occupiedRanges.get(eid)!.push({ start: s, end: e });
+      };
+      addRange(apt.employeeId);
+      for (const item of apt.services || []) addRange(item.employeeId);
+    }
+
+    const allTenantServices = serviceIds && serviceIds.length > 0
+      ? await prisma.service.findMany({ where: { id: { in: serviceIds }, tenantId }, select: { id: true, duration: true } })
+      : await prisma.service.findMany({ where: { tenantId }, select: { id: true, duration: true } });
+    const serviceDurationMap = new Map(allTenantServices.map((s) => [s.id, s.duration]));
+
+    // Load client's own existing appointments for the day (client-conflict constraint).
+    const clientOccupiedRanges: { start: number; end: number }[] = [];
+    if (clientId) {
+      const clientApts = await prisma.appointment.findMany({
+        where: {
+          tenantId,
+          clientId,
+          status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] as any },
+          startTime: { gte: dayStart, lte: dayEnd },
+        },
+        select: { startTime: true, endTime: true },
+      });
+      for (const ca of clientApts) {
+        clientOccupiedRanges.push({
+          start: ca.startTime.getHours() * 60 + ca.startTime.getMinutes(),
+          end: ca.endTime.getHours() * 60 + ca.endTime.getMinutes(),
+        });
+      }
+    }
+
+    return { tenantId, employees, skillMap, employeeToUserMap, occupiedRanges, serviceDurationMap, dayIndex, clientOccupiedRanges };
   }
 
   /**
-   * Constraint-solver for cross-participant employee conflicts.
+   * Feasibility mode: reuses the same constraint logic as resolveParticipantConflicts
+   * but only determines whether at least one valid employee assignment exists.
+   * Works at per-service-interval granularity so multi-participant chains
+   * are correctly validated.
    *
-   * Phases:
-   *   1. BUILD CONSTRAINTS — load employees, compute eligibility per participant, build overlap graph
-   *   2. LOCK USER CHOICE — pin the participant the user just changed to their explicit selection
-   *   3. SEARCH + MINIMIZE — backtracking that preserves current assignments, tries fewest changes first
-   *   4. RETURN — resolved assignments or conflict
+   * This is the single source of truth for "can this slot really be booked by
+   * these participants?" — used by available-slots filtering AND booking-creation
+   * race-condition gating.
+   *
+   * When called from getAvailableSlots() multiple times per request, pass a
+   * pre-built `cached` context so the DB queries run once instead of every slot.
    */
-  async resolveParticipantConflicts(
+  async isFeasible(
+    tenantId: string,
+    date: string,
+    participants: Array<{ serviceIds: string[]; startTime: string }>,
+    cached?: FeasibilityContext,
+    clientId?: string,
+  ): Promise<{ feasible: boolean }> {
+    let tenant: { id: string } | null;
+    let ctx: FeasibilityContext;
+
+    if (cached) {
+      ctx = cached;
+      tenant = { id: cached.tenantId };
+    } else {
+      tenant = await prisma.tenant.findFirst({
+        where: {
+          OR: [{ subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (!tenant) {
+        log.log('[Feasibility] Tenant not found for date=' + date);
+        return { feasible: false };
+      }
+
+      // Use the shared data loader so the employee/user/appointment/service
+      // queries are defined in one place, not duplicated across two code paths.
+      ctx = await this.loadFeasibilityContext(tenant.id, date, undefined, clientId);
+    }
+
+    const allSvcIds = [...new Set(participants.flatMap((p) => p.serviceIds))];
+    const { empName, svcName } = await this.loadNameMaps(ctx.tenantId, allSvcIds);
+    function enm(id: string) { return empName.get(id) || id; }
+    function snm(id: string) { return svcName.get(id) || id; }
+    function pnm(i: number, svcs: string[]) { return `P${i}(${svcs.map(snm).join('+')})`; }
+
+    const { employees, skillMap, employeeToUserMap, occupiedRanges, serviceDurationMap, dayIndex, clientOccupiedRanges } = ctx;
+
+    function isOccupiedByExisting(empId: string, uid: string | null, rs: number, re: number): boolean {
+      const ids = [empId];
+      if (uid) ids.push(uid);
+      return ids.some(
+        (id) =>
+          occupiedRanges.has(id) &&
+          occupiedRanges.get(id)!.some((r) => r.start < re && r.end > rs),
+      );
+    }
+
+    /** Check whether a time interval overlaps any of the client's existing appointments. */
+    function isClientConflict(rs: number, re: number): boolean {
+      return clientOccupiedRanges.some((r) => r.start < re && r.end > rs);
+    }
+
+    // ── Build per-service INTERVALS for all participants ─────────
+    type Interval = {
+      participantIdx: number;
+      serviceIdx: number;
+      serviceId: string;
+      startMinutes: number;
+      endMinutes: number;
+      eligible: string[];
+      ineligibleReasons: Array<{ employeeId: string; reason: string }>;
+    };
+
+    const intervals: Interval[] = [];
+
+    for (let pi = 0; pi < participants.length; pi++) {
+      const p = participants[pi];
+      let cursor = this.mins(p.startTime);
+
+      for (let si = 0; si < p.serviceIds.length; si++) {
+        const sid = p.serviceIds[si];
+        const duration = serviceDurationMap.get(sid);
+        if (!duration) continue;
+
+        const intervalStart = cursor;
+        const intervalEnd = cursor + duration;
+
+        // ── CLIENT-CONFLICT HARD CONSTRAINT ──────────────────────
+        // If this participant is a known client, reject any interval that
+        // overlaps an existing appointment for that same client.
+        if (clientId && isClientConflict(intervalStart, intervalEnd)) {
+          const fmtMC = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+          log.log('[Feasibility] ' + date + ' Slot REJECTED: P' + pi + ' svc=' + snm(sid) + ' ' + fmtMC(intervalStart) + '-' + fmtMC(intervalEnd) + ' CLIENT CONFLICT');
+          return { feasible: false };
+        }
+
+        const ineligibleReasons: Array<{ employeeId: string; reason: string }> = [];
+        let eligible = employees
+          .filter((emp) => {
+            const empStatus = emp.agendaSettings ? (emp.agendaSettings as any).status : undefined;
+            if (empStatus && empStatus !== 'active') {
+              ineligibleReasons.push({ employeeId: emp.id, reason: `statut=${empStatus}` });
+              return false;
+            }
+
+            const empSkills = skillMap.get(emp.id);
+            if (empSkills && empSkills.size > 0 && !empSkills.has(sid)) {
+              ineligibleReasons.push({ employeeId: emp.id, reason: `non qualifié pour ${snm(sid)}` });
+              return false;
+            }
+
+            const wh = emp.workingHours as Array<{
+              day: string; isWorking: boolean; startTime: string; endTime: string;
+            }> | null;
+            const daySched = wh?.find((d) => this.isSameDay(d.day, dayIndex));
+            if (!daySched || !daySched.isWorking) {
+              ineligibleReasons.push({ employeeId: emp.id, reason: 'ne travaille pas ce jour' });
+              return false;
+            }
+
+            const whS = this.mins(daySched.startTime);
+            const whE = this.mins(daySched.endTime);
+            const fmtM = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+            if (intervalStart < whS || intervalEnd > whE) {
+              ineligibleReasons.push({ employeeId: emp.id, reason: `horaires hors ${daySched.startTime}-${daySched.endTime} (intervalle ${fmtM(intervalStart)}-${fmtM(intervalEnd)})` });
+              return false;
+            }
+
+            if (this.overlapsBreak(emp.workingHours, dayIndex, intervalStart, intervalEnd)) {
+              ineligibleReasons.push({ employeeId: emp.id, reason: 'pendant une pause' });
+              return false;
+            }
+
+            const uid = employeeToUserMap.get(emp.id) ?? null;
+            if (isOccupiedByExisting(emp.id, uid, intervalStart, intervalEnd)) {
+              ineligibleReasons.push({ employeeId: emp.id, reason: 'déjà réservé sur cet intervalle' });
+              return false;
+            }
+
+            return true;
+          })
+          .map((emp) => emp.id);
+
+        // If the participant has explicit employee choices, restrict eligible list
+        // to ONLY that specific employee. This ensures availability reflects the
+        // client's actual selection, not a generic "some employee exists" solvability.
+        const pServiceEmployees = (p as any).serviceEmployees as Array<{ serviceId: string; employeeId: string | null }> | undefined;
+        if (pServiceEmployees) {
+          const explicitChoice = pServiceEmployees.find((se: any) => se.serviceId === sid);
+          if (explicitChoice && explicitChoice.employeeId) {
+            if (!eligible.includes(explicitChoice.employeeId)) {
+              eligible = [];
+              log.log(`[Feasibility] P${pi} svc=${snm(sid)} explicit choice=${enm(explicitChoice.employeeId)} not eligible — blocked`);
+            } else {
+              eligible = [explicitChoice.employeeId];
+            }
+          }
+        }
+
+        const fmtM2 = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+        const summaryBad = ineligibleReasons.length > 0 && eligible.length === 0
+          ? (' — bloqué: ' + Array.from(new Set(ineligibleReasons.map((r) => r.reason))).slice(0, 3).join(' ; '))
+          : '';
+        if (summaryBad) {
+          log.log('[Feasibility] ' + date + ' P' + pi + ' ' + snm(sid) + ' ' + fmtM2(intervalStart) + '-' + fmtM2(intervalEnd) + summaryBad);
+        }
+
+        // ── CRITICAL: if zero employees are eligible for any service interval,
+        // the slot is immediately infeasible — no need to continue building
+        // intervals or running the backtracking solver.
+        if (eligible.length === 0) {
+          log.log('[Feasibility] ' + date + ' Slot REJECTED: P' + pi + ' svc=' + snm(sid) + ' ' + fmtM2(intervalStart) + '-' + fmtM2(intervalEnd) + ' has 0 eligible employees');
+          return { feasible: false };
+        }
+
+        intervals.push({
+          participantIdx: pi,
+          serviceIdx: si,
+          serviceId: sid,
+          startMinutes: intervalStart,
+          endMinutes: intervalEnd,
+          eligible,
+          ineligibleReasons,
+        });
+
+        cursor = intervalEnd;
+      }
+    }
+
+    // If no intervals, no work to do — technically feasible (vacuous truth)
+    if (intervals.length === 0) {
+      return { feasible: true };
+    }
+
+    // ── Backtracking search for a valid assignment ───────────────
+    const sorted = [...intervals].sort((a, b) => a.eligible.length - b.eligible.length);
+    const assignment = new Map<number, string>();
+    let backtrackSteps = 0;
+
+    function intervalOverlapLocal(a: Interval, b: Interval): boolean {
+      return a.startMinutes < b.endMinutes && a.endMinutes > b.startMinutes;
+    }
+
+    let lastConflictReason = '';
+
+    function backtrack(pos: number): boolean {
+      backtrackSteps++;
+      if (pos >= sorted.length) return true;
+
+      const interval = sorted[pos];
+      const pLabel = pnm(interval.participantIdx, participants[interval.participantIdx].serviceIds);
+
+      for (const eid of interval.eligible) {
+        let conflict = false;
+        for (const [assignedIdx, assignedEmp] of assignment) {
+          if (assignedEmp !== eid) continue;
+          if (intervalOverlapLocal(sorted[assignedIdx], interval)) {
+            conflict = true;
+            break;
+          }
+        }
+        if (conflict) continue;
+
+        assignment.set(pos, eid);
+        if (backtrack(pos + 1)) return true;
+        assignment.delete(pos);
+      }
+
+      if (interval.eligible.length === 0) {
+        const reason = Array.from(new Set(interval.ineligibleReasons.map((r) => r.reason))).slice(0, 3).join(' ; ');
+        lastConflictReason = `${pLabel} svc=${snm(interval.serviceId)} — aucun éligible (${reason || 'inconnu'})`;
+      } else {
+        lastConflictReason = `${pLabel} svc=${snm(interval.serviceId)} — ${interval.eligible.map(enm).join(', ')} tous en conflit`;
+      }
+      return false;
+    }
+
+    const feasible = backtrack(0);
+    if (!feasible) {
+      log.log('[Feasibility] RESULT: INFEASIBLE backtrackSteps=' + backtrackSteps + ' blocage: ' + lastConflictReason);
+    }
+    return { feasible };
+  }
+
+  /**
+   * Validate a new participant addition to an in-progress group booking.
+   *
+   * This replaces the old resolveParticipantConflicts solver. Instead of solving
+   * for ALL participants simultaneously, this only validates ONE new participant
+   * against the locked constraints of already-confirmed participants.
+   *
+   * Input:
+   *   - existingParticipants: array of already-confirmed participants with locked
+   *     intervals and employee assignments (NOT persisted in DB yet)
+   *   - newParticipant: the participant being added (services, start time, optional
+   *     per-service employee selections)
+   *
+   * Output:
+   *   - success with the complete assignments for the new participant, OR
+   *   - a detailed conflict object pointing to the exact participant/service
+   *
+   * Never reassigns any locked participant.
+   */
+  async validateParticipantAddition(
     tenantId: string,
     body: {
       date: string;
-      changedParticipantIndex: number;
-      /** null when user picked "N'importe qui" — scheduler resolves. Never "any". */
-      selectedEmployeeId: string | null;
-      participants: Array<{
+      existingParticipants: Array<{
         index: number;
         serviceIds: string[];
         startTime: string;
         duration: number;
-        /** Current assignment in the UI. null if "N'importe qui". Never "any". */
-        currentEmployeeId: string | null;
+        serviceEmployees: Array<{ serviceId: string; employeeId: string | null }>;
       }>;
+      newParticipant: {
+        serviceIds: string[];
+        startTime: string;
+        duration: number;
+        serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
+      };
     },
   ) {
     const tenant = await prisma.tenant.findFirst({
@@ -950,11 +2084,7 @@ export class BookingService {
       fail(404, { error: 'Tenant not found' });
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // PHASE 1: BUILD CONSTRAINTS
-    // ─────────────────────────────────────────────────────────────
-
-    const { date, participants } = body;
+    const { date, existingParticipants, newParticipant } = body;
     const [year, month, dayNum] = date.split('-').map(Number);
     const dayDate = new Date(year, month - 1, dayNum);
     const dayIndex = dayDate.getDay();
@@ -978,7 +2108,6 @@ export class BookingService {
       skillMap.set(emp.id, new Set(emp.employeeServices.map((es) => es.serviceId)));
     }
 
-    // Resolve Employee → User IDs
     const employeeToUserMap = new Map<string, string | null>();
     {
       const tenantUsers = await prisma.user.findMany({
@@ -998,10 +2127,7 @@ export class BookingService {
         let uid: string | null = null;
         if (emp.email) uid = emailToUserId.get(emp.email.toLowerCase()) ?? null;
         if (!uid)
-          uid =
-            nameToUserId.get(
-              `${emp.firstName.toLowerCase()} ${emp.lastName.toLowerCase()}`,
-            ) ?? null;
+          uid = nameToUserId.get(`${emp.firstName.toLowerCase()} ${emp.lastName.toLowerCase()}`) ?? null;
         if (uid) employeeToUserMap.set(emp.id, uid);
       }
     }
@@ -1014,7 +2140,7 @@ export class BookingService {
     const existingAppointments = await prisma.appointment.findMany({
       where: {
         tenantId: tenant.id,
-        status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] },
+        status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] as any },
         startTime: { gte: dayStart, lte: dayEnd },
       },
       select: {
@@ -1040,282 +2166,206 @@ export class BookingService {
       for (const item of apt.services || []) addRange(item.employeeId);
     }
 
-    function isOccupiedByExisting(
-      empId: string,
-      userId: string | null,
-      rs: number,
-      re: number,
-    ): boolean {
+    // Inject virtual occupied ranges from existing participants (locked constraints)
+    // When employeeId is null ("Sans préférence"), simulate auto-assignment to find
+    // which employee the backend would assign and block that employee.
+    for (const ep of existingParticipants) {
+      const [h, m] = ep.startTime.split(':').map(Number);
+      let cursor = h * 60 + m;
+      const excludeIds: string[] = [];
+      for (let si = 0; si < ep.serviceIds.length; si++) {
+        const svcId = ep.serviceIds[si];
+        const empEntry = ep.serviceEmployees?.find((se) => se.serviceId === svcId);
+        const empId = empEntry?.employeeId;
+        const durRows = await prisma.service.findMany({
+          where: { id: { in: ep.serviceIds }, tenantId: tenant.id },
+          select: { id: true, duration: true },
+        });
+        const durMap = new Map(durRows.map((s) => [s.id, s.duration]));
+        const dur = durMap.get(svcId) || 30;
+        const sMin = cursor;
+        const eMin = cursor + dur;
+
+        let resolvedEmpId = empId;
+
+        if (!resolvedEmpId) {
+          // "Sans préférence" — simulate auto-assignment
+          const timeStr = `${String(Math.floor(sMin / 60)).padStart(2, '0')}:${String(sMin % 60).padStart(2, '0')}`;
+          try {
+            const resolved = await schedulingService.resolveAnyone({
+              tenantId: tenant.id,
+              serviceIds: [svcId],
+              date,
+              startTime: timeStr,
+              excludeEmployeeIds: excludeIds,
+            });
+            if (resolved.employeeId) {
+              resolvedEmpId = resolved.employeeId;
+            }
+          } catch (_) {}
+        }
+
+        if (resolvedEmpId) {
+          if (!occupiedRanges.has(resolvedEmpId)) occupiedRanges.set(resolvedEmpId, []);
+          occupiedRanges.get(resolvedEmpId)!.push({ start: sMin, end: eMin });
+          excludeIds.push(resolvedEmpId);
+        }
+        cursor = eMin;
+      }
+    }
+
+    function isOccupiedByExisting(empId: string, userId: string | null, rs: number, re: number): boolean {
       const ids = [empId];
       if (userId) ids.push(userId);
       return ids.some(
-        (id) =>
-          occupiedRanges.has(id) &&
-          occupiedRanges.get(id)!.some((r) => r.start < re && r.end > rs),
+        (id) => occupiedRanges.has(id) && occupiedRanges.get(id)!.some((r) => r.start < re && r.end > rs),
       );
     }
 
-    // Helpers
+    // Name helpers
+    const allSvcIds = [...new Set([...existingParticipants.flatMap((p) => p.serviceIds), ...newParticipant.serviceIds])];
+    const { empName, svcName } = await this.loadNameMaps(tenant.id, allSvcIds);
+    function enm(id: string | null) { return id === null ? 'Sans préférence' : empName.get(id) || id; }
+    function snm(id: string) { return svcName.get(id) || id; }
+    function tmm(m: number) { const h = Math.floor(m / 60), mm = m % 60; return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`; }
+
     const DAY_NAMES: Record<number, string[]> = {
-      0: ['dimanche', 'sunday'],
-      1: ['lundi', 'monday'],
-      2: ['mardi', 'tuesday'],
-      3: ['mercredi', 'wednesday'],
-      4: ['jeudi', 'thursday'],
-      5: ['vendredi', 'friday'],
-      6: ['samedi', 'saturday'],
+      0: ['dimanche', 'sunday'], 1: ['lundi', 'monday'], 2: ['mardi', 'tuesday'],
+      3: ['mercredi', 'wednesday'], 4: ['jeudi', 'thursday'], 5: ['vendredi', 'friday'], 6: ['samedi', 'saturday'],
     };
     function isSameDay(dayInDb: string | undefined | null, idx: number): boolean {
       if (!dayInDb) return false;
       return (DAY_NAMES[idx] || []).includes(dayInDb.trim().toLowerCase());
     }
-    function mins(time: string): number {
-      const [h, m] = time.split(':').map(Number);
-      return h * 60 + m;
-    }
-    function overlapsBreak(
-      wh: unknown,
-      idx: number,
-      rs: number,
-      re: number,
-    ): boolean {
-      const arr = wh as Array<{
-        day: string;
-        breaks?: Array<{ start: string; end: string }>;
-      }> | null;
+    function mins(time: string): number { const [h, m] = time.split(':').map(Number); return h * 60 + m; }
+    function overlapsBreak(wh: unknown, idx: number, rs: number, re: number): boolean {
+      const arr = wh as Array<{ day: string; breaks?: Array<{ start: string; end: string }>; }> | null;
       const dayData = arr?.find((d) => isSameDay(d.day, idx));
       if (!dayData?.breaks) return false;
-      return dayData.breaks.some((b) => {
-        const bs = mins(b.start);
-        const be = mins(b.end);
-        return rs < be && re > bs;
-      });
-    }
-    function overlap(
-      a: { startMinutes: number; endMinutes: number },
-      b: { startMinutes: number; endMinutes: number },
-    ): boolean {
-      return a.startMinutes < b.endMinutes && a.endMinutes > b.startMinutes;
+      return dayData.breaks.some((b) => { const bs = mins(b.start); const be = mins(b.end); return rs < be && re > bs; });
     }
 
-    // Compute workload for tie-breaking
-    const workloadMap = new Map<string, number>();
-    for (const emp of employees) {
-      const uid = employeeToUserMap.get(emp.id);
-      let total = 0;
-      if (uid) {
-        const ranges = occupiedRanges.get(uid) || [];
-        total = ranges.reduce((sum, r) => sum + (r.end - r.start), 0);
-      }
-      workloadMap.set(emp.id, total);
-    }
+    // Load service durations for the new participant
+    const svcDurRows = await prisma.service.findMany({
+      where: { id: { in: newParticipant.serviceIds }, tenantId: tenant.id },
+      select: { id: true, duration: true },
+    });
+    const durMap = new Map(svcDurRows.map((s) => [s.id, s.duration]));
 
-    // ── Constraint node: one per participant ──────────────────────
-    type ConstraintNode = {
-      index: number;
-      serviceIds: string[];
+    // ── Build intervals for the new participant ──────────────────
+    type NewInterval = {
+      serviceId: string;
       startMinutes: number;
       endMinutes: number;
       eligible: string[];
-      currentEmployeeId: string | null;
+      ineligible: Map<string, string>;
+      chosenEmployeeId: string | null;
     };
 
-    const nodes: ConstraintNode[] = participants.map((p) => {
-      const startMin = mins(p.startTime);
-      const endMin = startMin + p.duration;
-      const eligible = employees
-        .filter((emp) => {
-          const empStatus = emp.agendaSettings ? (emp.agendaSettings as any).status : undefined;
-          if (empStatus && empStatus !== 'active') return false;
-          const empSkills = skillMap.get(emp.id);
-          if (empSkills && empSkills.size > 0) {
-            if (!p.serviceIds.every((sid) => empSkills!.has(sid))) return false;
-          }
-          const wh = emp.workingHours as Array<{
-            day: string;
-            isWorking: boolean;
-            startTime: string;
-            endTime: string;
-          }> | null;
-          const daySched = wh?.find((d) => isSameDay(d.day, dayIndex));
-          if (!daySched || !daySched.isWorking) return false;
-          const whS = mins(daySched.startTime);
-          const whE = mins(daySched.endTime);
-          if (startMin < whS || endMin > whE) return false;
-          if (overlapsBreak(emp.workingHours, dayIndex, startMin, endMin)) return false;
-          const uid = employeeToUserMap.get(emp.id) ?? null;
-          if (isOccupiedByExisting(emp.id, uid, startMin, endMin)) return false;
-          return true;
-        })
-        .map((emp) => emp.id);
+    const newIntervals: NewInterval[] = [];
+    let cursor = mins(newParticipant.startTime);
+    for (let si = 0; si < newParticipant.serviceIds.length; si++) {
+      const sid = newParticipant.serviceIds[si];
+      const dur = durMap.get(sid) || 30;
+      const startMin = cursor;
+      const endMin = cursor + dur;
+      cursor = endMin;
 
-      return {
-        index: p.index,
-        serviceIds: p.serviceIds,
-        startMinutes: startMin,
-        endMinutes: endMin,
-        eligible,
-        currentEmployeeId: p.currentEmployeeId,
-      };
-    });
-
-    // ─────────────────────────────────────────────────────────────
-    // PHASE 2: LOCK USER CHOICE
-    // ─────────────────────────────────────────────────────────────
-
-    // The changed participant's explicit selection is locked.
-    // If selectedEmployeeId is null (user chose "N'importe qui"), no lock — scheduler resolves.
-    const lockedNodeIndex = body.changedParticipantIndex;
-    const explicitSelection = body.selectedEmployeeId;
-
-    // Resolve "N'importe qui" immediately: frontend sends null, backend picks.
-    const lockedEmployeeId =
-      explicitSelection !== null ? explicitSelection : null;
-
-    // Validation: if the user made an explicit pick, verify it's feasible
-    if (lockedEmployeeId !== null) {
-      const lockedNode = nodes.find((n) => n.index === lockedNodeIndex);
-      if (lockedNode && !lockedNode.eligible.includes(lockedEmployeeId)) {
-        return {
-          resolved: false,
-          conflict: true,
-          message:
-            'Le collaborateur sélectionné n\'est pas disponible pour cette prestation.',
-        };
-      }
-    }
-
-    // ── Build working state ──────────────────────────────────────
-    type Assignment = {
-      index: number;
-      employeeId: string;
-      locked: boolean;
-    };
-
-    const assignments: Assignment[] = [];
-
-    // Place the locked assignment
-    if (lockedEmployeeId !== null) {
-      assignments.push({
-        index: lockedNodeIndex,
-        employeeId: lockedEmployeeId,
-        locked: true,
-      });
-    }
-
-    // Determine unassigned nodes (sorted by most-constrained-first)
-    const unassigned = nodes
-      .filter((n) => n.index !== lockedNodeIndex)
-      .sort((a, b) => a.eligible.length - b.eligible.length);
-
-    // ─────────────────────────────────────────────────────────────
-    // PHASE 3: SEARCH + MINIMIZE CHANGES
-    // ─────────────────────────────────────────────────────────────
-    //
-    // Strategy:
-    //   For each unassigned node, try candidates in this order:
-    //     1. currentEmployeeId (preserves existing assignment — zero cost)
-    //     2. remaining eligible employees sorted by workload
-    //
-    //   This naturally minimizes changes: we only move a participant
-    //   when their current employee conflicts with a locked or more-
-    //   constrained participant's assignment.
-
-    let solvable = false;
-
-    function computeConflicts(node: ConstraintNode): Set<string> {
-      const used = new Set<string>();
-      for (const a of assignments) {
-        const other = nodes.find((n) => n.index === a.index);
-        if (other && overlap(node, other)) {
-          used.add(a.employeeId);
-        }
-      }
-      return used;
-    }
-
-    function backtrack(pos: number): boolean {
-      if (pos >= unassigned.length) {
-        solvable = true;
+      // Compute eligibility for this interval
+      const ineligible = new Map<string, string>();
+      const eligible = employees.filter((emp) => {
+        const empStatus = emp.agendaSettings ? (emp.agendaSettings as any).status : undefined;
+        if (empStatus && empStatus !== 'active') { ineligible.set(emp.id, `statut=${empStatus}`); return false; }
+        const empSkills = skillMap.get(emp.id);
+        if (empSkills && empSkills.size > 0 && !empSkills.has(sid)) { ineligible.set(emp.id, `non qualifié pour ${snm(sid)}`); return false; }
+        const wh = emp.workingHours as Array<{ day: string; isWorking: boolean; startTime: string; endTime: string; }> | null;
+        const daySched = wh?.find((d) => isSameDay(d.day, dayIndex));
+        if (!daySched || !daySched.isWorking) { ineligible.set(emp.id, `ne travaille pas ce jour`); return false; }
+        const whS = mins(daySched.startTime); const whE = mins(daySched.endTime);
+        if (startMin < whS || endMin > whE) { ineligible.set(emp.id, `horaires hors ${tmm(whS)}-${tmm(whE)}`); return false; }
+        if (overlapsBreak(emp.workingHours, dayIndex, startMin, endMin)) { ineligible.set(emp.id, `pendant une pause`); return false; }
+        const uid = employeeToUserMap.get(emp.id) ?? null;
+        if (isOccupiedByExisting(emp.id, uid, startMin, endMin)) { ineligible.set(emp.id, `déjà réservé sur ${tmm(startMin)}-${tmm(endMin)}`); return false; }
         return true;
+      }).map((emp) => emp.id);
+
+      // Find the explicitly chosen employee for this service (if any)
+      const chosenEmp = newParticipant.serviceEmployees?.find((se) => se.serviceId === sid)?.employeeId ?? null;
+
+      newIntervals.push({ serviceId: sid, startMinutes: startMin, endMinutes: endMin, eligible, ineligible, chosenEmployeeId: chosenEmp });
+    }
+
+    // ── Validate explicit selections and auto-assign ──────────────
+    const assignments: Array<{ serviceId: string; employeeId: string; autoAssigned: boolean }> = [];
+    const blockedEmployees = new Set<string>(); // employees already assigned to overlapping intervals
+
+    // Sort intervals by most-constrained first (fewest eligible)
+    const sorted = [...newIntervals].sort((a, b) => a.eligible.length - b.eligible.length);
+
+    const conflictedParticipants: Array<{ serviceId: string; reason: string }> = [];
+
+    for (const interval of sorted) {
+      if (interval.eligible.length === 0) {
+        const reasons = [...interval.ineligible.entries()].slice(0, 2);
+        const details = reasons.map(([eid, r]) => `${enm(eid)}: ${r}`).join(' ; ');
+        conflictedParticipants.push({
+          serviceId: interval.serviceId,
+          reason: `Aucun collaborateur éligible pour ${snm(interval.serviceId)} à ${tmm(interval.startMinutes)}-${tmm(interval.endMinutes)}. ${details}`,
+        });
+        continue;
       }
 
-      const node = unassigned[pos];
-      const conflicts = computeConflicts(node);
-
-      // Build candidate order: current employee first (stability), then workload-sorted
-      const tried = new Set<string>();
-      const candidates: string[] = [];
-
-      // 1. Current employee (preserve existing assignment)
-      if (node.currentEmployeeId && node.eligible.includes(node.currentEmployeeId)) {
-        candidates.push(node.currentEmployeeId);
-        tried.add(node.currentEmployeeId);
-      }
-
-      // 2. Remaining eligible, sorted by workload (least loaded first)
-      const rest = node.eligible
-        .filter((eid) => !tried.has(eid))
-        .sort((a, b) => (workloadMap.get(a) || 0) - (workloadMap.get(b) || 0));
-      candidates.push(...rest);
-
-      for (const eid of candidates) {
-        if (conflicts.has(eid)) {
+      if (interval.chosenEmployeeId) {
+        // Validate the explicit selection
+        if (!interval.eligible.includes(interval.chosenEmployeeId)) {
+          const reason = interval.ineligible.get(interval.chosenEmployeeId) || 'indisponible';
+          conflictedParticipants.push({
+            serviceId: interval.serviceId,
+            reason: `${enm(interval.chosenEmployeeId)} ne peut pas assurer ${snm(interval.serviceId)} à ${tmm(interval.startMinutes)}-${tmm(interval.endMinutes)} (${reason}).`,
+          });
           continue;
         }
-        assignments.push({ index: node.index, employeeId: eid, locked: false });
-        if (backtrack(pos + 1)) return true;
-        assignments.pop();
-      }
-
-      return false;
-    }
-
-    const searchStarted = unassigned.length > 0;
-    if (searchStarted) {
-      backtrack(0);
-    } else {
-      solvable = true; // only locked participant, no conflicts to solve
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // PHASE 4: RETURN
-    // ─────────────────────────────────────────────────────────────
-
-    const finalAssignments = assignments.map((a) => ({
-      index: a.index,
-      employeeId: a.employeeId,
-      locked: a.locked,
-      autoAssigned: !a.locked,
-    }));
-
-    // Detect invalid solutions: overlapping participants with same employee
-    for (let i = 0; i < assignments.length; i++) {
-      for (let j = i + 1; j < assignments.length; j++) {
-        const a = assignments[i], b = assignments[j];
-        if (a.employeeId === b.employeeId) {
-          const na = nodes.find((n) => n.index === a.index);
-          const nb = nodes.find((n) => n.index === b.index);
-          if (na && nb && overlap(na, nb)) {
-            console.error("INVALID SOLUTION: participant", a.index, "and", b.index, "share", a.employeeId, "with overlapping times");
-          }
+        if (blockedEmployees.has(interval.chosenEmployeeId)) {
+          conflictedParticipants.push({
+            serviceId: interval.serviceId,
+            reason: `${enm(interval.chosenEmployeeId)} est déjà assigné à un intervalle qui se chevauche avec ${snm(interval.serviceId)}.`,
+          });
+          continue;
         }
+        assignments.push({ serviceId: interval.serviceId, employeeId: interval.chosenEmployeeId, autoAssigned: false });
+        blockedEmployees.add(interval.chosenEmployeeId);
+      } else {
+        // Auto-assign: pick the least-loaded eligible employee not already blocked
+        const candidates = interval.eligible.filter((eid) => !blockedEmployees.has(eid));
+        if (candidates.length === 0) {
+          conflictedParticipants.push({
+            serviceId: interval.serviceId,
+            reason: `Tous les collaborateurs éligibles pour ${snm(interval.serviceId)} sont déjà assignés à des intervalles qui se chevauchent.`,
+          });
+          continue;
+        }
+        // Pick the first available (they're already filtered by eligibility)
+        const chosen = candidates[0];
+        assignments.push({ serviceId: interval.serviceId, employeeId: chosen, autoAssigned: true });
+        blockedEmployees.add(chosen);
       }
     }
 
-    if (!solvable) {
+    if (conflictedParticipants.length > 0) {
+      log.log(`[ValidateParticipant] CONFLICT for new participant: ${conflictedParticipants.map((c) => `${snm(c.serviceId)}: ${c.reason}`).join(' | ')}`);
       return {
-        resolved: false,
+        valid: false,
         conflict: true,
-        message:
-          'Aucun collaborateur disponible pour satisfaire toutes les contraintes.',
+        message: conflictedParticipants[0].reason,
+        conflictedServices: conflictedParticipants,
       };
     }
 
+    log.log(`[ValidateParticipant] OK: new participant validated. Assignments: ${assignments.map((a) => `${snm(a.serviceId)}→${enm(a.employeeId)}${a.autoAssigned ? '(auto)' : ''}`).join(', ')}`);
     return {
-      resolved: true,
+      valid: true,
       conflict: false,
-      assignments: finalAssignments,
+      assignments,
     };
   }
 }

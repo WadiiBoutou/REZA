@@ -8,6 +8,13 @@ interface UseAvailabilityOptions {
   employeeId?: string;
   enabled?: boolean;
   pollInterval?: number;
+  clientEmail?: string;
+  existingParticipants?: Array<{
+    serviceIds: string[];
+    startTime: string;
+    serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
+  }>;
+  serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
 }
 
 interface AvailabilityState {
@@ -28,6 +35,9 @@ export function useAvailability({
   employeeId,
   enabled = true,
   pollInterval = 30000, // 30 seconds default
+  clientEmail,
+  existingParticipants,
+  serviceEmployees,
 }: UseAvailabilityOptions) {
   const [state, setState] = useState<AvailabilityState>({
     slots: [],
@@ -45,6 +55,9 @@ export function useAvailability({
   const dateRef = useRef(date);
   const tenantIdRef = useRef(tenantId);
   const employeeIdRef = useRef(employeeId);
+  const clientEmailRef = useRef(clientEmail);
+  const existingParticipantsRef = useRef(existingParticipants);
+  const serviceEmployeesRef = useRef(serviceEmployees);
 
   // Update refs when values change
   useEffect(() => {
@@ -53,7 +66,10 @@ export function useAvailability({
     dateRef.current = date;
     tenantIdRef.current = tenantId;
     employeeIdRef.current = employeeId;
-  }, [serviceIds, enabled, date, tenantId, employeeId]);
+    clientEmailRef.current = clientEmail;
+    existingParticipantsRef.current = existingParticipants;
+    serviceEmployeesRef.current = serviceEmployees;
+  }, [serviceIds, enabled, date, tenantId, employeeId, clientEmail, existingParticipants, serviceEmployees]);
 
   const fetchAvailability = useCallback(async () => {
     const currentServiceIds = serviceIdsRef.current;
@@ -80,14 +96,23 @@ export function useAvailability({
 
     abortControllerRef.current = new AbortController();
 
-    setState(prev => ({ ...prev, loading: true, error: null }));
+    // Stale-while-revalidate: keep showing cached slots while fetching new ones
+    setState(prev => {
+      if (prev.slots.length > 0) {
+        return { ...prev, error: null };
+      }
+      return { ...prev, loading: true, error: null };
+    });
 
     try {
       const slots = await api.getAvailableSlots(
         currentTenantId,
         currentDate,
         currentServiceIds,
-        currentEmployeeId
+        currentEmployeeId,
+        existingParticipantsRef.current,
+        clientEmailRef.current,
+        serviceEmployeesRef.current
       );
 
       setState(prev => {
@@ -158,7 +183,7 @@ export function useAvailability({
         intervalRef.current = null;
       }
     };
-  }, [enabled, date, tenantId, serviceIds.join(','), employeeId, fetchAvailability, pollInterval]);
+  }, [enabled, date, tenantId, serviceIds.join(','), employeeId, fetchAvailability, pollInterval, JSON.stringify(existingParticipants), JSON.stringify(serviceEmployees)]);
 
   // Cleanup on unmount
   useEffect(() => {

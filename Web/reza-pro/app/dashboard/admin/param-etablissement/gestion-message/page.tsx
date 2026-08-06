@@ -4,9 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Check, Save } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import SalonScopeNotice from '@/components/SalonScopeNotice';
 import toast from 'react-hot-toast';
 
 const GestionMessages = () => {
+  const { isSalonFilterMulti } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -49,6 +52,10 @@ const GestionMessages = () => {
       setSaving(false);
     }
   };
+
+  if (isSalonFilterMulti) {
+    return <SalonScopeNotice title="Gestion Message" subtitle="Affichez un message personnalisé à vos clients lors de la réservation en ligne" />;
+  }
 
   return (
     <div className="min-h-screen p-0 md:p-0">

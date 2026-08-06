@@ -285,7 +285,6 @@ const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
       // Cancel appointment - this will automatically notify the admin
       const response = await api.cancelAppointment(selectedAppointment.id, email);
       
-      console.log('[Account] Appointment cancelled successfully:', response);
       
       // Update local state
       setSelectedAppointment({

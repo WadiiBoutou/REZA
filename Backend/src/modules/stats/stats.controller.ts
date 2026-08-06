@@ -85,14 +85,16 @@ export class StatsController {
 
   async getCollaborateursStats(req: Request, res: Response, next: NextFunction) {
     try {
-      const { period, startDate, endDate, month, year } = req.query;
+      const { period, startDate, endDate, month, year, categoryId, serviceId } = req.query;
       const result = await statsService.getCollaborateursStats(
-        req.tenantId!,
+        req.salonIds && req.salonIds.length > 0 ? req.salonIds : req.tenantId!,
         period as string,
         startDate as string,
         endDate as string,
         month as string,
-        year as string
+        year as string,
+        categoryId as string,
+        serviceId as string
       );
       res.json(result);
     } catch (error) {
@@ -151,14 +153,16 @@ export class StatsController {
 
   async getOccupancyCollaborateurs(req: Request, res: Response, next: NextFunction) {
     try {
-      const { period, startDate, endDate, month, year } = req.query;
+      const { period, startDate, endDate, month, year, categoryId, serviceId } = req.query;
       const result = await statsService.getOccupancyCollaborateurs(
-        req.tenantId!,
+        req.salonIds && req.salonIds.length > 0 ? req.salonIds : req.tenantId!,
         period as string,
         startDate as string,
         endDate as string,
         month as string,
-        year as string
+        year as string,
+        categoryId as string,
+        serviceId as string
       );
       res.json(result);
     } catch (error) {

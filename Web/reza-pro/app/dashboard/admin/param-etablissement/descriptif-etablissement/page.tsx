@@ -3,9 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, Check, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import SalonScopeNotice from '@/components/SalonScopeNotice';
 import toast from 'react-hot-toast';
 
 const AProposPage = () => {
+  const { isSalonFilterMulti } = useAuth();
   const [description, setDescription] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -53,6 +56,10 @@ const AProposPage = () => {
 
   const maxChars = 1000;
   const remainingChars = maxChars - description.length;
+
+  if (isSalonFilterMulti) {
+    return <SalonScopeNotice title="À-propos" subtitle="Modifier la section à-propos de ma page Reza" />;
+  }
 
   return (
     <div className="min-h-screen p-0 md:p-0 max-w-[2000px] mx-auto">

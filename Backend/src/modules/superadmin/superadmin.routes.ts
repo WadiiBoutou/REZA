@@ -17,7 +17,7 @@ const handleError = (res: express.Response, error: any, next: express.NextFuncti
 };
 
 // All routes require a global SUPER_ADMIN JWT (no bootstrap HTTP endpoint —
-// create the first superadmin with: npx tsx src/prisma/create-superadmin.ts)
+// the demo superadmin is created by the seed: npm run seed)
 router.use(superAdminAuthMiddleware);
 
 /** GET /api/superadmin/accounts?page=&limit=&q=&planId=&endsAfter=&endsBefore= */

@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'models/appointment.dart';
 import 'services/session_store.dart';
 import 'services/auth_service.dart';
 

@@ -1,26 +1,48 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Globe, MapPin, Tag, Image as ImageIcon, Check, Loader2, X, Plus, Instagram, Facebook, Twitter, Phone, Mail } from 'lucide-react';
+import { Globe, MapPin, Tag, Image as ImageIcon, Check, Loader2, X, Plus, Instagram, Facebook, Phone, Mail, ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import SalonScopeNotice from '@/components/SalonScopeNotice';
+import SalonLocationPicker from '@/components/SalonLocationPicker';
 import toast from 'react-hot-toast';
 
+// Brand icons (lucide has no X / TikTok logos)
+const XBrandIcon = ({ size = 20, className }: { size?: number; className?: string }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" className={className} aria-hidden="true">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
+
+const TikTokBrandIcon = ({ size = 20, className }: { size?: number; className?: string }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" className={className} aria-hidden="true">
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
+  </svg>
+);
+
+const toFullImageUrl = (url: string) =>
+  url.startsWith('http')
+    ? url
+    : `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000'}${url}`;
+
 const InformationsLandingPage = () => {
+  const { isAuthenticated, salonFilter, effectiveSalonIds, isSalonFilterMulti } = useAuth();
+  const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
   // Tenant fields
   const [category, setCategory] = useState('');
-  const [coverImage, setCoverImage] = useState('');
+  // Multiple cover images (up to 20); the first one is the primary cover.
+  const [coverImages, setCoverImages] = useState<string[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
   const [shortDescription, setShortDescription] = useState('');
   const [website, setWebsite] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [city, setCity] = useState('');
-  const [googleMapsLink, setGoogleMapsLink] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -32,7 +54,8 @@ const InformationsLandingPage = () => {
   const [socialMedia, setSocialMedia] = useState({
     instagram: '',
     facebook: '',
-    twitter: ''
+    x: '',
+    tiktok: ''
   });
   const [featured, setFeatured] = useState(false);
   
@@ -87,8 +110,9 @@ const InformationsLandingPage = () => {
   ];
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchData();
-  }, []);
+  }, [isAuthenticated, salonFilterKey]);
 
   const fetchData = async () => {
     try {
@@ -103,26 +127,28 @@ const InformationsLandingPage = () => {
 
       // Set tenant fields
       setCategory(tenant.category || '');
-      // Set cover image - if it's a local path, prepend the API base URL
-      const coverImageUrl = tenant.coverImage 
-        ? (tenant.coverImage.startsWith('http') 
-            ? tenant.coverImage 
-            : `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000'}${tenant.coverImage}`)
-        : '';
-      setCoverImage(coverImageUrl);
+      // Cover images: primary cover (tenant.coverImage) + additional cover images (settings.coverImages)
+      const extraCovers = Array.isArray(settings.coverImages) ? settings.coverImages : [];
+      setCoverImages(tenant.coverImage ? [tenant.coverImage, ...extraCovers] : extraCovers);
       setShortDescription(tenant.shortDescription || '');
       setWebsite(tenant.website || '');
       setPhone(tenant.phone || '');
       setEmail(tenant.email || '');
       setCity(tenant.city || '');
-      setGoogleMapsLink(tenant.googleMapsLink || '');
       setLatitude(tenant.latitude?.toString() || '');
       setLongitude(tenant.longitude?.toString() || '');
       setTags(tenant.tags || []);
 
       // Set settings fields
       setAmenities((settings.amenities as string[]) || []);
-      setSocialMedia((settings.socialMedia as any) || { instagram: '', facebook: '', twitter: '' });
+      // Legacy key 'twitter' is migrated to 'x' on load
+      const sm = (settings.socialMedia as any) || {};
+      setSocialMedia({
+        instagram: sm.instagram || '',
+        facebook: sm.facebook || '',
+        x: sm.x || sm.twitter || '',
+        tiktok: sm.tiktok || ''
+      });
       setFeatured(settings.featured || false);
       
       // Set display controls
@@ -146,16 +172,15 @@ const InformationsLandingPage = () => {
       setSaving(true);
       const loadingToast = toast.loading('Enregistrement des informations...');
 
-      // Update tenant
+      // Update tenant (primary cover = first cover image; coordinates come from the map picker)
       await api.updateTenant({
         category: category || undefined,
-        coverImage: coverImage || undefined,
+        coverImage: coverImages.length > 0 ? coverImages[0] : '',
         shortDescription: shortDescription || undefined,
         website: website || undefined,
         phone: phone || undefined,
         email: email || undefined,
         city: city || undefined,
-        googleMapsLink: googleMapsLink || undefined,
         latitude: latitude ? parseFloat(latitude) : undefined,
         longitude: longitude ? parseFloat(longitude) : undefined,
         tags: tags.length > 0 ? tags : undefined
@@ -164,6 +189,7 @@ const InformationsLandingPage = () => {
       // Update settings
       await api.updateTenantSettings({
         amenities: amenities.length > 0 ? amenities : undefined,
+        coverImages: coverImages.slice(1),
         socialMedia: Object.values(socialMedia).some(v => v) ? socialMedia : undefined,
         featured,
         showMap,
@@ -213,6 +239,46 @@ const InformationsLandingPage = () => {
     }
   };
 
+  const MAX_COVER_IMAGES = 20;
+
+  const handleUploadCoverImages = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    if (coverImages.length + files.length > MAX_COVER_IMAGES) {
+      toast.error(`Maximum ${MAX_COVER_IMAGES} images de couverture (${coverImages.length} déjà ajoutées)`);
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      for (const file of Array.from(files)) {
+        const result = await api.uploadCoverImage(file);
+        const raw = result.coverImage;
+        if (raw) {
+          setCoverImages((prev) => (prev.includes(raw) ? prev : [...prev, raw]));
+        }
+      }
+      toast.success('Images uploadées avec succès');
+    } catch (err: any) {
+      console.error('Error uploading images:', err);
+      toast.error(err.message || "Erreur lors de l'upload des images");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const moveCoverImage = (index: number, dir: -1 | 1) => {
+    setCoverImages((prev) => {
+      const next = [...prev];
+      const target = index + dir;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
+
+  const removeCoverImage = (index: number) => {
+    setCoverImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen p-0 md:p-0 max-w-[2000px] mx-auto">
@@ -221,6 +287,16 @@ const InformationsLandingPage = () => {
           <span className="ml-3 text-gray-600">Chargement des informations...</span>
         </div>
       </div>
+    );
+  }
+
+  // Landing-page content is salon-specific: require a single salon selection.
+  if (isSalonFilterMulti) {
+    return (
+      <SalonScopeNotice
+        title="Informations Landing Page"
+        subtitle="Gérez les informations affichées sur votre page publique Reza"
+      />
     );
   }
 
@@ -298,68 +374,91 @@ const InformationsLandingPage = () => {
           </div>
         </div>
 
-        {/* Cover Image */}
+        {/* Cover Images (up to 20) */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Image de couverture
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Images de couverture
           </label>
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <ImageIcon className="w-5 h-5 text-gray-400" />
-              <input
-                type="file"
-                accept="image/*"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    setCoverImageFile(file);
-                    setUploadingImage(true);
-                    try {
-                      const result = await api.uploadCoverImage(file);
-                      // Prepend API base URL if it's a local path
-                      const imageUrl = result.coverImage.startsWith('http') 
-                        ? result.coverImage 
-                        : `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000'}${result.coverImage}`;
-                      setCoverImage(imageUrl);
-                      toast.success('Image uploadée avec succès');
-                    } catch (err: any) {
-                      console.error('Error uploading image:', err);
-                      toast.error(err.message || 'Erreur lors de l\'upload de l\'image');
-                      setCoverImageFile(null);
-                    } finally {
-                      setUploadingImage(false);
-                    }
-                  }
-                }}
-                disabled={uploadingImage}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#002366] file:text-white hover:file:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-            {uploadingImage && (
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Upload en cours...</span>
-              </div>
-            )}
-            {coverImage && !uploadingImage && (
-              <div className="mt-3">
-                <img 
-                  src={coverImage.startsWith('http') ? coverImage : `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000'}${coverImage}`} 
-                  alt="Cover preview" 
-                  className="max-w-full h-48 object-cover rounded-lg border border-gray-200" 
-                />
-                <button
-                  onClick={() => {
-                    setCoverImage('');
-                    setCoverImageFile(null);
-                  }}
-                  className="mt-2 text-sm text-red-600 hover:text-red-800"
-                >
-                  Supprimer l'image
-                </button>
-              </div>
-            )}
+          <p className="text-xs text-gray-500 mb-3">
+            Jusqu'à {MAX_COVER_IMAGES} images. La première est l'image principale ; toutes sont
+            affichées en galerie sur votre page publique (portfolio et carrousel).
+          </p>
+          <div className="flex items-center gap-3">
+            <ImageIcon className="w-5 h-5 text-gray-400" />
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => {
+                void handleUploadCoverImages(e.target.files);
+                e.target.value = '';
+              }}
+              disabled={uploadingImage || coverImages.length >= MAX_COVER_IMAGES}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[#002366] file:text-white hover:file:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            />
           </div>
+          {uploadingImage && (
+            <div className="flex items-center gap-2 text-sm text-gray-600 mt-3">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Upload en cours...</span>
+            </div>
+          )}
+          {coverImages.length > 0 && (
+            <div className="mt-4">
+              <div className="text-xs text-gray-500 mb-2">
+                {coverImages.length} / {MAX_COVER_IMAGES} image{coverImages.length > 1 ? 's' : ''}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {coverImages.map((img, idx) => (
+                  <div
+                    key={`${img}-${idx}`}
+                    className="relative group rounded-lg overflow-hidden border border-gray-200"
+                  >
+                    <img
+                      src={toFullImageUrl(img)}
+                      alt={`Couverture ${idx + 1}`}
+                      className="w-full h-28 object-cover"
+                    />
+                    {idx === 0 && (
+                      <span className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-[#002366] text-white text-[10px] font-semibold rounded-full shadow">
+                        Couverture
+                      </span>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => moveCoverImage(idx, -1)}
+                          disabled={idx === 0}
+                          className="p-1 rounded bg-white/90 text-gray-700 hover:bg-white disabled:opacity-40"
+                          title="Monter"
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveCoverImage(idx, 1)}
+                          disabled={idx === coverImages.length - 1}
+                          className="p-1 rounded bg-white/90 text-gray-700 hover:bg-white disabled:opacity-40"
+                          title="Descendre"
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeCoverImage(idx)}
+                        className="p-1 rounded bg-white/90 text-red-600 hover:bg-red-50"
+                        title="Supprimer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Website */}
@@ -433,61 +532,17 @@ const InformationsLandingPage = () => {
           </div>
         </div>
 
-        {/* Google Maps Link */}
+        {/* Location — interactive map picker (OpenStreetMap). The Google Maps link
+            is auto-generated from these coordinates on the public page, so the old
+            manual "Lien Google Maps" field has been removed. */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Lien Google Maps
-          </label>
-          <div className="flex items-center gap-3">
-            <MapPin className="w-5 h-5 text-gray-400" />
-            <input
-              type="url"
-              value={googleMapsLink}
-              onChange={(e) => setGoogleMapsLink(e.target.value)}
-              placeholder="https://maps.google.com/?q=..."
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366]"
-            />
-          </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Copiez le lien de partage depuis Google Maps pour permettre aux clients de vous localiser facilement
-          </p>
-        </div>
-
-        {/* Coordinates */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <label className="block text-sm font-medium text-gray-700 mb-3">
-            Coordonnées GPS (pour la carte)
-          </label>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Latitude</label>
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-gray-400" />
-                <input
-                  type="number"
-                  step="any"
-                  value={latitude}
-                  onChange={(e) => setLatitude(e.target.value)}
-                  placeholder="33.5731"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366] text-sm"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Longitude</label>
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-gray-400" />
-                <input
-                  type="number"
-                  step="any"
-                  value={longitude}
-                  onChange={(e) => setLongitude(e.target.value)}
-                  placeholder="-7.6298"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366] text-sm"
-                />
-              </div>
-            </div>
-          </div>
+          <SalonLocationPicker
+            value={latitude && longitude ? { lat: parseFloat(latitude), lng: parseFloat(longitude) } : null}
+            onChange={(c) => {
+              setLatitude(String(c.lat));
+              setLongitude(String(c.lng));
+            }}
+          />
         </div>
 
         {/* Tags */}
@@ -622,12 +677,22 @@ const InformationsLandingPage = () => {
               />
             </div>
             <div className="flex items-center gap-3">
-              <Twitter className="w-5 h-5 text-blue-400" />
+              <XBrandIcon className="text-gray-800" />
               <input
                 type="url"
-                value={socialMedia.twitter}
-                onChange={(e) => setSocialMedia({ ...socialMedia, twitter: e.target.value })}
-                placeholder="https://twitter.com/votre-compte"
+                value={socialMedia.x}
+                onChange={(e) => setSocialMedia({ ...socialMedia, x: e.target.value })}
+                placeholder="https://x.com/votre-compte"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366]"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <TikTokBrandIcon className="text-gray-800" />
+              <input
+                type="url"
+                value={socialMedia.tiktok}
+                onChange={(e) => setSocialMedia({ ...socialMedia, tiktok: e.target.value })}
+                placeholder="https://tiktok.com/@votre-compte"
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366]"
               />
             </div>

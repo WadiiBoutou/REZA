@@ -6,6 +6,7 @@ import '../../constants/app_colors.dart';
 import '../../services/api_client.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/caisse_viewmodel.dart';
+import '../../widgets/group_billing_sheet.dart';
 import '../../widgets/pro_drawer.dart';
 
 class CaisseScreen extends StatelessWidget {
@@ -32,7 +33,7 @@ class CaisseScreen extends StatelessWidget {
                         onPressed: vm.load,
                         style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary),
-                        child: Text('RÃ©essayer',
+                        child: Text('Réessayer',
                             style: GoogleFonts.outfit(color: Colors.white)),
                       ),
                     ],
@@ -51,7 +52,7 @@ class CaisseScreen extends StatelessWidget {
                           padding: const EdgeInsets.all(32),
                           child: Center(
                             child: Text(
-                              'Aucune transaction sur cette pÃ©riode',
+                              'Aucune transaction sur cette période',
                               style:
                                   GoogleFonts.outfit(color: AppColors.textGray),
                             ),
@@ -69,16 +70,40 @@ class CaisseScreen extends StatelessWidget {
                     const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
                   ],
                 ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showNewSaleSheet(context),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        icon: const Icon(Icons.add_rounded, size: 22),
-        label: Text(
-          'Nouvelle vente',
-          style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14),
-        ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            onPressed: () => _showGroupBillingSheet(context),
+            backgroundColor: const Color(0xFF7C3AED),
+            foregroundColor: Colors.white,
+            heroTag: 'groupBillingFab',
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            icon: const Icon(Icons.group_rounded, size: 20),
+            label: Text(
+              'Facturer un groupe',
+              style:
+                  GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            onPressed: () => _showNewSaleSheet(context),
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            heroTag: 'newSaleFab',
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            icon: const Icon(Icons.add_rounded, size: 22),
+            label: Text(
+              'Nouvelle vente',
+              style:
+                  GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -165,6 +190,20 @@ class CaisseScreen extends StatelessWidget {
       builder: (_) => ChangeNotifierProvider.value(
         value: vm,
         child: const _NewSaleSheet(),
+      ),
+    );
+  }
+
+  Future<void> _showGroupBillingSheet(BuildContext context) async {
+    final vm = context.read<CaisseViewModel>();
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => GroupBillingSheet(
+        onDone: () async {
+          await vm.load();
+        },
       ),
     );
   }
@@ -664,7 +703,7 @@ class _NewSaleSheetState extends State<_NewSaleSheet> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content:
-              Text('Vente encaissÃ©e', style: GoogleFonts.outfit(fontSize: 13)),
+              Text('Vente encaissée', style: GoogleFonts.outfit(fontSize: 13)),
           backgroundColor: AppColors.primary,
         ),
       );
@@ -737,7 +776,7 @@ class _NewSaleSheetState extends State<_NewSaleSheet> {
                     value: _clientId,
                     isExpanded: true,
                     decoration: InputDecoration(
-                      hintText: 'SÃ©lectionner un client',
+                      hintText: 'Sélectionner un client',
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12)),
                       contentPadding: const EdgeInsets.symmetric(
@@ -923,7 +962,7 @@ class _NewSaleSheetState extends State<_NewSaleSheet> {
                   borderRadius: BorderRadius.circular(24)),
             ),
             child: Text(
-              _submitting ? 'Encaissementâ€¦' : 'Encaisser',
+              _submitting ? 'Encaissement…' : 'Encaisser',
               style: GoogleFonts.outfit(fontWeight: FontWeight.w700),
             ),
           ),

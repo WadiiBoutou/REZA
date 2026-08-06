@@ -7,6 +7,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Checkbox } from "@/components/ui/checkbox";
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import SalonScopeNotice from '@/components/SalonScopeNotice';
 import toast from 'react-hot-toast';
 
 // API Service type (from backend)
@@ -111,7 +112,8 @@ function applyRangePriceChange(
 }
 
 const GestionPrestations = () => {
-  const { salons, effectiveSalonIds, isSalonFilterMulti } = useAuth();
+  const { isAuthenticated, salons, effectiveSalonIds, isSalonFilterMulti, salonFilter } = useAuth();
+  const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
   const [mounted, setMounted] = useState(false);
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -131,6 +133,8 @@ const GestionPrestations = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [serviceToDelete, setServiceToDelete] = useState<{ id: string; name: string; appointmentCount?: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Collapsed category sections (large catalogs), so the admin isn't scrolling everything at once.
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Transform API service to frontend service
@@ -259,7 +263,7 @@ const GestionPrestations = () => {
       return () => clearTimeout(timeoutId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterCategory, searchQuery, mounted]);
+  }, [filterCategory, searchQuery, mounted, salonFilterKey]);
 
   // Maintain focus on search input after state updates
   useEffect(() => {
@@ -415,7 +419,8 @@ const GestionPrestations = () => {
 
   const filteredServices = services.filter(service => {
     const matchesSearch = service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         service.description.toLowerCase().includes(searchQuery.toLowerCase());
+                         service.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         service.category.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = filterCategory === 'all' || service.category === filterCategory;
     return matchesSearch && matchesCategory;
   });
@@ -424,6 +429,35 @@ const GestionPrestations = () => {
     acc[category] = filteredServices.filter(s => s.category === category);
     return acc;
   }, {} as Record<string, Service[]>);
+
+  // Large-catalog default: collapse every category except the first non-empty one.
+  // Search/filter overrides the collapse so results are visible.
+  const largeCatalog = services.length > 24;
+  const filterActive = searchQuery.trim() !== '' || filterCategory !== 'all';
+  useEffect(() => {
+    if (!mounted) return;
+    if (filterActive) return; // keep manual collapse state while searching
+    if (largeCatalog) {
+      const nonEmpty = categories.filter((c) => (groupedServices[c] || []).length > 0);
+      setCollapsedCategories(new Set(nonEmpty.slice(1))); // keep first open
+    } else {
+      setCollapsedCategories(new Set());
+    }
+  }, [mounted, largeCatalog, filterActive, categories]);
+
+  const toggleCategory = (category: string) => {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  };
+
+  const nonEmptyCategories = categories.filter((c) => (groupedServices[c] || []).length > 0);
+  const allCollapsed = nonEmptyCategories.length > 0 && nonEmptyCategories.every((c) => collapsedCategories.has(c));
+  const expandAll = () => setCollapsedCategories(new Set());
+  const collapseAll = () => setCollapsedCategories(new Set(nonEmptyCategories));
 
   if (!mounted || loading) {
     return (
@@ -453,6 +487,11 @@ const GestionPrestations = () => {
         </div>
       </div>
     );
+  }
+
+  // Services are salon-scoped: require a single salon selection before showing the list.
+  if (isSalonFilterMulti) {
+    return <SalonScopeNotice title="Gestion des prestations" subtitle="Gérez vos services, catégories et tarifs" />;
   }
 
   return (
@@ -520,6 +559,14 @@ const GestionPrestations = () => {
             </div>
             
             <div className="flex items-center gap-3">
+              <button
+                onClick={allCollapsed ? expandAll : collapseAll}
+                disabled={filterActive}
+                className="px-4 py-2.5 text-sm font-medium bg-white text-gray-600 hover:text-gray-900 border border-gray-200 rounded-full hover:border-gray-300 transition-colors disabled:opacity-50"
+                title={filterActive ? 'Dépliez tout pour voir les résultats de recherche' : allCollapsed ? 'Déplier toutes les catégories' : 'Replier toutes les catégories'}
+              >
+                {allCollapsed ? 'Tout déplier' : 'Tout replier'}
+              </button>
               <Select value={filterCategory} onValueChange={v => setFilterCategory(v)}>
                 <SelectTrigger className="px-4 py-2.5 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-gray-900 text-sm bg-white w-[220px]">
                   <SelectValue placeholder="Toutes les catégories" />
@@ -548,29 +595,38 @@ const GestionPrestations = () => {
           return (
             <div 
               key={category} 
-              className={`space-y-4 transition-all`}
+              className={`space-y-4 transition-all ${filterActive || !collapsedCategories.has(category) ? '' : 'opacity-60'}`}
               onDragOver={(e) => handleDragOver(e, category)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, category)}
             >
-              {/* Category Header */}
-              <div className="flex items-center justify-between">
+              {/* Category Header (click to collapse/expand) */}
+              <div
+                className="flex items-center justify-between cursor-pointer select-none group"
+                onClick={() => toggleCategory(category)}
+              >
                 <div className="flex items-center gap-3">
-                  <h2 className="text-lg font-semibold text-gray-900">{category}</h2>
+                  <ChevronDown
+                    size={16}
+                    className={`text-gray-400 transition-transform duration-200 ${
+                      filterActive || !collapsedCategories.has(category) ? 'rotate-0' : '-rotate-90'
+                    }`}
+                  />
+                  <h2 className="text-lg font-semibold text-gray-900 group-hover:text-[#002366] transition-colors">{category}</h2>
                   <span className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">
                     {categoryServices.length} {categoryServices.length === 1 ? 'prestation' : 'prestations'}
                   </span>
                 </div>
                 <button
-                  onClick={() => handleDeleteCategory(category)}
-                  className="text-sm text-red-600 hover:text-red-700 opacity-0 hover:opacity-100 transition-opacity"
+                  onClick={(e) => { e.stopPropagation(); handleDeleteCategory(category); }}
+                  className="text-sm text-red-600 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   Supprimer la catégorie
                 </button>
               </div>
 
-              {/* Services */}
-              {viewMode === 'list' && (
+              {/* Services (hidden when collapsed, unless search/filter is active) */}
+              {(filterActive || !collapsedCategories.has(category)) && viewMode === 'list' && (
                 <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
                   {categoryServices.length === 0 ? (
                     <div className="p-8 text-center text-gray-400">

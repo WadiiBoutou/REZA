@@ -30,6 +30,10 @@ interface Transaction {
   category?: string;
   invoiceId?: string;
   items?: TransactionItem[];
+  /** Booking group ID for group invoices */
+  bookingGroupId?: string | null;
+  /** Number of participants in the group (for display) */
+  participantCount?: number;
 }
 
 // API Invoice type
@@ -59,6 +63,8 @@ type ApiInvoice = {
     quantity: number;
     /** Per-item employee — set when a manual caisse sale assigns an employee per service */
     employee?: { firstName: string; lastName: string } | null;
+    /** Participant name for group billing */
+    participantName?: string | null;
   }>;
   appointment: {
     id: string;
@@ -87,6 +93,23 @@ type ApiInvoice = {
   employee?: {
     firstName: string;
     lastName: string;
+  } | null;
+  /** Booking group ID for group invoices */
+  bookingGroupId?: string | null;
+  /** Booking group with participant data for employee resolution */
+  bookingGroup?: {
+    id: string;
+    participants?: Array<{
+      displayName: string;
+      clientId?: string | null;
+      appointment?: {
+        services?: Array<{
+          serviceName: string;
+          employeeId?: string | null;
+          employee?: { firstName: string; lastName: string } | null;
+        }>;
+      } | null;
+    }>;
   } | null;
 };
 
@@ -192,6 +215,25 @@ function CaissePageContent({
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const printRef = useRef<HTMLDivElement>(null);
 
+  // Group billing modal state
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [pendingGroups, setPendingGroups] = useState<Array<{
+    id: string;
+    bookerClientId: string;
+    participantCount: number;
+    participantNames: string[];
+    alreadyInvoiced: boolean;
+    hasInvoicedAppointment: boolean;
+    createdAt: string;
+  }>>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('');
+  const [groupDetails, setGroupDetails] = useState<any>(null);
+  const [groupLoading, setGroupLoading] = useState(false);
+  const [payerClientId, setPayerClientId] = useState<string>('');
+  const [groupPaymentMethod, setGroupPaymentMethod] = useState<string>('Espèces');
+  const [groupSubmitting, setGroupSubmitting] = useState(false);
+  const [expandedGroupInvoices, setExpandedGroupInvoices] = useState<Set<string>>(new Set());
+
   const servicePrice = (s: CatalogService) => s.price ?? s.priceFrom ?? 0;
 
   const saleSalonId =
@@ -258,6 +300,24 @@ function CaissePageContent({
         }
       }
     }
+    // For group invoices: build participant → service → employee map
+    const participantServiceEmployeeMap = new Map<string, Map<string, string>>();
+    if (invoice.bookingGroupId && invoice.bookingGroup?.participants) {
+      for (const p of invoice.bookingGroup.participants) {
+        if (p.appointment?.services) {
+          const svcMap = new Map<string, string>();
+          for (const svc of p.appointment.services) {
+            if (svc.employee) {
+              const name = `${svc.employee.firstName?.trim() || ''} ${svc.employee.lastName?.trim() || ''}`.trim();
+              if (name && !svcMap.has(svc.serviceName)) {
+                svcMap.set(svc.serviceName, name);
+              }
+            }
+          }
+          participantServiceEmployeeMap.set(p.displayName, svcMap);
+        }
+      }
+    }
 
     // Group booking participant name (shared across all line items for this appointment)
     const groupParticipantName = invoice.appointment?.bookingParticipant?.displayName || undefined;
@@ -281,20 +341,29 @@ function CaissePageContent({
         if (item.employee) {
           itemEmployee = `${item.employee.firstName?.trim() || ''} ${item.employee.lastName?.trim() || ''}`.trim() || undefined;
         }
-        // 2) Look up per-service employee from AppointmentServiceItem
+        // 2) For group invoices: look up by participant name + service name
+        if (!itemEmployee && item.participantName) {
+          const participantSvcs = participantServiceEmployeeMap.get(item.participantName);
+          if (participantSvcs) {
+            itemEmployee = participantSvcs.get(item.serviceName);
+          }
+        }
+        // 3) Look up per-service employee from AppointmentServiceItem (single appointment)
         if (!itemEmployee) {
           itemEmployee = serviceEmployeeMap.get(item.serviceName);
         }
-        // 3) Fallback to legacy appointment-level employee
+        // 4) Fallback to legacy appointment-level employee
         if (!itemEmployee && invoice.appointment?.employee) {
           itemEmployee = `${invoice.appointment.employee.firstName?.trim() || ''} ${invoice.appointment.employee.lastName?.trim() || ''}`.trim() || undefined;
         }
+        // Per-item participant name (group invoices) or shared group name or undefined
+        const participant = item.participantName || groupParticipantName || undefined;
         return {
           serviceName: item.serviceName,
           price: item.price,
           quantity: item.quantity,
           employeeName: itemEmployee,
-          participantName: groupParticipantName,
+          participantName: participant,
         };
       });
 
@@ -322,7 +391,9 @@ function CaissePageContent({
       note: invoice.notes || servicesLabel || undefined,
       category: servicesLabel,
       invoiceId: invoice.id,
-      items: invoiceItems.length > 0 ? invoiceItems : undefined
+      items: invoiceItems.length > 0 ? invoiceItems : undefined,
+      bookingGroupId: invoice.bookingGroupId || null,
+      participantCount: invoiceItems.filter((i) => i.participantName).length || undefined,
     };
   };
 
@@ -335,6 +406,59 @@ function CaissePageContent({
     setMovementForm({ ...emptyMovementForm(), tenantId: defaultTenantId() });
     setAmountOverridden(false);
     setShowModal(true);
+  };
+
+  const openGroupBillingModal = async () => {
+    setGroupModalOpen(true);
+    setSelectedGroupId('');
+    setGroupDetails(null);
+    setPayerClientId('');
+    setGroupPaymentMethod('Espèces');
+    try {
+      const res = await api.getPendingGroups();
+      setPendingGroups(res.groups || []);
+    } catch (err) {
+      console.error('Error fetching pending groups:', err);
+      toast.error('Erreur lors du chargement des groupes');
+    }
+  };
+
+  const fetchGroupDetails = async (groupId: string) => {
+    if (!groupId) return;
+    setGroupLoading(true);
+    try {
+      const res = await api.getGroupDetails(groupId);
+      setGroupDetails(res.group);
+      // Default payer = booker
+      setPayerClientId(res.group.bookerClientId || res.group.participants?.[0]?.clientId || '');
+    } catch (err) {
+      console.error('Error fetching group details:', err);
+      toast.error('Erreur lors du chargement du groupe');
+    } finally {
+      setGroupLoading(false);
+    }
+  };
+
+  const handleSubmitGroupSale = async () => {
+    if (!groupDetails || !payerClientId || !selectedGroupId) return;
+    setGroupSubmitting(true);
+    try {
+      const pmKey = PAYMENT_METHOD_TO_API[groupPaymentMethod] || 'CASH';
+      await api.createGroupSale({
+        bookingGroupId: selectedGroupId,
+        payerClientId,
+        paymentMethod: pmKey as any,
+      });
+      toast.success('Groupe facturé avec succès');
+      setGroupModalOpen(false);
+      await fetchData();
+    } catch (err: any) {
+      console.error('Error creating group sale:', err);
+      const msg = err?.message || err?.error || "Erreur lors de la facturation du groupe";
+      toast.error(msg);
+    } finally {
+      setGroupSubmitting(false);
+    }
   };
 
   // Redirect to login if not authenticated
@@ -369,30 +493,11 @@ function CaissePageContent({
       const invoices = invoicesResponse.invoices || [];
       
       // Transform invoices to transactions
-      let sampleLogged = false;
       const invoiceTransactions = invoices
         .filter((inv: ApiInvoice) => inv.status === 'PAID' || inv.status === 'REFUNDED')
         .map((inv: ApiInvoice) => {
           try {
             const tx = transformInvoiceToTransaction(inv);
-            // Debug log for first transaction to check data
-            if (!sampleLogged && invoices.length > 0) {
-              console.log('Sample invoice transformation:', {
-                invoiceId: inv.id,
-                hasClient: !!inv.client,
-                client: inv.client,
-                hasAppointment: !!inv.appointment,
-                appointment: inv.appointment,
-                hasEmployee: !!inv.appointment?.employee,
-                employee: inv.appointment?.employee,
-                employeeFirstName: inv.appointment?.employee?.firstName,
-                employeeLastName: inv.appointment?.employee?.lastName,
-                transformedClient: tx.client,
-                transformedEmployee: tx.employee,
-                employeeValue: tx.employee || 'NULL/UNDEFINED'
-              });
-              sampleLogged = true;
-            }
             return tx;
           } catch (err) {
             console.error('Error transforming invoice to transaction:', err, inv);
@@ -462,13 +567,6 @@ function CaissePageContent({
         .filter(tx => tx !== null && tx !== undefined); // Ensure no null transactions
       allTransactions.sort((a, b) => b.date.getTime() - a.date.getTime());
       
-      console.log('Fetched transactions:', {
-        invoices: invoices.length,
-        invoiceTransactions: invoiceTransactions.length,
-        cashTransactions: cashTransactions.length,
-        transformedCashTransactions: transformedCashTransactions.length,
-        totalTransactions: allTransactions.length
-      });
       
       setTransactions(allTransactions);
       
@@ -587,17 +685,6 @@ function CaissePageContent({
     
     return matchesSearch && matchesMethod && matchesType && matchesPeriod;
   });
-
-  // Debug logging
-  useEffect(() => {
-    if (transactions.length > 0) {
-      console.log('Transactions state:', {
-        total: transactions.length,
-        filtered: filteredTransactions.length,
-        filters: { methodFilter, typeFilter, selectedPeriod, searchTerm }
-      });
-    }
-  }, [transactions, filteredTransactions, methodFilter, typeFilter, selectedPeriod, searchTerm]);
 
   // Stats - use all transactions for overall stats, filtered for display
   const totalSales = transactions.filter(t => t.type === 'Vente').reduce((sum, t) => sum + t.amount, 0);
@@ -833,6 +920,13 @@ function CaissePageContent({
               Exporter
             </button>
             <button
+              onClick={openGroupBillingModal}
+              className="px-5 py-2 bg-purple-600 text-white text-sm font-medium rounded-full hover:bg-purple-700 transition-colors flex items-center gap-2"
+            >
+              <Users size={16} />
+              Facturer un groupe
+            </button>
+            <button
               onClick={openSaleModal}
               className="px-5 py-2 bg-emerald-600 text-white text-sm font-medium rounded-full hover:bg-emerald-700 transition-colors flex items-center gap-2"
             >
@@ -1049,8 +1143,10 @@ function CaissePageContent({
             <tbody className="divide-y divide-gray-100">
               {filteredTransactions.length > 0 ? (
                 filteredTransactions.map(tx => {
-                  const isMultiService = tx.items && tx.items.length > 1;
-                  const isExpanded = expandedRows.has(tx.id);
+                   const isMultiService = tx.items && tx.items.length > 1;
+                   const isGroupInvoice = !!tx.bookingGroupId;
+                   const canExpand = isMultiService || isGroupInvoice;
+                   const isExpanded = expandedRows.has(tx.id);
                   const hasItems = tx.items && tx.items.length > 0;
                   const mainServiceLabel = tx.items && tx.items.length === 1
                     ? tx.items[0].serviceName
@@ -1077,7 +1173,7 @@ function CaissePageContent({
                     onClick={toggleExpand}
                   >
                     <td className="px-4 py-4">
-                      {isMultiService && (
+                      {canExpand && (
                         <ChevronRight
                           size={16}
                           className={`text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
@@ -1112,7 +1208,7 @@ function CaissePageContent({
                       {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)} MAD
                     </td>
                   </tr>
-                  {isExpanded && isMultiService && (
+                  {isExpanded && canExpand && (
                     <tr>
                       <td colSpan={8} className="px-4 pb-4">
                         <div className="bg-gray-50 rounded-lg border border-gray-100 overflow-hidden">
@@ -1539,6 +1635,177 @@ function CaissePageContent({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Group Billing Modal */}
+      {groupModalOpen && (
+        <div className="fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-4" onClick={() => setGroupModalOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-gray-100 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900">Facturer un groupe</h2>
+                <button onClick={() => setGroupModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                  <X size={20} />
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mt-1">Sélectionnez un groupe à facturer</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {/* Step 1: Group selector */}
+              {!selectedGroupId && (
+                <div className="space-y-3">
+                  {pendingGroups.filter((g) => !g.alreadyInvoiced && !g.hasInvoicedAppointment).length === 0 && !groupLoading && (
+                    <p className="text-sm text-gray-400 text-center py-8">Aucun groupe en attente de facturation</p>
+                  )}
+                  {pendingGroups.filter((g) => !g.alreadyInvoiced && !g.hasInvoicedAppointment).map((g) => {
+                    return (
+                      <button
+                        key={g.id}
+                        onClick={() => {
+                          setSelectedGroupId(g.id);
+                          fetchGroupDetails(g.id);
+                        }}
+                        className="w-full text-left p-4 rounded-xl border transition-colors border-gray-200 hover:border-purple-300 hover:bg-purple-50 cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">
+                              {g.participantNames.join(' & ')}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {g.participantCount} participants
+                            </p>
+                          </div>
+                          <ChevronRight size={16} className="text-gray-400" />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Step 2: Group details + payer selection */}
+              {selectedGroupId && (
+                <>
+                  <button
+                    onClick={() => { setSelectedGroupId(''); setGroupDetails(null); }}
+                    className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                  >
+                    ← Retour à la liste
+                  </button>
+
+                  {groupLoading && (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                    </div>
+                  )}
+
+                  {groupDetails && !groupLoading && (
+                    <div className="space-y-4">
+                      {groupDetails.alreadyInvoiced && (
+                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-800">
+                          Ce groupe a déjà été facturé (facture {groupDetails.existingInvoiceId}).
+                        </div>
+                      )}
+                      {groupDetails.hasInvoicedAppointment && !groupDetails.alreadyInvoiced && (
+                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-800">
+                          Un ou plusieurs RDV de ce groupe ont déjà été facturés individuellement.
+                        </div>
+                      )}
+
+                      {/* Participants breakdown */}
+                      <div className="space-y-3">
+                        {groupDetails.participants.map((p: any) => (
+                          <div key={p.participantId} className="bg-gray-50 rounded-xl p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-sm font-medium text-gray-900">
+                                {p.displayName}
+                                {p.isBooker && <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Réservant</span>}
+                              </p>
+                              <p className="text-sm font-semibold text-gray-900">{p.subtotal.toFixed(2)} MAD</p>
+                            </div>
+                            <div className="space-y-1">
+                              {p.services.map((s: any, idx: number) => (
+                                <div key={idx} className="flex items-center justify-between text-xs text-gray-600">
+                                  <span>{s.serviceName}{s.employee ? ` · ${s.employee.firstName} ${s.employee.lastName}` : ''}</span>
+                                  <span>{s.price.toFixed(2)} MAD</span>
+                                </div>
+                              ))}
+                              {p.startTime && (
+                                <p className="text-xs text-gray-400 mt-1">
+                                  <Clock size={10} className="inline mr-1" />
+                                  {new Date(p.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Total */}
+                      <div className="border-t border-gray-200 pt-3 flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Total</span>
+                        <span className="text-xl font-bold text-gray-900">{groupDetails.total.toFixed(2)} MAD</span>
+                      </div>
+
+                      {/* Payer selector */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1.5">Payé par</label>
+                        <select
+                          value={payerClientId}
+                          onChange={(e) => setPayerClientId(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        >
+                          {groupDetails.participants
+                            .filter((p: any) => p.clientId)
+                            .map((p: any) => (
+                              <option key={p.clientId} value={p.clientId}>
+                                {p.displayName}{p.isBooker ? ' (Réservant)' : ''}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      {/* Payment method */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1.5">Mode de paiement</label>
+                        <select
+                          value={groupPaymentMethod}
+                          onChange={(e) => setGroupPaymentMethod(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        >
+                          {acceptedPaymentMethods.map((method) => (
+                            <option key={method} value={method}>{method}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setGroupModalOpen(false)}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={!selectedGroupId || !payerClientId || groupSubmitting || groupLoading || groupDetails?.alreadyInvoiced || groupDetails?.hasInvoicedAppointment}
+                onClick={handleSubmitGroupSale}
+                className="flex-1 px-4 py-2.5 bg-purple-600 text-white text-sm font-medium rounded-full hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {groupSubmitting ? 'Traitement…' : 'Confirmer la facturation'}
+              </button>
+            </div>
           </div>
         </div>
       )}

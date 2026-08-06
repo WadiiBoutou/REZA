@@ -1,6 +1,7 @@
 import { prisma } from '../../../lib/prisma';
 import { hashPassword, comparePassword } from '../../../utils/password';
 import { fail } from '../utils/http';
+import * as log from '../../../utils/logger';
 
 export class ClientAccountService {
   async updateClientProfile(email: string, body: any) {
@@ -33,7 +34,7 @@ export class ClientAccountService {
 
     // Update client information
     // Log avatar value for debugging
-    console.log('[Update Client Profile] Avatar value received:', avatar ? 'present' : 'null/undefined', typeof avatar);
+    log.log('[Update Client Profile] Avatar value received:', avatar ? 'present' : 'null/undefined', typeof avatar);
     
     const updateData: any = {
       firstName: firstName !== undefined ? firstName.trim() : undefined,
@@ -68,8 +69,8 @@ export class ClientAccountService {
       select: { avatar: true }
     });
     
-    console.log('[Update Client Profile] Avatar saved:', updatedClient.avatar ? `present (length: ${updatedClient.avatar.length})` : 'null');
-    console.log('[Update Client Profile] Avatar verified in DB:', verifyClient?.avatar ? `present (length: ${verifyClient.avatar.length})` : 'null');
+    log.log('[Update Client Profile] Avatar saved:', updatedClient.avatar ? `present (length: ${updatedClient.avatar.length})` : 'null');
+    log.log('[Update Client Profile] Avatar verified in DB:', verifyClient?.avatar ? `present (length: ${verifyClient.avatar.length})` : 'null');
 
     return {
       client: updatedClient,
@@ -84,7 +85,7 @@ export class ClientAccountService {
     try {
     const { currentPassword, newPassword } = body;
 
-    console.log('[Change Password] Request received for email:', email);
+    log.log('[Change Password] Request received for email:', email);
 
     if (!email) {
       fail(400, {
@@ -118,14 +119,14 @@ export class ClientAccountService {
     });
 
     if (!client) {
-      console.log('[Change Password] Client not found for email:', email);
+      log.log('[Change Password] Client not found for email:', email);
       fail(404, {
         error: 'Client not found',
         message: 'Le client n\'a pas été trouvé.'
       });
     }
 
-    console.log('[Change Password] Client found:', client.id);
+    log.log('[Change Password] Client found:', client.id);
 
     // Get client with password field
     const clientWithPassword = await prisma.client.findUnique({
@@ -134,31 +135,31 @@ export class ClientAccountService {
 
     // If client has a password, verify the current password
     if (clientWithPassword && (clientWithPassword as any).password) {
-      console.log('[Change Password] Client has existing password, verifying...');
+      log.log('[Change Password] Client has existing password, verifying...');
       const isValidPassword = await comparePassword(
         currentPassword,
         (clientWithPassword as any).password
       );
 
       if (!isValidPassword) {
-        console.log('[Change Password] Current password is incorrect');
+        log.log('[Change Password] Current password is incorrect');
         fail(401, {
           error: 'Invalid password',
           message: 'Le mot de passe actuel est incorrect.'
         });
       }
-      console.log('[Change Password] Current password verified');
+      log.log('[Change Password] Current password verified');
     } else {
-      console.log('[Change Password] No existing password, setting new password');
+      log.log('[Change Password] No existing password, setting new password');
     }
 
     // Hash the new password
-    console.log('[Change Password] Hashing new password...');
+    log.log('[Change Password] Hashing new password...');
     const hashedPassword = await hashPassword(newPassword);
-    console.log('[Change Password] Password hashed successfully');
+    log.log('[Change Password] Password hashed successfully');
 
     // Update client password using raw query to ensure it works even if Prisma client is not updated
-    console.log('[Change Password] Updating password in database...');
+    log.log('[Change Password] Updating password in database...');
     let updateSuccess = false;
     
     try {
@@ -169,21 +170,21 @@ export class ClientAccountService {
           password: hashedPassword
         } as any
       });
-      console.log('[Change Password] Password updated via Prisma');
+      log.log('[Change Password] Password updated via Prisma');
       updateSuccess = true;
     } catch (prismaError: any) {
       // If Prisma fails (field not recognized), use raw SQL
       if (prismaError.message && prismaError.message.includes('Unknown arg `password`')) {
-        console.log('[Change Password] Prisma client not updated, using raw SQL...');
+        log.log('[Change Password] Prisma client not updated, using raw SQL...');
         await prisma.$executeRaw`
           UPDATE "clients" 
           SET "password" = ${hashedPassword}
           WHERE "id" = ${client.id}
         `;
-        console.log('[Change Password] Password updated via raw SQL');
+        log.log('[Change Password] Password updated via raw SQL');
         updateSuccess = true;
       } else {
-        console.error('[Change Password] Prisma error:', prismaError);
+        log.error('[Change Password] Prisma error:', prismaError);
         throw prismaError;
       }
     }
@@ -196,15 +197,15 @@ export class ClientAccountService {
     }
 
     // Verify the password was saved using raw query
-    console.log('[Change Password] Verifying password was saved...');
+    log.log('[Change Password] Verifying password was saved...');
     const verifyResult = await prisma.$queryRaw<Array<{ password: string | null }>>`
       SELECT "password" FROM "clients" WHERE "id" = ${client.id}
     `;
 
     if (verifyResult && verifyResult[0] && verifyResult[0].password) {
-      console.log('[Change Password] Password verified in database - saved successfully');
+      log.log('[Change Password] Password verified in database - saved successfully');
     } else {
-      console.error('[Change Password] WARNING: Password was not saved correctly!');
+      log.error('[Change Password] WARNING: Password was not saved correctly!');
       fail(500, {
         error: 'Database error',
         message: 'Le mot de passe n\'a pas pu être sauvegardé. Veuillez réessayer.'
@@ -215,7 +216,7 @@ export class ClientAccountService {
       message: 'Mot de passe modifié avec succès'
     };
   } catch (error: any) {
-    console.error('[Change Password] Error:', error);
+    log.error('[Change Password] Error:', error);
     // Check if it's a Prisma error about missing field
     if (error.message && error.message.includes('Unknown arg `password`')) {
       fail(500, {

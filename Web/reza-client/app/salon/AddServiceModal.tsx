@@ -44,7 +44,7 @@ const AddServiceModal: React.FC<AddServiceModalProps> = ({
 
   React.useEffect(() => {
     setLocalSelected(selectedServices);
-  }, [selectedServices, salonServices]);
+  }, [selectedServices]);
 
   const isSelected = (service: Service) =>
     localSelected.some((s) => s.name === service.name);
@@ -52,11 +52,13 @@ const AddServiceModal: React.FC<AddServiceModalProps> = ({
   const handleToggle = (service: Service) => {
     const fullService = getFullService(service.name);
     if (!fullService) return;
-    if (isSelected(service)) {
-      setLocalSelected(localSelected.filter((s) => s.name !== service.name));
-    } else {
-      setLocalSelected([...localSelected, fullService]);
-    }
+    setLocalSelected(prev => {
+      if (prev.some((s) => s.name === service.name)) {
+        return prev.filter((s) => s.name !== service.name);
+      } else {
+        return [...prev, fullService];
+      }
+    });
   };
 
   const handleFinish = () => {

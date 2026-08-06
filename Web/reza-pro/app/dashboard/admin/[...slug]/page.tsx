@@ -30,13 +30,11 @@ const createDynamicPageLoader = (routePath: string) => {
     'statistiques-rdv/indicateurs-cles': () => import('../statistiques-rdv/indicateurs-cles/page'),
     'statistiques-rdv/autres': () => import('../statistiques-rdv/autres/page'),
     'statistiques-rdv/prestations': () => import('../statistiques-rdv/prestations/page'),
-    'statistiques-rdv/collaborateurs': () => import('../statistiques-rdv/collaborateurs/page'),
     'statistiques-rdv/rdv': () => import('../statistiques-rdv/rdv/page'),
     'statistiques-rdv/rdv-pas-venus': () => import('../statistiques-rdv/rdv-pas-venus/page'),
     
     // Taux d'occupation
     'taux-occupation/prestations': () => import('../taux-occupation/prestations/page'),
-    'taux-occupation/collaborateurs': () => import('../taux-occupation/collaborateurs/page'),
     'taux-occupation/vue-ensemble': () => import('../taux-occupation/vue-ensemble/page'),
     
     // Corbeille RDV
@@ -116,7 +114,6 @@ export default function DynamicAdminPage({ params }: { params: Promise<{ slug: s
           return;
         }
         
-        console.log('[DynamicAdminPage] Loading route:', routeKey);
         setRouteKey(routeKey);
         setLoading(true);
         setError(null);

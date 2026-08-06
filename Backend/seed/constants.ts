@@ -59,6 +59,10 @@ export const WEEKDAY_SCHEDULES = [
 export const TENANT_BUSINESS_HOURS = {
   schedules: WEEKDAY_SCHEDULES,
   ...BUSINESS_HOURS_BY_DAY,
+  // Minimum booking lead time: bookings must start at least 1 day ahead
+  // (allowLastMoment: false = the delay is enforced). Matches the admin panel's
+  // bookingDelay shape ({ value, unit, allowLastMoment }).
+  bookingDelay: { value: '1', unit: 'jours', allowLastMoment: false },
 };
 
 export const EMPLOYEE_WORKING_HOURS = [
@@ -70,3 +74,39 @@ export const EMPLOYEE_WORKING_HOURS = [
   { day: 'Samedi', isWorking: true, startTime: '10:00', endTime: '18:00', breaks: [] },
   { day: 'Dimanche', isWorking: false, startTime: '10:00', endTime: '18:00', breaks: [] },
 ];
+
+/**
+ * Deterministic avatar URL for a demo person.
+ *
+ * Uses randomuser.me portraits (stable, internet-hosted real-people photos)
+ * so avatar fetching can be tested end-to-end. The same name always resolves
+ * to the same portrait — safe to re-run the seed or backfill repeatedly.
+ */
+export function avatarUrlFor(firstName: string, lastName: string, email: string): string {
+  const seed = `${firstName}|${lastName}|${email}`;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+
+  // Explicit overrides for demo names the heuristic would mislabel.
+  const feminineNames = new Set([
+    'sara', 'nadia', 'salma', 'laila', 'sofia', 'fatima', 'amina', 'nawal',
+    'meryem', 'khadija', 'zineb', 'ikram', 'asmae', 'houda', 'samira', 'hanane',
+  ]);
+  const masculineNames = new Set(['amine', 'yassine', 'mehdi', 'badr', 'anass']);
+  const first = (firstName || '').trim().toLowerCase();
+  let gender: 'men' | 'women';
+  if (feminineNames.has(first)) {
+    gender = 'women';
+  } else if (masculineNames.has(first)) {
+    gender = 'men';
+  } else {
+    // Fallback heuristic: names ending in a/e/i/y are usually feminine.
+    const feminineEndings = ['a', 'e', 'i', 'y'];
+    const lastChar = first.slice(-1);
+    gender = feminineEndings.includes(lastChar) ? 'women' : 'men';
+  }
+  const idx = (hash % 96) + 1; // portraits are 0..99
+  return `https://randomuser.me/api/portraits/${gender}/${idx}.jpg`;
+}

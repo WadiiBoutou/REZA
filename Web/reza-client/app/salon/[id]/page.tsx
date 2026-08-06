@@ -1,7 +1,20 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { MapPin, Star, ArrowLeft, Heart, Gift, Phone, Mail, X, ChevronLeft, ChevronRight, Check, User, Users, Clock, Calendar, Globe, Instagram, Facebook, Twitter, Linkedin, Map } from 'lucide-react';
+import { MapPin, Star, ArrowLeft, Heart, Gift, Phone, Mail, X, ChevronLeft, ChevronRight, Check, User, Users, Clock, Calendar, Globe, Instagram, Facebook, Linkedin, Map } from 'lucide-react';
+
+// Brand icons for X and TikTok (not provided by lucide)
+const XBrandIcon = ({ size = 16, className }: { size?: number; className?: string }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" className={className} aria-hidden="true">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
+
+const TikTokBrandIcon = ({ size = 16, className }: { size?: number; className?: string }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" className={className} aria-hidden="true">
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
+  </svg>
+);
 import { useParams, useRouter } from 'next/navigation';
 import RezaNavbar from '../../../components/Header';
 import Footer from '../../../components/Footer';
@@ -35,7 +48,14 @@ export default function SalonDetail() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showBookingOptionModal, setShowBookingOptionModal] = useState(false);
   const [slotServiceIds, setSlotServiceIds] = useState<string[]>([]);
+  const [existingParticipants, setExistingParticipants] = useState<Array<{
+    serviceIds: string[];
+    startTime: string;
+    serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
+  }>>([]);
+  const [currentServiceEmployees, setCurrentServiceEmployees] = useState<Array<{ serviceId: string; employeeId: string | null }>>([]);
   const [bookingStep, setBookingStep] = useState(1);
+  const [isGroupBooking, setIsGroupBooking] = useState(false);
   const [bookingData, setBookingData] = useState({
     firstName: '',
     lastName: '',
@@ -239,8 +259,11 @@ export default function SalonDetail() {
     images: (() => {
       const defaultImage = 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&q=80';
       const coverImage = salon.coverImage;
+      const coverImages = salon.settings?.coverImages || [];
       const photos = salon.settings?.photos || [];
-      const allImages = coverImage ? [coverImage, ...photos] : photos;
+      const allImages = coverImage
+        ? [coverImage, ...coverImages, ...photos]
+        : [...coverImages, ...photos];
       // Filter out any null/undefined/empty strings and ensure we have at least one image
       const validImages = allImages
         .filter((img: any) => {
@@ -275,6 +298,9 @@ export default function SalonDetail() {
     serviceIds,
     enabled: !!salon && !!bookingData.date && serviceIds.length > 0,
     pollInterval: 30000,
+    clientEmail: user?.email,
+    existingParticipants: existingParticipants.length > 0 ? existingParticipants : undefined,
+    serviceEmployees: currentServiceEmployees.length > 0 ? currentServiceEmployees : undefined,
   });
 
   const selectService = (service: Service) => {
@@ -406,6 +432,7 @@ export default function SalonDetail() {
       {/* Shared Header */}
       <RezaNavbar />
 
+<<<<<<< HEAD
       {/* Page-specific header (breadcrumbs, title, rating, buttons on top) */}
       <header className="mt-16 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2">
@@ -424,6 +451,21 @@ export default function SalonDetail() {
             <span>·</span>
             <span className="text-gray-900 font-medium truncate max-w-[200px]">{salonData.name}</span>
           </div>
+=======
+      {/* Page-specific header (back, like) */}
+      <header className="mt-16 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 flex items-center justify-between">
+          <button className="w-10 h-10 hover:bg-gray-50 rounded-full transition-all flex items-center justify-center" onClick={() => window.history.back()}>
+            <ArrowLeft className="w-5 h-5 text-gray-500" />
+          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={async () => {
+                if (!isAuthenticated || !user?.email) {
+                  router.push('/login?redirect=' + encodeURIComponent(window.location.pathname));
+                  return;
+                }
+>>>>>>> b010572f117e359420834e5df209b3ac1436b9d4
 
           {/* Title Row */}
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
@@ -920,7 +962,7 @@ export default function SalonDetail() {
               </div>
                 {/* Social Media */}
                 {salonData.socialMedia && Object.keys(salonData.socialMedia).length > 0 && (
-                  <div className="bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
+                  <div className="mt-6 bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
                     <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 sm:mb-6">Réseaux sociaux</h3>
                     <div className="flex flex-wrap gap-2 sm:gap-3">
                       {salonData.socialMedia.instagram && (
@@ -945,15 +987,26 @@ export default function SalonDetail() {
                           <span>Facebook</span>
                         </a>
                       )}
-                      {salonData.socialMedia.twitter && (
+                      {(salonData.socialMedia.x || salonData.socialMedia.twitter) && (
                         <a 
-                          href={String(salonData.socialMedia.twitter).startsWith('http') ? String(salonData.socialMedia.twitter) : `https://twitter.com/${salonData.socialMedia.twitter}`}
+                          href={String(salonData.socialMedia.x || salonData.socialMedia.twitter).startsWith('http') ? String(salonData.socialMedia.x || salonData.socialMedia.twitter) : `https://x.com/${String(salonData.socialMedia.x || salonData.socialMedia.twitter)}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-sky-500 text-white rounded-full hover:opacity-90 transition-opacity text-xs sm:text-sm"
+                          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-900 text-white rounded-full hover:opacity-90 transition-opacity text-xs sm:text-sm"
                         >
-                          <Twitter className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                          <span>Twitter</span>
+                          <XBrandIcon size={16} />
+                          <span>X</span>
+                        </a>
+                      )}
+                      {salonData.socialMedia.tiktok && (
+                        <a 
+                          href={String(salonData.socialMedia.tiktok).startsWith('http') ? String(salonData.socialMedia.tiktok) : `https://tiktok.com/@${String(salonData.socialMedia.tiktok)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-950 text-white rounded-full hover:opacity-90 transition-opacity text-xs sm:text-sm"
+                        >
+                          <TikTokBrandIcon size={16} />
+                          <span>TikTok</span>
                         </a>
                       )}
                       {salonData.socialMedia.linkedin && (
@@ -973,7 +1026,7 @@ export default function SalonDetail() {
 
                 {/* Map embed = OSM (no key); external link = Google Maps only */}
                 {(salonData.coordinates || salonData.googleMapsLink) && (
-                  <div className="bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
+                  <div className="mt-6 bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
                     <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 sm:mb-6">Localisation</h3>
                     <div className="flex flex-wrap gap-3 sm:gap-4 mb-3 sm:mb-4">
                       <a
@@ -1004,7 +1057,7 @@ export default function SalonDetail() {
                 )}
 
                 {/* Hours */}
-                <div className="bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
+                <div className="mt-6 bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
                   <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 sm:mb-6">Horaires</h3>
                   <div className="space-y-2 sm:space-y-3">
                     {Object.entries(salonData.hours).map(([day, hours]) => (
@@ -1057,6 +1110,7 @@ export default function SalonDetail() {
               <button
                 onClick={() => {
                   setShowBookingOptionModal(false);
+                  setIsGroupBooking(false);
                   if (selectedServices.length === 0 && salonData?.services?.[0]?.items?.[0]) {
                     setSelectedServices([salonData.services[0].items[0]]);
                   }
@@ -1078,6 +1132,7 @@ export default function SalonDetail() {
               <button
                 onClick={() => {
                   setShowBookingOptionModal(false);
+                  setIsGroupBooking(true);
                   if (selectedServices.length === 0 && salonData?.services?.[0]?.items?.[0]) {
                     setSelectedServices([salonData.services[0].items[0]]);
                   }
@@ -1353,6 +1408,7 @@ export default function SalonDetail() {
         getTotalPrice={getTotalPrice}
         bookingData={bookingData}
         setBookingData={setBookingData}
+        isGroupBooking={isGroupBooking}
         timeSlots={timeSlots}
         setSelectedServices={setSelectedServices}
         onSlotServiceIdsChange={setSlotServiceIds}
@@ -1366,10 +1422,14 @@ export default function SalonDetail() {
         salonId={salon?.id}
         employees={employees}
         blockedDates={salon?.settings?.businessHours?.blockedDates || []}
+        bookingAdvanceDays={salon?.settings?.bookingAdvanceDays ?? 30}
+        advanceBooking={salon?.settings?.businessHours?.advanceBooking || null}
         slotsLoading={slotsLoading}
         slotsError={slotsError}
         lastUpdated={lastUpdated}
         preferredEmployeeId={bookingPreferredEmployeeId}
+        onExistingParticipantsChange={setExistingParticipants}
+        onServiceEmployeesChange={setCurrentServiceEmployees}
       />
 
       {/* Shared Footer */}
@@ -1432,15 +1492,6 @@ function ReviewForm({ tenantId, user, onReviewSubmitted }: { tenantId?: string; 
       const firstName = user.firstName || nameParts[0] || 'Client';
       const lastName = user.lastName || nameParts.slice(1).join(' ') || '';
 
-      console.log('Submitting review with data:', {
-        tenantId,
-        firstName,
-        lastName,
-        email: user.email,
-        rating,
-        hasComment: !!comment.trim()
-      });
-
       const response = await api.createReview({
         tenantId,
         firstName,
@@ -1451,7 +1502,6 @@ function ReviewForm({ tenantId, user, onReviewSubmitted }: { tenantId?: string; 
         comment: comment.trim() || undefined,
       });
 
-      console.log('Review submitted successfully:', response);
       toast.success('Votre avis a été soumis avec succès');
       setRating(0);
       setComment('');

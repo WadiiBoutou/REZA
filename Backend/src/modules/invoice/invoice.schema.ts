@@ -41,6 +41,22 @@ export const createSaleSchema = z.object({
   appointmentId: z.string().optional()
 });
 
+export const createGroupSaleSchema = z.object({
+  bookingGroupId: z.string().min(1, 'Booking group ID is required'),
+  payerClientId: z.string().min(1, 'Payer client ID is required'),
+  paymentMethod: paymentMethodEnum,
+  tax: z.number().min(0).default(0),
+  notes: z.string().optional(),
+  tenantId: z.string().optional(),
+});
+
+export const separateGroupSaleSchema = z.object({
+  bookingGroupId: z.string().min(1, 'Booking group ID is required'),
+  paymentMethod: paymentMethodEnum,
+  tax: z.number().min(0).default(0),
+  tenantId: z.string().optional(),
+});
+
 export const updateInvoiceSchema = z.object({
   status: z.enum(['PENDING', 'PAID', 'CANCELLED', 'REFUNDED', 'OVERDUE']).optional(),
   paymentMethod: paymentMethodEnum.optional(),
@@ -49,3 +65,4 @@ export const updateInvoiceSchema = z.object({
 });
 
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;
+export type CreateGroupSaleInput = z.infer<typeof createGroupSaleSchema>;

@@ -128,7 +128,44 @@ export class PublicController {
 
   async getAvailableSlots(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await bookingService.getAvailableSlots(req.params.tenantId, req.query);
+      const query = { ...req.query };
+      // Allow participants, existingParticipants, and client-lookup fallback params from POST body
+      if (req.body?.participants && !query.participants) {
+        query.participants = req.body.participants;
+      }
+      if (req.body?.existingParticipants && !query.existingParticipants) {
+        query.existingParticipants = req.body.existingParticipants;
+      }
+      if (req.body?.clientPhone && !query.clientPhone) {
+        query.clientPhone = req.body.clientPhone;
+      }
+      if (req.body?.clientEmail && !query.clientEmail) {
+        query.clientEmail = req.body.clientEmail;
+      }
+      const result = await bookingService.getAvailableSlots(req.params.tenantId, query);
+      res.json(result);
+    } catch (error) {
+      if (handlePublicError(error, res, next)) return;
+      next(error);
+    }
+  }
+
+  async checkAvailableSlots(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await bookingService.getAvailableSlots(req.params.tenantId, { ...req.query, ...req.body });
+      res.json(result);
+    } catch (error) {
+      if (handlePublicError(error, res, next)) return;
+      next(error);
+    }
+  }
+
+  async getAvailableDays(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await bookingService.getAvailableDays(
+        req.params.tenantId,
+        req.query as Record<string, unknown>
+      );
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -138,7 +175,11 @@ export class PublicController {
 
   async getEmployeeAvailability(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await bookingService.getEmployeeAvailability(req.params.tenantId, req.query);
+      const query = { ...req.query };
+      if (req.body?.existingParticipants && !query.existingParticipants) {
+        query.existingParticipants = req.body.existingParticipants;
+      }
+      const result = await bookingService.getEmployeeAvailability(req.params.tenantId, query);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -146,9 +187,9 @@ export class PublicController {
     }
   }
 
-  async resolveParticipantConflicts(req: Request, res: Response, next: NextFunction) {
+  async validateParticipantAddition(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await bookingService.resolveParticipantConflicts(req.params.tenantId, req.body);
+      const result = await bookingService.validateParticipantAddition(req.params.tenantId, req.body);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -280,29 +321,6 @@ export class PublicController {
     try {
       const result = await clientAuthService.loginClient(req.body);
       res.json(result);
-    } catch (error) {
-      if (handlePublicError(error, res, next)) return;
-      next(error);
-    }
-  }
-
-  async getGoogleAuthUrl(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await clientAuthService.getGoogleAuthUrl(req.query);
-      res.json(result);
-    } catch (error) {
-      if (handlePublicError(error, res, next)) return;
-      next(error);
-    }
-  }
-
-  async handleGoogleCallback(req: Request, res: Response, next: NextFunction) {
-    try {
-      await clientAuthService.handleGoogleCallback(req.query, {
-        host: req.headers.host,
-        referer: req.headers.referer as string | undefined,
-        origin: req.headers.origin,
-      });
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
       next(error);

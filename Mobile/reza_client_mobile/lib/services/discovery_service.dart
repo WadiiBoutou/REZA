@@ -53,29 +53,67 @@ class DiscoveryService {
     required String tenantId,
     required String date,
     required List<String> serviceIds,
+    List<Map<String, dynamic>>? participants,
+    List<Map<String, dynamic>>? existingParticipants,
+    String? clientId,
+    String? clientPhone,
+    String? clientEmail,
   }) async {
-    final qs = StringBuffer('date=${Uri.encodeQueryComponent(date)}');
+    final query = <String, String>{'date': date};
     for (final id in serviceIds) {
-      qs.write('&serviceIds=${Uri.encodeQueryComponent(id)}');
+      query['serviceIds'] = (query['serviceIds'] == null ? '' : '${query['serviceIds']},') + id;
     }
-    final res = await apiClient.get(
-      '/public/tenant/$tenantId/available-slots?$qs',
+    if (clientId != null) {
+      query['clientId'] = clientId;
+    }
+    if (clientPhone != null) {
+      query['clientPhone'] = clientPhone;
+    }
+    if (clientEmail != null) {
+      query['clientEmail'] = clientEmail;
+    }
+    final body = <String, dynamic>{
+      'date': date,
+      if (participants != null) 'participants': participants,
+      if (existingParticipants != null && existingParticipants.isNotEmpty) 'existingParticipants': existingParticipants,
+      if (clientId != null) 'clientId': clientId,
+      if (clientPhone != null) 'clientPhone': clientPhone,
+      if (clientEmail != null) 'clientEmail': clientEmail,
+    };
+    final res = await apiClient.post(
+      '/public/tenant/$tenantId/available-slots',
+      body,
+      query: query,
     );
     return List<String>.from((res['slots'] as List?) ?? []);
   }
 
   /// Calls the backend employee-availability endpoint.
-  /// Returns: { "employees": [...], "commonEmployeeIds": [...], "services": [...] }
+  /// Returns: { "employees": [...], "services": [...] }
   Future<Map<String, dynamic>> getEmployeeAvailability({
     required String tenantId,
     required String date,
     required String startTime,
     required List<String> serviceIds,
+    List<Map<String, dynamic>>? existingParticipants,
   }) async {
     final qs = StringBuffer('date=${Uri.encodeQueryComponent(date)}');
     qs.write('&startTime=${Uri.encodeQueryComponent(startTime)}');
     for (final id in serviceIds) {
       qs.write('&serviceIds=${Uri.encodeQueryComponent(id)}');
+    }
+    if (existingParticipants != null && existingParticipants.isNotEmpty) {
+      final body = <String, dynamic>{
+        'date': date,
+        'startTime': startTime,
+        'serviceIds': serviceIds,
+        'existingParticipants': existingParticipants,
+      };
+      final res = await apiClient.post(
+        '/public/tenant/$tenantId/employee-availability',
+        body,
+      );
+      return res;
     }
     final res = await apiClient.get(
       '/public/tenant/$tenantId/employee-availability?$qs',
@@ -83,23 +121,21 @@ class DiscoveryService {
     return res;
   }
 
-  /// Resolves cross-participant conflicts via backend backtracking.
-  /// POST /public/tenant/:tenantId/resolve-conflicts
-  /// Returns: { resolved, conflict, message?, assignments?: [{ index, employeeId, locked, autoAssigned }] }
-  Future<Map<String, dynamic>> resolveConflicts({
+  /// Validates adding a new participant against existing locked constraints.
+  /// POST /public/tenant/:tenantId/validate-participant
+  /// Returns: { valid, conflict, message?, assignments? }
+  Future<Map<String, dynamic>> validateParticipant({
     required String tenantId,
     required String date,
-    required int changedParticipantIndex,
-    String? selectedEmployeeId,
     required List<Map<String, dynamic>> participants,
+    required Map<String, dynamic> newParticipant,
   }) async {
     final body = <String, dynamic>{
       'date': date,
-      'changedParticipantIndex': changedParticipantIndex,
-      'selectedEmployeeId': selectedEmployeeId,
       'participants': participants,
+      'newParticipant': newParticipant,
     };
-    return apiClient.post('/public/tenant/$tenantId/resolve-conflicts', body);
+    return apiClient.post('/public/tenant/$tenantId/validate-participant', body);
   }
 }
 

@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, Plus, X, Check, Trash2, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import SalonScopeNotice from '@/components/SalonScopeNotice';
 import toast from 'react-hot-toast';
 
 type PaymentMethod = {
@@ -15,6 +17,7 @@ type PaymentMethod = {
 };
 
 export default function PaymentMethodsPage() {
+  const { isSalonFilterMulti } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -229,6 +232,11 @@ export default function PaymentMethodsPage() {
         </div>
       </div>
     );
+  }
+
+  // Payment methods are salon-scoped: require a single salon selection.
+  if (isSalonFilterMulti) {
+    return <SalonScopeNotice title="Moyen de paiement" subtitle="Moyens de paiement acceptés de la part de vos clients" />;
   }
 
   return (

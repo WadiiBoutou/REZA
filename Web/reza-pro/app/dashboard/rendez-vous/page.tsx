@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Calendar, Clock, User, Phone, Mail, X, ChevronLeft, ChevronRight, MoreVertical, Plus, CalendarIcon, MapPin, Image as ImageIcon, Check, UserX, Flag, AlertTriangle, XCircle } from 'lucide-react';
+import { Calendar, Clock, User, Phone, Mail, X, ChevronLeft, ChevronRight, MoreVertical, Plus, CalendarIcon, MapPin, Check, UserX, Flag, AlertTriangle, XCircle, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -32,8 +32,6 @@ type ApiAppointment = {
   id: string;
   tenantId: string;
   clientId: string;
-  serviceId: string;
-  employeeId: string | null;
   startTime: string;
   endTime: string;
   duration: number;
@@ -59,18 +57,18 @@ type ApiAppointment = {
     email: string | null;
     phone: string | null;
   };
-  service: {
-    id: string;
-    name: string;
-    color?: string;
-    duration: number;
-    price?: number | null;
-    priceFrom?: number | null;
-  };
   employee: {
     id: string;
     firstName: string;
     lastName: string;
+  } | null;
+  bookingParticipant?: {
+    displayName: string;
+    clientId?: string | null;
+  } | null;
+  bookingGroup?: {
+    id: string;
+    _count?: { participants: number };
   } | null;
 };
 
@@ -89,6 +87,7 @@ type Appointment = {
     employee?: { id: string; firstName: string; lastName: string } | null;
   }>;
   time: string;
+  endTime: string;
   duration: number;
   status: 'confirmed' | 'pending' | 'cancelled' | 'in_progress' | 'completed' | 'no_show' | string;
   employee: string;
@@ -110,6 +109,10 @@ type Appointment = {
   totalPrice?: number;
   /** Per-service employee assignments for creation */
   servicesPayload?: Array<{ serviceId: string; employeeId: string | null }>;
+  /** Booking group ID for group bookings */
+  bookingGroupId?: string;
+  /** Number of participants in the booking group (from _count.participants) */
+  bookingGroupParticipantCount?: number;
 };
 
 type FinalizePaymentMethod = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'CHECK';
@@ -118,6 +121,36 @@ type FinalizeModalState = {
   appointment: Appointment;
   paymentMethod: FinalizePaymentMethod;
   loading: boolean;
+  /** Group billing is off the table once any participant was invoiced individually. */
+  groupAlreadyInvoiced?: boolean;
+};
+
+type GroupReviewParticipant = {
+  participantId: string;
+  clientId: string | null;
+  displayName: string;
+  isBooker: boolean;
+  services: Array<{
+    serviceId: string | null;
+    serviceName: string;
+    price: number;
+    duration: number | null;
+    employee: { id: string; firstName: string; lastName: string } | null;
+  }>;
+  subtotal: number;
+};
+
+type GroupReviewModalState = {
+  bookingGroupId: string;
+  bookerClientId: string;
+  participants: GroupReviewParticipant[];
+  total: number;
+  paymentMethod: FinalizePaymentMethod;
+  selectedPayerClientId: string;
+  loading: boolean;
+  loadingMode: 'combined' | 'separate' | null;
+  /** Any participant appointment already individually invoiced → group billing blocked. */
+  hasInvoicedAppointment?: boolean;
 };
 
 type Client = {
@@ -160,6 +193,13 @@ const transformApiAppointment = (apiApt: ApiAppointment): Appointment => {
   
   const time = `${moroccoHours.toString().padStart(2, '0')}:${moroccoMinutes.toString().padStart(2, '0')}`;
   
+  // Compute end time from start time + duration for display
+  const durationMinutes = apiApt.totalDuration ?? apiApt.duration ?? 0;
+  const endTotalMinutes = moroccoHours * 60 + moroccoMinutes + durationMinutes;
+  const endHours = Math.floor(endTotalMinutes / 60) % 24;
+  const endMinutes = endTotalMinutes % 60;
+  const endTime = `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+  
   // Create date object using UTC components to avoid timezone conversion issues
   // This ensures the date picker shows the correct date regardless of browser timezone
   const date = new Date(Date.UTC(utcYear, utcMonth, utcDay));
@@ -187,11 +227,12 @@ const transformApiAppointment = (apiApt: ApiAppointment): Appointment => {
 
   return {
     id: apiApt.id,
-    clientName: `${apiApt.client.firstName} ${apiApt.client.lastName}`,
-    service: services.length > 0 ? services[0].name : apiApt.service.name,
+    clientName: apiApt.bookingParticipant?.displayName || `${apiApt.client.firstName} ${apiApt.client.lastName}`,
+    service: services.length > 0 ? services[0].name : 'Service',
     services,
     serviceIds: services.map((service) => service.serviceId ?? service.id ?? '').filter(Boolean),
     time,
+    endTime,
     duration: apiApt.totalDuration ?? apiApt.duration,
     status: statusMap[apiApt.status] || apiApt.status.toLowerCase(),
     employee: apiApt.employee ? `${apiApt.employee.firstName} ${apiApt.employee.lastName}` : 'Non assigné',
@@ -201,12 +242,14 @@ const transformApiAppointment = (apiApt: ApiAppointment): Appointment => {
     notes: apiApt.notes || undefined,
     cancelledByClient: apiApt.cancelledBy === apiApt.clientId,
     clientId: apiApt.clientId,
-    serviceId: apiApt.serviceId,
-    employeeId: apiApt.employeeId,
+    serviceId: services.length > 0 ? (services[0].serviceId ?? services[0].id ?? '') : '',
+    employeeId: services.length > 0 ? (services[0].employee?.id ?? null) : (apiApt.employee?.id ?? null),
     tenantId: apiApt.tenantId,
-    servicePrice: apiApt.service.price ?? apiApt.service.priceFrom ?? null,
+    servicePrice: services.length > 0 ? services[0].price : null,
     totalDuration: apiApt.totalDuration ?? apiApt.duration,
-    totalPrice: apiApt.totalPrice ?? (apiApt.service.price ?? apiApt.service.priceFrom ?? null),
+    totalPrice: apiApt.totalPrice ?? (services.length > 0 ? services[0].price : null),
+    bookingGroupId: apiApt.bookingGroup?.id,
+    bookingGroupParticipantCount: apiApt.bookingGroup?._count?.participants ?? 0,
   };
 };
 
@@ -275,6 +318,232 @@ const transformToApiAppointment = (apt: Appointment, date: Date, time: string): 
   return body;
 };
 
+// ─── Per-service agenda cards ─────────────────────────────────────────────────
+// The backend stores per-service rows (AppointmentServiceItem) with a duration
+// and a sortOrder but no per-service start time. Services run sequentially
+// within an appointment, so each service's own slot is derived as cumulative
+// offsets from the appointment start time (e.g. 09:00-09:45 then 09:45-10:30).
+
+type ServiceCardData = {
+  key: string;
+  apt: Appointment;
+  serviceIndex: number; // 0-based position within the booking
+  serviceCount: number; // total services in the booking
+  serviceName: string;
+  duration: number;
+  startMin: number; // minutes since midnight (Morocco wall time)
+  endMin: number;
+  startLabel: string;
+  endLabel: string;
+  employeeName: string;
+  employeeId: string | null;
+  color: string; // resolved employee color
+};
+
+// Fixed palette used as a deterministic fallback when an employee has no
+// admin-assigned color in their agendaSettings — keeps cards distinguishable
+// instead of everyone defaulting to the same blue.
+const EMPLOYEE_COLOR_PALETTE = [
+  '#6366F1', '#0EA5E9', '#F59E0B', '#10B981', '#EF4444',
+  '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#84CC16',
+];
+const UNASSIGNED_COLOR = '#9CA3AF';
+const MINUTE_HEIGHT_REM = 5 / 30; // 5rem per 30-min slot (same scale as the old min-h-20)
+
+const timeToMinutes = (time: string): number => {
+  const [h, m] = time.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+};
+
+const minutesToTime = (min: number): string => {
+  const m = ((Math.round(min) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+};
+
+const isSameDay = (a: Date, b: Date): boolean => {
+  const da = new Date(a);
+  da.setHours(0, 0, 0, 0);
+  const db = new Date(b);
+  db.setHours(0, 0, 0, 0);
+  return da.getTime() === db.getTime();
+};
+
+// Current time in Morocco wall time (UTC+1, matching the appointment time
+// conversion in transformApiAppointment) as minutes since midnight — used for
+// the red "now" line on the agenda.
+const getMoroccoNowMin = (): number => {
+  const now = new Date();
+  return (now.getUTCHours() * 60 + now.getUTCMinutes() + 60) % 1440;
+};
+
+// Resolve an employee's color: reuse the admin-assigned agendaSettings.color
+// when present (editable in Paramètres → Agenda → Gestion des agendas),
+// otherwise pick a deterministic palette color derived from the name.
+const resolveEmployeeColor = (
+  employeeName: string | undefined,
+  employeesData: Array<{ name: string; agendaSettings?: { color?: string } }>
+): string => {
+  if (!employeeName || employeeName === 'Non assigné') return UNASSIGNED_COLOR;
+  const emp = employeesData.find((e) => e.name === employeeName);
+  const assigned = emp?.agendaSettings?.color;
+  if (typeof assigned === 'string' && assigned.trim()) return assigned.trim();
+  let hash = 0;
+  for (let i = 0; i < employeeName.length; i++) {
+    hash = (hash * 31 + employeeName.charCodeAt(i)) >>> 0;
+  }
+  return EMPLOYEE_COLOR_PALETTE[hash % EMPLOYEE_COLOR_PALETTE.length];
+};
+
+// Expand an appointment into one card per service, each positioned/sized by the
+// service's own sequential slot. Single-service and legacy appointments yield a
+// single card exactly as before.
+const expandAppointmentToServiceCards = (
+  apt: Appointment,
+  employeesData: Array<{ name: string; agendaSettings?: { color?: string } }>
+): ServiceCardData[] => {
+  const aptStartMin = timeToMinutes(apt.time);
+  const services = [...(apt.services || [])].sort(
+    (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+  );
+
+  if (services.length === 0) {
+    const duration = apt.duration || 0;
+    const employeeName =
+      apt.employee && apt.employee !== 'Non assigné' ? apt.employee : 'Non assigné';
+    return [{
+      key: `${apt.id}:0`,
+      apt,
+      serviceIndex: 0,
+      serviceCount: 1,
+      serviceName: apt.service,
+      duration,
+      startMin: aptStartMin,
+      endMin: aptStartMin + duration,
+      startLabel: apt.time,
+      endLabel: apt.endTime,
+      employeeName,
+      employeeId: apt.employeeId ?? null,
+      color: resolveEmployeeColor(employeeName, employeesData),
+    }];
+  }
+
+  let cursor = aptStartMin;
+  return services.map((s, i) => {
+    const duration = s.duration || 0;
+    const start = cursor;
+    const end = start + duration;
+    cursor = end;
+    const employeeName = s.employee
+      ? `${s.employee.firstName} ${s.employee.lastName}`
+      : apt.employee && apt.employee !== 'Non assigné'
+        ? apt.employee
+        : 'Non assigné';
+    return {
+      key: `${apt.id}:${s.sortOrder ?? i}`,
+      apt,
+      serviceIndex: i,
+      serviceCount: services.length,
+      serviceName: s.name,
+      duration,
+      startMin: start,
+      endMin: end,
+      startLabel: minutesToTime(start),
+      endLabel: minutesToTime(end),
+      employeeName,
+      employeeId: s.employee?.id ?? apt.employeeId ?? null,
+      color: resolveEmployeeColor(employeeName, employeesData),
+    };
+  });
+};
+
+type LaidOutServiceCard = ServiceCardData & { lane: number; laneCount: number };
+
+// Assign concurrent cards to side-by-side lanes (classic calendar layout):
+// cards that overlap in time get distinct lanes, sequential cards stay in lane 0.
+const layoutConcurrentCards = (cards: ServiceCardData[]): LaidOutServiceCard[] => {
+  const sorted = [...cards].sort(
+    (a, b) => a.startMin - b.startMin || b.duration - a.duration
+  );
+  const laneEnds: number[] = [];
+  const laid: LaidOutServiceCard[] = [];
+  for (const c of sorted) {
+    let lane = laneEnds.findIndex((end) => end <= c.startMin);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(c.endMin);
+    } else {
+      laneEnds[lane] = c.endMin;
+    }
+    laid.push({ ...c, lane, laneCount: 0 });
+  }
+  const laneCount = laneEnds.length;
+  return laid.map((c) => ({ ...c, laneCount }));
+};
+
+type BookingGroupFrame = {
+  aptId: string;
+  topRem: number;
+  heightRem: number;
+  leftPct: number;
+  widthPct: number;
+};
+
+// Persistent grouping boundary for multi-service bookings: one solid frame per
+// booking (>= 2 service cards) drawn just OUTSIDE the cards' block (small gap),
+// spanning the union of its cards' vertical extent and lanes, so a booking's
+// block of cards reads as one visit at a glance.
+const computeBookingGroupFrames = (
+  laid: LaidOutServiceCard[],
+  toTopRem: (min: number) => number,
+  minCardMinutes: number
+): BookingGroupFrame[] => {
+  const byBooking = new Map<string, LaidOutServiceCard[]>();
+  for (const c of laid) {
+    const arr = byBooking.get(c.apt.id);
+    if (arr) arr.push(c);
+    else byBooking.set(c.apt.id, [c]);
+  }
+  const frames: BookingGroupFrame[] = [];
+  for (const [aptId, cards] of byBooking) {
+    if (cards.length < 2) continue;
+    const startMin = Math.min(...cards.map((c) => c.startMin));
+    // Respect the same min-height clamp used when rendering each card
+    const endMin = Math.max(
+      ...cards.map((c) => c.startMin + Math.max(c.duration || 0, minCardMinutes))
+    );
+    const laneMin = Math.min(...cards.map((c) => c.lane));
+    const laneMax = Math.max(...cards.map((c) => c.lane));
+    const laneCount = Math.max(...cards.map((c) => c.laneCount)) || 1;
+    frames.push({
+      aptId,
+      topRem: toTopRem(startMin),
+      heightRem: (endMin - startMin) * MINUTE_HEIGHT_REM,
+      leftPct: (laneMin / laneCount) * 100,
+      widthPct: ((laneMax - laneMin + 1) / laneCount) * 100,
+    });
+  }
+  return frames;
+};
+
+// Rendered behind the service cards (z-[5], below cards' z-10). pointer-events-none
+// so drag & drop and clicks pass straight through to the grid beneath.
+const BookingGroupLayer: React.FC<{ frames: BookingGroupFrame[] }> = ({ frames }) => (
+  <>
+    {frames.map((f) => (
+      <div
+        key={f.aptId}
+        className="absolute z-[5] pointer-events-none rounded-lg border border-gray-400/60 bg-gray-400/5"
+        style={{
+          left: `calc(${f.leftPct}% - 2px)`,
+          width: `calc(${f.widthPct}% + 4px)`,
+          top: `calc(${f.topRem}rem - 2px)`,
+          height: `calc(${f.heightRem}rem + 4px)`,
+        }}
+      />
+    ))}
+  </>
+);
+
 const canConfirmStatus = (status: string) => status === 'pending';
 const canMarkAbsentOrDone = (status: string) =>
   status === 'pending' || status === 'confirmed' || status === 'in_progress';
@@ -306,15 +575,6 @@ const getAppointmentEmployeeLabel = (apt: Appointment): string => {
   const sorted = [...names].sort();
   if (sorted.length === 1) return sorted[0];
   return `${sorted[0]} +${sorted.length - 1}`;
-};
-
-// Get the primary employee name for color lookups (uses first service's employee)
-const getPrimaryEmployeeName = (apt: Appointment): string | undefined => {
-  if (apt.services && apt.services.length > 0) {
-    const emp = apt.services[0]?.employee;
-    if (emp) return `${emp.firstName} ${emp.lastName}`;
-  }
-  return apt.employee || undefined;
 };
 
 // Check if an appointment involves a given employee name
@@ -595,11 +855,17 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
       ? employees.find((e) => e.id === firstEmployeeId)?.name || 'Non assigné'
       : 'Non assigné';
 
+    // Compute end time from normalizedTime + totalDuration
+    const [ntH, ntM] = normalizedTime.split(':').map(Number);
+    const endTotalMin = ntH * 60 + ntM + totalDuration;
+    const computedEndTime = `${String(Math.floor(endTotalMin / 60) % 24).padStart(2, '0')}:${String(endTotalMin % 60).padStart(2, '0')}`;
+
     const newAppointment: Appointment = {
       id: '',
       clientName: selectedClient.name,
       service: serviceName,
       time: normalizedTime,
+      endTime: computedEndTime,
       duration: totalDuration,
       status: 'pending',
       employee: firstEmployeeName,
@@ -1088,8 +1354,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
                                       {emp.recommended && (
                                         <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">Recommandé</span>
                                       )}
-                                      {!emp.available && emp.reason && (
-                                        <span className="text-[10px] text-amber-500">{emp.reason}</span>
+                                      {!emp.available && (
+                                        <span className="text-[10px] text-amber-500">Indisponible</span>
                                       )}
                                     </div>
                                   </SelectItem>
@@ -1246,6 +1512,11 @@ interface AppointmentCardProps {
   serviceColor?: string;
   showColorInRDV?: boolean;
   displayFields?: Array<{ id: string; label: string; visible: boolean; order: number }>;
+  /** Per-service card data (one card per service of a multi-service booking). */
+  serviceCard?: ServiceCardData;
+  /** Id of the booking currently hovered in the agenda → highlight all its cards. */
+  hoveredBookingId?: string | null;
+  onBookingHover?: (id: string | null) => void;
 }
 
 const AppointmentCard: React.FC<AppointmentCardProps> = ({ 
@@ -1262,9 +1533,13 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
     { id: 'clientName', label: 'Nom du client', visible: true, order: 2 },
     { id: 'services', label: 'Prestation(s)', visible: true, order: 3 },
     { id: 'notes', label: 'Titre ou note', visible: true, order: 4 },
-  ]
+  ],
+  serviceCard,
+  hoveredBookingId,
+  onBookingHover,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
+
   const getStatusBg = (status: string) => {
     // If showColorInRDV is false, use status colors
     if (!showColorInRDV) {
@@ -1275,11 +1550,28 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
         default: return 'bg-gray-50 border-gray-200 text-gray-900';
       }
     }
-    
-    // If showColorInRDV is true, use employee or service color
-    const color = employeeColor || serviceColor || '#3B82F6';
     return '';
   };
+
+  // Per-service card, or a legacy fallback derived from the appointment itself.
+  const card: ServiceCardData = serviceCard ?? {
+    key: apt.id,
+    apt,
+    serviceIndex: 0,
+    serviceCount: 1,
+    serviceName: apt.service,
+    duration: apt.duration,
+    startMin: timeToMinutes(apt.time),
+    endMin: timeToMinutes(apt.time) + (apt.duration || 0),
+    startLabel: apt.time,
+    endLabel: apt.endTime,
+    employeeName: getAppointmentEmployeeLabel(apt),
+    employeeId: apt.employeeId ?? null,
+    color: employeeColor || serviceColor || '#3B82F6',
+  };
+
+  const color = card.color;
+  const isSiblingHovered = hoveredBookingId != null && hoveredBookingId === apt.id;
 
   // Generate lighter background and border colors from the main color
   const getLightColorStyle = (color: string) => {
@@ -1287,177 +1579,217 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
     
     // Convert hex to RGB
     const hex = color.replace('#', '');
-    const r = parseInt(hex.substring(0, 2), 16);
-    const g = parseInt(hex.substring(2, 4), 16);
-    const b = parseInt(hex.substring(4, 6), 16);
+    const r = parseInt(hex.substring(0, 2), 16) || 0;
+    const g = parseInt(hex.substring(2, 4), 16) || 0;
+    const b = parseInt(hex.substring(4, 6), 16) || 0;
     
     return {
       backgroundColor: `rgba(${r}, ${g}, ${b}, 0.1)`,
-      borderColor: `rgba(${r}, ${g}, ${b}, 0.3)`,
-      color: color
+      borderColor: `rgba(${r}, ${g}, ${b}, 0.28)`,
     };
   };
-
-  const color = employeeColor || serviceColor || '#3B82F6';
 
   // Get visible fields sorted by order
   const visibleFields = displayFields
     .filter(f => f.visible)
     .sort((a, b) => a.order - b.order);
-
-  // Render field content based on field ID
-  const renderField = (field: { id: string; label: string; visible: boolean; order: number }) => {
-    switch (field.id) {
-      case 'hours':
-        return (
-          <div key={field.id} className="flex items-center gap-1.5 text-xs opacity-60">
-            <Clock size={11} />
-            <span>{apt.time} · {apt.duration}min</span>
-          </div>
-        );
-      case 'clientName':
-        return (
-          <p key={field.id} className="font-medium truncate break-words w-full">{apt.clientName}</p>
-        );
-      case 'services':
-        return (
-          <p key={field.id} className="text-xs opacity-60 truncate break-words w-full mt-0.5">
-            {apt.services && apt.services.length > 1
-              ? `${apt.services.length} services • ${apt.duration} min`
-              : apt.service}
-          </p>
-        );
-      case 'notes':
-        return apt.notes ? (
-          <p key={field.id} className="text-xs opacity-60 truncate break-words w-full mt-0.5">{apt.notes}</p>
-        ) : null;
-      default:
-        return null;
-    }
-  };
+  const hoursVisible = visibleFields.some(f => f.id === 'hours');
+  const clientVisible = visibleFields.some(f => f.id === 'clientName');
+  const serviceVisible = visibleFields.some(f => f.id === 'services');
+  const notesVisible = visibleFields.some(f => f.id === 'notes');
+  const multiService = card.serviceCount > 1;
 
   return (
     <div
       draggable
       onDragStart={(e) => onDragStart && onDragStart(e, apt)}
-      className={`${getStatusBg(apt.status)} rounded-lg p-3 cursor-move hover:shadow-md transition-all border ${
-        isCompact ? 'text-xs' : 'text-sm'
-      }`}
+      onMouseEnter={() => onBookingHover?.(apt.id)}
+      onMouseLeave={() => onBookingHover?.(null)}
+      className={cn(
+        'relative rounded-lg cursor-move border transition-all overflow-hidden w-full h-full',
+        getStatusBg(apt.status),
+        isCompact ? 'text-xs' : 'text-sm',
+        isSiblingHovered ? 'shadow-md ring-2 ring-gray-900/15' : 'hover:shadow-md',
+      )}
       style={showColorInRDV ? getLightColorStyle(color) : {}}
     >
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex-1 min-w-0">
-          {visibleFields.map(field => renderField(field))}
-          {apt.status === 'cancelled' && apt.cancelledByClient && (
-            <div className="mt-1.5 text-xs text-red-600 font-medium flex items-center gap-1">
-              <X size={11} />
-              <span>Annulé par le client</span>
+      {/* Left accent bar in the employee's color */}
+      {showColorInRDV && (
+        <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: color }} />
+      )}
+
+      <div className={cn('flex flex-col min-w-0', isCompact ? 'pl-2 pr-1 py-1' : 'pl-2.5 pr-1.5 py-1.5')}>
+        {/* Top row: per-service time range + actions */}
+        <div className="flex items-start justify-between gap-1">
+          {hoursVisible && (
+            <div className="flex items-center gap-1 text-[11px] leading-tight text-gray-500 min-w-0">
+              <Clock size={12} className="shrink-0" />
+              <span className="tabular-nums whitespace-nowrap">{card.startLabel} → {card.endLabel}</span>
             </div>
           )}
-        </div>
-        <div className="flex items-center gap-1">
-          {!isCompact && canConfirmStatus(apt.status) && onStatusUpdate && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onStatusUpdate(apt, 'confirmed');
-              }}
-              className="px-2 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded transition-colors"
-              title="Confirmer le rendez-vous"
-            >
-              Confirmer
-            </button>
-          )}
-          <Popover open={showMenu} onOpenChange={setShowMenu}>
-            <PopoverTrigger asChild>
+          <div className="flex items-center gap-1 shrink-0">
+            {!isCompact && canConfirmStatus(apt.status) && onStatusUpdate && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setShowMenu(true);
+                  onStatusUpdate(apt, 'confirmed');
                 }}
-                className="p-1 opacity-40 hover:opacity-100 transition-opacity"
+                className="px-2 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded transition-colors"
+                title="Confirmer le rendez-vous"
               >
-                <MoreVertical size={isCompact ? 12 : 14} />
+                Confirmer
               </button>
-            </PopoverTrigger>
-            <PopoverContent 
-              className="w-48 p-1" 
-              align="end"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {canConfirmStatus(apt.status) && onStatusUpdate && (
+            )}
+            <Popover open={showMenu} onOpenChange={setShowMenu}>
+              <PopoverTrigger asChild>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onStatusUpdate(apt, 'confirmed');
-                    setShowMenu(false);
+                    setShowMenu(true);
                   }}
-                  className="w-full text-left px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50 rounded transition-colors flex items-center gap-2"
+                  className="p-1 opacity-40 hover:opacity-100 transition-opacity"
                 >
-                  <Check size={14} />
-                  Confirmer
+                  <MoreVertical size={isCompact ? 12 : 14} />
                 </button>
-              )}
-              {canMarkAbsentOrDone(apt.status) && onStatusUpdate && (
-                <>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStatusUpdate(apt, 'completed');
-                      setShowMenu(false);
-                    }}
-                    className="w-full text-left px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 rounded transition-colors flex items-center gap-2"
-                  >
-                    <Flag size={14} />
-                    Terminé
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStatusUpdate(apt, 'no_show');
-                      setShowMenu(false);
-                    }}
-                    className="w-full text-left px-3 py-2 text-sm text-orange-700 hover:bg-orange-50 rounded transition-colors flex items-center gap-2"
-                  >
-                    <UserX size={14} />
-                    Absent
-                  </button>
-                </>
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMenu(false);
-                  if (onShowDetails) {
-                    onShowDetails(apt);
-                  }
-                }}
-                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+              </PopoverTrigger>
+              <PopoverContent 
+                className="w-48 p-1" 
+                align="end"
+                onClick={(e) => e.stopPropagation()}
               >
-                Détails
-              </button>
-            </PopoverContent>
-          </Popover>
-        </div>
-      </div>
-      {!isCompact && (
-        <div className="mt-2 pt-2 border-t border-current/10 text-xs opacity-60">
-          <div className="flex items-center gap-1">
-            <User size={11} />
-            <span className="truncate break-words w-full">{getAppointmentEmployeeLabel(apt)}</span>
+                {canConfirmStatus(apt.status) && onStatusUpdate && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStatusUpdate(apt, 'confirmed');
+                      setShowMenu(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50 rounded transition-colors flex items-center gap-2"
+                  >
+                    <Check size={14} />
+                    Confirmer
+                  </button>
+                )}
+                {canMarkAbsentOrDone(apt.status) && onStatusUpdate && (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStatusUpdate(apt, 'completed');
+                        setShowMenu(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 rounded transition-colors flex items-center gap-2"
+                    >
+                      <Flag size={14} />
+                      Terminé
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStatusUpdate(apt, 'no_show');
+                        setShowMenu(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm text-orange-700 hover:bg-orange-50 rounded transition-colors flex items-center gap-2"
+                    >
+                      <UserX size={14} />
+                      Absent
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMenu(false);
+                    if (onShowDetails) {
+                      onShowDetails(apt);
+                    }
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                >
+                  Détails
+                </button>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
-      )}
+
+        {/* Client name — bold */}
+        {clientVisible && (
+          <p className="font-semibold text-gray-900 truncate leading-tight mt-0.5">{apt.clientName}</p>
+        )}
+
+        {/* Service name (+ booking chip in compact mode) */}
+        {serviceVisible && (
+          <p className="text-xs text-gray-600 truncate leading-snug flex items-center gap-1">
+            <span className="truncate">{card.serviceName}</span>
+            {multiService && isCompact && (
+              <span
+                className="shrink-0 px-1 py-px rounded-full bg-gray-900/[0.04] border border-gray-200 text-[9px] font-semibold text-gray-500"
+                title={`Prestation ${card.serviceIndex + 1} sur ${card.serviceCount} du rendez-vous`}
+              >
+                {card.serviceIndex + 1}/{card.serviceCount}
+              </span>
+            )}
+          </p>
+        )}
+
+        {notesVisible && apt.notes && !isCompact && (
+          <p className="text-[11px] text-gray-400 truncate leading-snug mt-0.5">{apt.notes}</p>
+        )}
+
+        {apt.status === 'cancelled' && apt.cancelledByClient && (
+          <div className="mt-1 text-[11px] text-red-600 font-medium flex items-center gap-1.5">
+            <X size={12} />
+            <span>Annulé par le client</span>
+          </div>
+        )}
+
+        {/* Employee + booking position chip */}
+        {!isCompact && (
+          <div className="flex items-center gap-1 mt-1 text-[11px] text-gray-500 leading-tight">
+            <span
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ backgroundColor: showColorInRDV ? color : '#9CA3AF' }}
+            />
+            <span className="truncate">{card.employeeName}</span>
+            {multiService && (
+              <span
+                className="ml-auto shrink-0 px-1 py-px rounded-full bg-gray-900/[0.04] border border-gray-200 text-[9px] font-semibold text-gray-500"
+                title={`Prestation ${card.serviceIndex + 1} sur ${card.serviceCount} du rendez-vous`}
+              >
+                {card.serviceIndex + 1}/{card.serviceCount}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
 
-const RendezVousPage = () => {
-  const { isAuthenticated, user, salonFilter, effectiveSalonIds } = useAuth();
+const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSalonIds } = useAuth();
   const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
   const [mounted, setMounted] = useState(false);
-  const [view, setView] = useState('week'); // day, week, month
+  // View + date survive the salon-switch remount (layout salonKey) via sessionStorage,
+  // so switching salons doesn't throw the admin back to today/week view.
+  const [view, setView] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('rdv:view');
+      if (saved === 'day' || saved === 'week' || saved === 'month') return saved;
+    }
+    return 'week'; // day, week, month
+  });
   const [currentDate, setCurrentDate] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('rdv:currentDate');
+      if (saved) {
+        const d = new Date(saved);
+        if (!isNaN(d.getTime())) {
+          d.setHours(0, 0, 0, 0);
+          return d;
+        }
+      }
+    }
     const date = new Date();
     date.setHours(0, 0, 0, 0);
     return date;
@@ -1467,16 +1799,21 @@ const RendezVousPage = () => {
   const [newRdvInitialDate, setNewRdvInitialDate] = useState<Date | undefined>(undefined);
   const [newRdvInitialTime, setNewRdvInitialTime] = useState<string>('');
   const [draggedEvent, setDraggedEvent] = useState<Appointment | null>(null);
+  // Booking id currently hovered → highlights all of that booking's service cards.
+  const [hoveredBookingId, setHoveredBookingId] = useState<string | null>(null);
+  const [moveConfirm, setMoveConfirm] = useState<{
+    id: string;
+    data: any;
+    conflicts: string[];
+  } | null>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [finalizeModal, setFinalizeModal] = useState<FinalizeModalState | null>(null);
+  const [groupReviewModal, setGroupReviewModal] = useState<GroupReviewModalState | null>(null);
   const [filterStatus, setFilterStatus] = useState('all');
-  const [selectedEmployee, setSelectedEmployee] = useState('all');
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [headerImage, setHeaderImage] = useState<string | null>(null);
-  const [uploadingHeaderImage, setUploadingHeaderImage] = useState(false);
-  const canUploadHeaderImage = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN' || user?.role === 'STAFF';
-  const headerImageFetchedRef = React.useRef(false);
+  // Multi-select employee filter (names). Empty array = show everyone ('Tous').
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+	const [refreshKey, setRefreshKey] = useState(0);
   
   // Load employee agendas and services for colors
   const [employeeAgendas, setEmployeeAgendas] = useState<Array<{id: string, name: string, color: string}>>([]);
@@ -1573,54 +1910,9 @@ const RendezVousPage = () => {
           }
         }
       }
-    };
+    };	    fetchData();
 
-    fetchData();
-
-    // Fetch header image (only on initial load, not after uploads)
-    const fetchHeaderImage = async () => {
-      try {
-        const response = await api.getHeaderImage();
-        
-        if (response && response.headerImage) {
-          // Use the API endpoint to serve the image file (avoids CORS issues)
-          // This goes through Next.js proxy to /api/tenant/header-image-file
-          // Include tenantId as query parameter for authentication
-          const tenantId = user?.tenantId;
-          
-          // SECURITY: Prevent using 'default' as tenantId (data isolation issue)
-          if (tenantId === 'default') {
-            console.error('[Header Fetch] SECURITY WARNING: User has tenantId="default". This breaks data isolation. Please log out and log back in, or contact support.');
-            // Don't set header image if tenantId is 'default' to prevent data leakage
-            return;
-          }
-          
-          const imageUrl = tenantId 
-            ? `/api/tenant/header-image-file?tenantId=${tenantId}`
-            : '/api/tenant/header-image-file';
-          setHeaderImage(imageUrl);
-        } else {
-          // Don't clear - might have been just uploaded and not yet saved, or API delay
-        }
-      } catch (err: any) {
-        console.error('[Header Fetch] Error fetching header image:', err);
-        // Safely log error details
-        const errorDetails: any = {};
-        if (err?.message) errorDetails.message = err.message;
-        if (err?.status) errorDetails.status = err.status;
-        if (err?.statusText) errorDetails.statusText = err.statusText;
-        if (err?.stack) errorDetails.stack = err.stack;
-        console.error('[Header Fetch] Error details:', errorDetails);
-        // Don't clear on error - preserve any existing image
-      }
-    };
-
-    if (!headerImageFetchedRef.current) {
-      headerImageFetchedRef.current = true;
-      fetchHeaderImage();
-    }
-
-    // Load display settings from API
+	    // Load display settings from API
     const fetchDisplaySettings = async () => {
       try {
         const response = await api.getAppointmentDisplaySettings();
@@ -1652,16 +1944,16 @@ const RendezVousPage = () => {
     fetchDisplaySettings();
   }, [isAuthenticated, salonFilterKey]);
 
-  // Get selected employee's color for calendar background
+  // Get selected employee's color for calendar background (single selection only)
   const getSelectedEmployeeColor = () => {
-    if (selectedEmployee === 'all') return null;
-    const employee = employeeAgendas.find(e => e.name === selectedEmployee);
+    if (selectedEmployees.length !== 1) return null;
+    const employee = employeeAgendas.find(e => e.name === selectedEmployees[0]);
     return employee?.color || null;
   };
 
   // Generate subtle background color style for calendar cells
   const getCalendarCellStyle = () => {
-    if (selectedEmployee === 'all') {
+    if (selectedEmployees.length !== 1) {
       return {};
     }
     
@@ -1686,8 +1978,8 @@ const RendezVousPage = () => {
   // Listen for sidebar filter changes and sidebar date changes
   useEffect(() => {
     const handleEmployeeFilter = (event: Event) => {
-      const ev = event as CustomEvent<string>;
-      setSelectedEmployee(ev.detail);
+      const ev = event as CustomEvent<string[]>;
+      setSelectedEmployees(Array.isArray(ev.detail) ? ev.detail : []);
     };
     const handleStatusFilter = (event: Event) => {
       const ev = event as CustomEvent<string>;
@@ -1705,7 +1997,7 @@ const RendezVousPage = () => {
       window.removeEventListener('statusFilterChange', handleStatusFilter as EventListener);
       window.removeEventListener('sidebarDateChange', handleSidebarDateChange as EventListener);
     };
-  }, [employeeAgendas]);
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 0);
@@ -1721,10 +2013,35 @@ const RendezVousPage = () => {
     };
   }, []);
 
+  // Persist view + date so they survive the salon-switch remount
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('rdv:view', view);
+    } catch {}
+  }, [view]);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('rdv:currentDate', currentDate.toISOString());
+    } catch {}
+  }, [currentDate]);
+
+  // Tell the sidebar this page is mounted so it re-sends the current employee/
+  // status filters (needed after a salon switch, where the layout remounts the page).
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('rendezVousPageReady'));
+  }, []);
+
   // Appointments state - fetched from API
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
-  
+
+  // Stable string key for currentDate to use as useEffect dependency
+  // (Date objects get new references on every `new Date(...)` call, even with the same value)
+  const currentDateKey = useMemo(
+    () => `${currentDate.getFullYear()}-${currentDate.getMonth()}-${currentDate.getDate()}`,
+    [currentDate]
+  );
+
   // Fetch appointments from API based on current view date range
   const fetchAppointments = async () => {
     if (!isAuthenticated) return;
@@ -1783,25 +2100,7 @@ const RendezVousPage = () => {
   // Fetch appointments when view, date, or salon filter changes
   useEffect(() => {
     fetchAppointments();
-  }, [isAuthenticated, view, currentDate, salonFilterKey]);
-
-  // Filter appointments based on selected employee
-  const getFilteredAppointments = () => {
-    if (selectedEmployee === 'all') {
-      return appointments;
-    }
-    
-    // Find the selected employee
-    const selectedEmp = employeeAgendas.find(e => e.name === selectedEmployee);
-    
-    if (!selectedEmp) {
-      return appointments.filter(apt => appointmentHasEmployee(apt, selectedEmployee));
-    }
-    
-    const filtered = appointments.filter(apt => appointmentHasEmployee(apt, selectedEmployee));
-    
-    return filtered;
-  };
+  }, [isAuthenticated, view, currentDateKey, salonFilterKey]);
 
   // Helper function to check if employee is available at a given date/time
   const isEmployeeAvailable = (employeeId: string | null, date: Date, time: string): boolean => {
@@ -1880,6 +2179,28 @@ const RendezVousPage = () => {
     return slots;
   }, [agendaStart, agendaEnd]);
 
+  // ─── Fresha-style absolute grid metrics ───────────────────────────────────
+  // Same scale as the old slot rows: 5rem per 30-minute slot.
+  const agendaStartMin = timeToMinutes(agendaStart);
+  const agendaEndMin = timeToMinutes(agendaEnd);
+  const agendaTotalMin = Math.max(agendaEndMin - agendaStartMin, 60);
+  const agendaHeightRem = agendaTotalMin * MINUTE_HEIGHT_REM;
+  const minToTopRem = (min: number): number => (min - agendaStartMin) * MINUTE_HEIGHT_REM;
+
+  // Expand the filtered appointments into one card per service, each carrying
+  // its own derived start/end time and its performing employee's color.
+  const serviceCards = useMemo(() => {
+    const base =
+      selectedEmployees.length === 0
+        ? appointments
+        : appointments.filter((a) =>
+            selectedEmployees.some((name) => appointmentHasEmployee(a, name))
+          );
+    const withStatus =
+      filterStatus === 'all' ? base : base.filter((a) => a.status === filterStatus);
+    return withStatus.flatMap((apt) => expandAppointmentToServiceCards(apt, employeesData));
+  }, [appointments, selectedEmployees, filterStatus, employeesData]);
+
   // Get week days - normalized
   const getWeekDays = () => {
     const start = new Date(currentDate);
@@ -1948,24 +2269,84 @@ const RendezVousPage = () => {
     e.preventDefault();
     if (!draggedEvent) return;
     
+    const normalizedDate = new Date(
+      newDate.getFullYear(),
+      newDate.getMonth(),
+      newDate.getDate()
+    );
+    normalizedDate.setHours(0, 0, 0, 0);
+    
+    const moveTimeData = transformToApiAppointment(draggedEvent, normalizedDate, newTime);
+
+    // A drag-drop move only changes the start time — services and employee
+    // assignments are carried over as-is. Sending only identity + time fields
+    // keeps the backend from re-validating employee-service compatibility
+    // (which would wrongly fail for multi-service appointments that have
+    // per-service employees: one employee can't serve all the services).
+    const updateData = {
+      clientId: moveTimeData.clientId,
+      startTime: moveTimeData.startTime,
+      status: moveTimeData.status,
+      ...(moveTimeData.notes !== undefined ? { notes: moveTimeData.notes } : {}),
+      ...(moveTimeData.tenantId ? { tenantId: moveTimeData.tenantId } : {}),
+    };
+
+    // Phase 1: dry-run validation — nothing is persisted here. The backend
+    // checks client double-bookings, per-employee windows and business hours,
+    // returning ALL conflicts. The move is only applied when the user confirms.
     try {
-      const normalizedDate = new Date(
-        newDate.getFullYear(),
-        newDate.getMonth(),
-        newDate.getDate()
-      );
-      normalizedDate.setHours(0, 0, 0, 0);
-      
-      const updateData = transformToApiAppointment(draggedEvent, normalizedDate, newTime);
-      await api.updateAppointment(draggedEvent.id, updateData);
-      
-      await fetchAppointments();
+      const result = await api.validateMove(draggedEvent.id, {
+        startTime: updateData.startTime,
+        ...(updateData.tenantId ? { tenantId: updateData.tenantId } : {}),
+      });
+      setMoveConfirm({
+        id: draggedEvent.id,
+        data: updateData,
+        conflicts: result?.conflicts ?? [],
+      });
       setDraggedEvent(null);
-    } catch (err) {
-      console.error('Error updating appointment:', err);
-      toast.error(getApiErrorMessage(err, 'Erreur lors de la mise à jour du rendez-vous'));
+    } catch (err: any) {
+      toast.error(getApiErrorMessage(err, 'Erreur lors de la vérification du déplacement'));
       setDraggedEvent(null);
     }
+  };
+
+  const confirmMove = async () => {
+    if (!moveConfirm) return;
+    try {
+      await api.updateAppointment(moveConfirm.id, { ...moveConfirm.data, source: 'ADMIN' });
+      setMoveConfirm(null);
+      setDraggedEvent(null);
+      await fetchAppointments();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Erreur lors de la mise à jour du rendez-vous'));
+      setMoveConfirm(null);
+      setDraggedEvent(null);
+    }
+  };
+
+  const cancelMove = () => {
+    setMoveConfirm(null);
+    setDraggedEvent(null);
+  };
+
+  // Compute the agenda time under a drop's Y coordinate, snapped to the same
+  // 30-minute grid the old slot rows offered, so cards can be dropped anywhere.
+  const computeDropTime = (e: React.DragEvent<HTMLDivElement>): string | null => {
+    const el = e.currentTarget;
+    const rect = el.getBoundingClientRect();
+    if (rect.height <= 0) return null;
+    const y = e.clientY - rect.top;
+    const ratio = Math.min(Math.max(y / rect.height, 0), 1);
+    const minutes = agendaStartMin + ratio * agendaTotalMin;
+    const snapped = Math.floor(minutes / 30) * 30;
+    const clamped = Math.min(Math.max(snapped, agendaStartMin), Math.max(agendaStartMin, agendaEndMin - 30));
+    return minutesToTime(clamped);
+  };
+
+  const handleGridDrop = (e: React.DragEvent<HTMLDivElement>, date: Date) => {
+    const time = computeDropTime(e);
+    if (time) handleDrop(e, time, date);
   };
   
   const handleCreateAppointment = async (appointment: Appointment) => {
@@ -1993,6 +2374,28 @@ const RendezVousPage = () => {
         paymentMethod: 'CASH',
         loading: false,
       });
+      // Group appointments: check asynchronously whether any participant was
+      // already individually invoiced — then "Facturer le groupe" is disabled
+      // and only individual encaissement remains (everyone blue).
+      if (appointment.bookingGroupId) {
+        api
+          .getGroupDetails(appointment.bookingGroupId)
+          .then((res: any) => {
+            const g = res?.group;
+            if (!g) return;
+            setFinalizeModal((prev) =>
+              prev && prev.appointment.id === appointment.id
+                ? {
+                    ...prev,
+                    groupAlreadyInvoiced: !!(g.alreadyInvoiced || g.hasInvoicedAppointment),
+                  }
+                : prev,
+            );
+          })
+          .catch(() => {
+            /* non-blocking: backend still rejects if really invoiced */
+          });
+      }
       return;
     }
 
@@ -2058,7 +2461,7 @@ const RendezVousPage = () => {
       return;
     }
 
-    const servicesForSale = (apt.services && apt.services.length > 0 ? apt.services : apt.serviceId ? [{ serviceId: apt.serviceId, name: apt.service, duration: apt.duration, price: apt.servicePrice ?? 0, sortOrder: 0 }] : []);
+    const servicesForSale = (apt.services && apt.services.length > 0 ? apt.services : []);
     if (servicesForSale.length === 0) {
       toast.error('Service manquant — impossible d’ajouter à la caisse');
       return;
@@ -2115,6 +2518,94 @@ const RendezVousPage = () => {
     }
   };
 
+  const handleFinalizeGroupSale = async () => {
+    if (!finalizeModal) return;
+    const apt = finalizeModal.appointment;
+    if (!apt.bookingGroupId) return;
+
+    setFinalizeModal({ ...finalizeModal, loading: true });
+    try {
+      const res = await api.getGroupDetails(apt.bookingGroupId);
+      const g = res.group;
+      if (!g || !g.participants || g.participants.length === 0) {
+        toast.error('Aucun participant trouvé pour ce groupe');
+        setFinalizeModal((prev) => (prev ? { ...prev, loading: false } : null));
+        return;
+      }
+      setFinalizeModal(null);
+      setGroupReviewModal({
+        bookingGroupId: g.groupId,
+        bookerClientId: g.bookerClientId,
+        participants: g.participants,
+        total: g.total,
+        paymentMethod: finalizeModal.paymentMethod,
+        selectedPayerClientId: g.bookerClientId || apt.clientId || '',
+        loading: false,
+        loadingMode: null,
+        hasInvoicedAppointment: !!g.hasInvoicedAppointment,
+      });
+    } catch (err: any) {
+      console.error('Error loading group details:', err);
+      toast.error(getApiErrorMessage(err, 'Erreur lors du chargement du groupe'));
+      setFinalizeModal((prev) => (prev ? { ...prev, loading: false } : null));
+    }
+  };
+
+  const handleGroupReviewConfirmCombined = async () => {
+    if (!groupReviewModal) return;
+    setGroupReviewModal({ ...groupReviewModal, loading: true, loadingMode: 'combined' });
+    try {
+      await api.createGroupSale({
+        bookingGroupId: groupReviewModal.bookingGroupId,
+        payerClientId: groupReviewModal.selectedPayerClientId,
+        paymentMethod: groupReviewModal.paymentMethod,
+      });
+      toast.success('Groupe facturé et ajouté à la caisse');
+      setGroupReviewModal(null);
+      setShowDetailsModal(false);
+      setSelectedAppointment(null);
+      // The group billing marks every participant appointment COMPLETED on the
+      // backend — refresh the agenda so no card keeps showing "Terminé". A
+      // refresh failure must not surface as a false encaissement error.
+      try {
+        await fetchAppointments();
+      } catch (refreshErr: any) {
+        console.error('Agenda refresh after combined group sale:', refreshErr);
+      }
+    } catch (err: any) {
+      console.error('Error group combined sale:', err);
+      toast.error(getApiErrorMessage(err, "Erreur lors de l'encaissement du groupe"));
+      setGroupReviewModal((prev) => (prev ? { ...prev, loading: false, loadingMode: null } : null));
+    }
+  };
+
+  const handleGroupReviewSeparate = async () => {
+    if (!groupReviewModal) return;
+    setGroupReviewModal({ ...groupReviewModal, loading: true, loadingMode: 'separate' });
+    try {
+      await api.separateGroupSale({
+        bookingGroupId: groupReviewModal.bookingGroupId,
+        paymentMethod: groupReviewModal.paymentMethod,
+      });
+      toast.success('Chaque participant a été facturé séparément');
+      setGroupReviewModal(null);
+      setShowDetailsModal(false);
+      setSelectedAppointment(null);
+      // Separate billing also marks every participant appointment COMPLETED —
+      // refresh the agenda so the cards show the updated status immediately. A
+      // refresh failure must not surface as a false billing error.
+      try {
+        await fetchAppointments();
+      } catch (refreshErr: any) {
+        console.error('Agenda refresh after separate group sale:', refreshErr);
+      }
+    } catch (err: any) {
+      console.error('Error group separate sale:', err);
+      toast.error(getApiErrorMessage(err, "Erreur lors de la facturation séparée"));
+      setGroupReviewModal((prev) => (prev ? { ...prev, loading: false, loadingMode: null } : null));
+    }
+  };
+
   const handleShowDetails = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
     setShowDetailsModal(true);
@@ -2150,29 +2641,8 @@ const RendezVousPage = () => {
         .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
         .animate-slideUp { animation: slideUp 0.3s ease-out; }
         .animate-slideDown { animation: slideDown 0.3s ease-out; }
-      `}</style>
-
-      {/* Header - Ultra Minimalist Premium */}
-      <div className="mb-8 animate-slideDown relative">
-        {/* Header Image Background */}
-        {headerImage && (
-          <div className="absolute inset-0 -z-10 overflow-hidden rounded-lg" style={{ height: '100%', minHeight: '120px' }}>
-            <img 
-              src={headerImage} 
-              alt="Header" 
-              className="w-full h-full object-cover opacity-10"
-              onError={(e) => {
-                const img = e.currentTarget;
-                setTimeout(() => {
-                  if (img.complete && img.naturalWidth === 0) {
-                    // Image failed, keep state for retry
-                  }
-                }, 1000);
-              }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-white/80 to-white"></div>
-          </div>
-        )}
+      `}</style>	      {/* Header - Ultra Minimalist Premium */}
+	      <div className="mb-8 animate-slideDown relative">
         
         <div className="flex items-center justify-between relative z-10">
           {/* Left: Date & Time */}
@@ -2227,7 +2697,7 @@ const RendezVousPage = () => {
           {/* Right: Controls */}
           <div className="flex items-center gap-6">
             {/* Selected Employee Indicator */}
-            {selectedEmployee !== 'all' && (
+            {selectedEmployees.length > 0 && (
               <>
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200">
                   <div 
@@ -2235,7 +2705,9 @@ const RendezVousPage = () => {
                     style={{ backgroundColor: getSelectedEmployeeColor() || '#3B82F6' }}
                   ></div>
                   <span className="text-xs font-medium text-gray-700">
-                    {selectedEmployee}
+                    {selectedEmployees.length === 1
+                      ? selectedEmployees[0]
+                      : `${selectedEmployees.length} employés`}
                   </span>
                 </div>
                 <div className="h-8 w-px bg-gray-200"></div>
@@ -2304,97 +2776,22 @@ const RendezVousPage = () => {
               Nouveau
               <Plus size={16} className="inline-block ml-2 -mt-0.5" />
             </button>
+	          </div>
+	        </div>
+	      </div>
 
-            {/* Header Image Upload (Admin and Staff only) */}
-            {canUploadHeaderImage && (
-              <>
-                <div className="h-8 w-px bg-gray-200"></div>
-                <label className="relative inline-block cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        setUploadingHeaderImage(true);
-                        try {
-                          const result = await api.uploadHeaderImage(file);
-                          
-                          // Use the API endpoint to serve the image file (avoids CORS issues)
-                          // This goes through Next.js proxy to /api/tenant/header-image-file
-                          // Include tenantId as query parameter for authentication
-                          const tenantId = user?.tenantId;
-                          
-                          // SECURITY: Prevent using 'default' as tenantId (data isolation issue)
-                          if (tenantId === 'default') {
-                            console.error('[Header Upload] SECURITY WARNING: User has tenantId="default". This breaks data isolation. Please log out and log back in, or contact support.');
-                            toast.error('Erreur de sécurité: Votre compte nécessite une mise à jour. Veuillez vous déconnecter et vous reconnecter.');
-                            return;
-                          }
-                          
-                          const imageUrl = tenantId 
-                            ? `/api/tenant/header-image-file?tenantId=${tenantId}`
-                            : '/api/tenant/header-image-file';
-                          setHeaderImage(imageUrl);
-                          
-                          new Image().src = imageUrl;
-                        } catch (err: any) {
-                          console.error('[Header Upload] Error uploading header image:', err);
-                          console.error('[Header Upload] Error details:', {
-                            message: err.message,
-                            status: err.status,
-                            stack: err.stack
-                          });
-                          toast.error(err.message || 'Erreur lors de l\'upload de l\'image');
-                        } finally {
-                          setUploadingHeaderImage(false);
-                          // Reset input
-                          e.target.value = '';
-                        }
-                      }
-                    }}
-                    disabled={uploadingHeaderImage}
-                  />
-                  <div
-                    className={`px-4 py-2 text-sm font-medium rounded-full transition-colors flex items-center gap-2 ${
-                      uploadingHeaderImage
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
-                    }`}
-                    title="Changer l'image d'en-tête"
-                  >
-                    {uploadingHeaderImage ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                        <span>Upload...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ImageIcon size={16} />
-                        <span>Image</span>
-                      </>
-                    )}
-                  </div>
-                </label>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Calendar Views */}
+	      {/* Calendar Views */}
       <div key={refreshKey} className="overflow-hidden animate-fadeIn">
         {view === 'week' && (
           <div className="overflow-x-auto bg-white rounded-lg border border-gray-100 shadow-sm">
             <div className="min-w-[1000px]">
               {/* Header */}
-              <div className="grid grid-cols-8 border-b border-gray-100">
-                <div className="p-4 border-r border-gray-100"></div>
+              <div className="flex border-b border-gray-100">
+                <div className="w-14 shrink-0 border-r border-gray-100"></div>
                 {getWeekDays().map((date, i) => {
                   const isToday = date.toDateString() === new Date().toDateString();
                   return (
-                    <div key={i} className="p-4 text-center border-r border-gray-100 last:border-r-0">
+                    <div key={i} className="flex-1 p-4 text-center border-r border-gray-100 last:border-r-0">
                       <div className={`text-xs font-medium uppercase tracking-wider mb-2 ${isToday ? 'text-gray-900' : 'text-gray-400'}`}>
                         {date.toLocaleDateString('fr-FR', { weekday: 'short' })}
                       </div>
@@ -2410,148 +2807,253 @@ const RendezVousPage = () => {
                 })}
               </div>
 
-                {/* Time slots */}
-              {timeSlots.map((time) => {
-                const slotHasNoEmployee = getAvailableEmployees(new Date(currentDate), time).length === 0;
-                return (
-                <div key={time} className={`grid grid-cols-8 border-b border-gray-100 transition-colors ${
-                  slotHasNoEmployee ? '' : 'hover:bg-gray-50/30'
-                }`}>
-                  <div className={`p-3 border-r border-gray-100 text-xs font-light ${
-                    slotHasNoEmployee ? 'text-gray-300' : 'text-gray-400'
-                  }`}>
-                    {time}
-                  </div>
-                  {getWeekDays().map((date, i) => {
-                    const cellStyle = getCalendarCellStyle();
-                    const isNoEmployee = getAvailableEmployees(date, time).length === 0;
-                    return (
+              {/* Body: time gutter + day columns */}
+              <div className="flex">
+                {/* Time gutter */}
+                <div
+                  className="w-14 shrink-0 relative border-r border-gray-100"
+                  style={{ height: `${agendaHeightRem}rem` }}
+                >
+                  {timeSlots.map((time) => (
+                    <div
+                      key={time}
+                      className="absolute right-2 text-[10px] font-light text-gray-400 tabular-nums"
+                      style={{ top: `${minToTopRem(timeToMinutes(time))}rem` }}
+                    >
+                      {time}
+                    </div>
+                  ))}
+                </div>
+
+                {getWeekDays().map((date, i) => {
+                  const isToday = date.toDateString() === new Date().toDateString();
+                  const nowMin = isToday ? getMoroccoNowMin() : null;
+                  const dayCards = layoutConcurrentCards(
+                    serviceCards.filter((c) => isSameDay(c.apt.date, date))
+                  );
+                  const cellStyle = getCalendarCellStyle();
+                  return (
                     <div
                       key={i}
-                      className={`p-2 border-r border-gray-100 last:border-r-0 min-h-20 relative group/cell ${
-                        isNoEmployee ? 'bg-gray-50' : ''
-                      } ${
-                        selectedEmployee !== 'all' && cellStyle.backgroundColor ? 'transition-colors' : ''
-                      }`}
-                      style={cellStyle}
+                      className="flex-1 relative border-r border-gray-100 last:border-r-0 overflow-hidden"
+                      style={{ height: `${agendaHeightRem}rem` }}
                       onDragOver={handleDragOver}
-                      onDrop={(e) => handleDrop(e, time, date)}
+                      onDrop={(e) => handleGridDrop(e, date)}
                     >
-                      {getFilteredAppointments()
-                        .filter(apt => {
-                          const aptDate = new Date(apt.date);
-                          aptDate.setHours(0, 0, 0, 0);
-                          const compareDate = new Date(date);
-                          compareDate.setHours(0, 0, 0, 0);
-                          return aptDate.getTime() === compareDate.getTime() && 
-                            apt.time === time &&
-                            (filterStatus === 'all' || apt.status === filterStatus);
-                        })
-                        .map(apt => {
-                          const employeeColor = employeeAgendas.find(e => e.name === getPrimaryEmployeeName(apt))?.color;
-                          const serviceColor = services.find(s => s.name === apt.service)?.color;
-                          return (
-                            <div key={apt.id} className="mb-1 last:mb-0">
-                              <AppointmentCard 
-                                apt={apt}
-                                isCompact
-                                onDragStart={handleDragStart}
-                                onStatusUpdate={handleUpdateAppointmentStatus}
-                                onShowDetails={handleShowDetails}
-                                employeeColor={employeeColor}
-                                serviceColor={serviceColor}
-                                showColorInRDV={displaySettings.showColorInRDV}
-                                displayFields={displaySettings.fields}
-                              />
-                            </div>
-                          );
-                        })
-                      }
-                      <button
-                        onClick={() => {
-                          setNewRdvInitialDate(date);
-                          setNewRdvInitialTime(time);
-                          setShowNewRDV(true);
-                        }}
-                        className="absolute bottom-1 right-1 w-5 h-5 rounded-md bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-all z-10"
-                      >
-                        <Plus size={12} />
-                      </button>
-                    </div>
-                    );
-                  })}
-                </div>
-              );})}
+                      {/* 30-min strips: availability shading + quick create */}
+                      {timeSlots.map((time) => {
+                        const isNoEmployee = getAvailableEmployees(date, time).length === 0;
+                        return (
+                          <div
+                            key={time}
+                            className={`absolute left-0 right-0 group/strip ${
+                              isNoEmployee ? 'bg-gray-50/60' : ''
+                            }`}
+                            style={{
+                              top: `${minToTopRem(timeToMinutes(time))}rem`,
+                              height: '5rem',
+                              ...(selectedEmployees.length === 1 && cellStyle.backgroundColor && !isNoEmployee
+                                ? { backgroundColor: cellStyle.backgroundColor }
+                                : {}),
+                            }}
+                          >
+                            <button
+                              onClick={() => {
+                                setNewRdvInitialDate(date);
+                                setNewRdvInitialTime(time);
+                                setShowNewRDV(true);
+                              }}
+                              className="absolute right-1.5 top-1.5 w-5 h-5 rounded-md bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 flex items-center justify-center opacity-0 group-hover/strip:opacity-100 transition-all z-10"
+                            >
+                              <Plus size={12} />
+                            </button>
+                          </div>
+                        );
+                      })}
 
+                      {/* 30-min grid lines */}
+                      {timeSlots.map((time) => (
+                        <div
+                          key={`line-${time}`}
+                          className="absolute left-0 right-0 border-t border-gray-100 pointer-events-none"
+                          style={{ top: `${minToTopRem(timeToMinutes(time))}rem` }}
+                        />
+                      ))}
+
+                      {/* Persistent grouping boundary around multi-service bookings */}
+                      <BookingGroupLayer frames={computeBookingGroupFrames(dayCards, minToTopRem, 24)} />
+
+                      {/* One card per service, sized by that service's own slot */}
+                      {dayCards.map((card) => (
+                        <div
+                          key={card.key}
+                          className="absolute z-10"
+                          style={{
+                            left: `${(card.lane / card.laneCount) * 100}%`,
+                            width: `${100 / card.laneCount}%`,
+                            top: `${minToTopRem(card.startMin)}rem`,
+                            height: `${Math.max(card.duration * MINUTE_HEIGHT_REM, 4)}rem`,
+                            padding: '0 3px',
+                          }}
+                        >
+                          <AppointmentCard
+                            apt={card.apt}
+                            serviceCard={card}
+                            isCompact
+                            onDragStart={handleDragStart}
+                            onStatusUpdate={handleUpdateAppointmentStatus}
+                            onShowDetails={handleShowDetails}
+                            employeeColor={card.color}
+                            showColorInRDV={displaySettings.showColorInRDV}
+                            displayFields={displaySettings.fields}
+                            hoveredBookingId={hoveredBookingId}
+                            onBookingHover={setHoveredBookingId}
+                          />
+                        </div>
+                      ))}
+
+                      {/* Now line */}
+                      {nowMin != null && nowMin >= agendaStartMin && nowMin <= agendaEndMin && (
+                        <div
+                          className="absolute left-0 right-0 z-20 pointer-events-none"
+                          style={{ top: `${minToTopRem(nowMin)}rem` }}
+                        >
+                          <div className="relative border-t-2 border-red-400">
+                            <div className="absolute -left-0.5 -top-[5px] w-2 h-2 rounded-full bg-red-400"></div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
 
         {view === 'day' && (
-          <div className="p-0">
-            <div className="space-y-1">
-              {timeSlots.map((time) => {
-                const isNoEmployee = getAvailableEmployees(currentDate, time).length === 0;
-                return (
-                <div
-                  key={time}
-                  className={`grid grid-cols-12 gap-4 p-4 border border-gray-200 rounded-lg transition-colors group/time relative ${
-                    isNoEmployee ? 'bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'
-                  }`}
-                  style={getCalendarCellStyle()}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, time, currentDate)}
-                >
-                  <button
-                    onClick={() => {
-                      setNewRdvInitialDate(currentDate);
-                      setNewRdvInitialTime(time);
-                      setShowNewRDV(true);
-                    }}
-                    className="absolute right-3 top-3 w-6 h-6 rounded-md bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 flex items-center justify-center opacity-0 group-hover/time:opacity-100 transition-all z-10"
+          <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
+            <div className="flex">
+              {/* Time gutter */}
+              <div
+                className="w-14 shrink-0 relative border-r border-gray-100"
+                style={{ height: `${agendaHeightRem}rem` }}
+              >
+                {timeSlots.map((time) => (
+                  <div
+                    key={time}
+                    className="absolute right-2 text-[10px] font-light text-gray-400 tabular-nums -translate-y-1/2"
+                    style={{ top: `${minToTopRem(timeToMinutes(time))}rem` }}
                   >
-                    <Plus size={14} />
-                  </button>
-                  <div className="col-span-2 text-xs font-light text-gray-400">
                     {time}
                   </div>
-                  <div className="col-span-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {getFilteredAppointments()
-                      .filter(apt => {
-                        // Normalize both dates for comparison
-                        const aptDate = new Date(apt.date);
-                        aptDate.setHours(0, 0, 0, 0);
-                        const compareDate = new Date(currentDate);
-                        compareDate.setHours(0, 0, 0, 0);
-                        
-                        const matches = aptDate.getTime() === compareDate.getTime() && 
-                          apt.time === time &&
-                          (filterStatus === 'all' || apt.status === filterStatus);
-                        
-                        
-                        return matches;
-                      })
-                      .map(apt => {
-                        const employeeColor = employeeAgendas.find(e => e.name === getPrimaryEmployeeName(apt))?.color;
-                        const serviceColor = services.find(s => s.name === apt.service)?.color;
-                        return (
-                          <AppointmentCard 
-                            key={apt.id} 
-                            apt={apt}
+                ))}
+              </div>
+
+              {/* Day column */}
+              <div
+                className="flex-1 relative overflow-hidden"
+                style={{ height: `${agendaHeightRem}rem` }}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleGridDrop(e, currentDate)}
+              >
+                {/* 30-min strips: availability shading + quick create */}
+                {timeSlots.map((time) => {
+                  const isNoEmployee = getAvailableEmployees(currentDate, time).length === 0;
+                  const cellStyle = getCalendarCellStyle();
+                  return (
+                    <div
+                      key={time}
+                      className={`absolute left-0 right-0 group/strip ${
+                        isNoEmployee ? 'bg-gray-50/50' : ''
+                      }`}
+                      style={{
+                        top: `${minToTopRem(timeToMinutes(time))}rem`,
+                        height: '5rem',
+                        ...(selectedEmployees.length === 1 && cellStyle.backgroundColor && !isNoEmployee
+                          ? { backgroundColor: cellStyle.backgroundColor }
+                          : {}),
+                      }}
+                    >
+                      <button
+                        onClick={() => {
+                          setNewRdvInitialDate(currentDate);
+                          setNewRdvInitialTime(time);
+                          setShowNewRDV(true);
+                        }}
+                        className="absolute right-2 top-1.5 w-6 h-6 rounded-md bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 flex items-center justify-center opacity-0 group-hover/strip:opacity-100 transition-all z-10"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* 30-min grid lines */}
+                {timeSlots.map((time) => (
+                  <div
+                    key={`line-${time}`}
+                    className="absolute left-0 right-0 border-t border-gray-100 pointer-events-none"
+                    style={{ top: `${minToTopRem(timeToMinutes(time))}rem` }}
+                  />
+                ))}
+
+                {(() => {
+                  const dayCards = layoutConcurrentCards(
+                    serviceCards.filter((c) => isSameDay(c.apt.date, currentDate))
+                  );
+                  return (
+                    <>
+                      {/* Persistent grouping boundary around multi-service bookings */}
+                      <BookingGroupLayer frames={computeBookingGroupFrames(dayCards, minToTopRem, 30)} />
+
+                      {/* One card per service, sized by that service's own slot */}
+                      {dayCards.map((card) => (
+                        <div
+                          key={card.key}
+                          className="absolute z-10"
+                          style={{
+                            left: `${(card.lane / card.laneCount) * 100}%`,
+                            width: `${100 / card.laneCount}%`,
+                            top: `${minToTopRem(card.startMin)}rem`,
+                            height: `${Math.max(card.duration * MINUTE_HEIGHT_REM, 5)}rem`,
+                            padding: '0 3px',
+                          }}
+                        >
+                          <AppointmentCard
+                            apt={card.apt}
+                            serviceCard={card}
                             onDragStart={handleDragStart}
                             onStatusUpdate={handleUpdateAppointmentStatus}
                             onShowDetails={handleShowDetails}
-                            employeeColor={employeeColor}
-                            serviceColor={serviceColor}
+                            employeeColor={card.color}
                             showColorInRDV={displaySettings.showColorInRDV}
                             displayFields={displaySettings.fields}
+                            hoveredBookingId={hoveredBookingId}
+                            onBookingHover={setHoveredBookingId}
                           />
-                        );
-                      })
-                    }
-                  </div>
-                </div>
-              );})}
+                        </div>
+                      ))}
+                    </>
+                  );
+                })()}
+
+                {/* Now line (only on today) */}
+                {isSameDay(currentDate, new Date()) &&
+                  (() => {
+                    const nowMin = getMoroccoNowMin();
+                    return nowMin >= agendaStartMin && nowMin <= agendaEndMin ? (
+                      <div
+                        className="absolute left-0 right-0 z-20 pointer-events-none"
+                        style={{ top: `${minToTopRem(nowMin)}rem` }}
+                      >
+                        <div className="relative border-t-2 border-red-400">
+                          <div className="absolute -left-0.5 -top-[5px] w-2 h-2 rounded-full bg-red-400"></div>
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
+              </div>
             </div>
           </div>
         )}
@@ -2577,18 +3079,10 @@ const RendezVousPage = () => {
                   ></div>
                 );
                 const isToday = date.toDateString() === new Date().toDateString();
-                const dayAppointments = getFilteredAppointments().filter(apt => {
-                  // Normalize both dates for comparison
-                  const aptDate = new Date(apt.date);
-                  aptDate.setHours(0, 0, 0, 0);
-                  const compareDate = new Date(date);
-                  compareDate.setHours(0, 0, 0, 0);
-                  return aptDate.getTime() === compareDate.getTime() &&
-                    (filterStatus === 'all' || apt.status === filterStatus);
-                });
-                const confirmedCount = dayAppointments.filter(apt => apt.status === 'confirmed').length;
-                const pendingCount = dayAppointments.filter(apt => apt.status === 'pending').length;
-                const cancelledCount = dayAppointments.filter(apt => apt.status === 'cancelled').length;
+                const dayCards = serviceCards.filter((c) => isSameDay(c.apt.date, date));
+                const confirmedCount = dayCards.filter(c => c.apt.status === 'confirmed').length;
+                const pendingCount = dayCards.filter(c => c.apt.status === 'pending').length;
+                const cancelledCount = dayCards.filter(c => c.apt.status === 'cancelled').length;
                 const cellStyle = getCalendarCellStyle();
                 // Blend employee color with today's background if applicable
                 const finalStyle = isToday && cellStyle.backgroundColor 
@@ -2605,7 +3099,7 @@ const RendezVousPage = () => {
                     }`}
                     style={finalStyle}
                     onDragOver={handleDragOver}
-                    onDrop={(e) => handleDrop(e, dayAppointments.length > 0 ? dayAppointments[0].time : '09:00', date)}
+                    onDrop={(e) => handleDrop(e, dayCards.length > 0 ? dayCards[0].startLabel : '09:00', date)}
                   >
                     <button
                       onClick={() => {
@@ -2626,46 +3120,79 @@ const RendezVousPage = () => {
                       }`}>
                         {date.getDate()}
                       </div>
-                      {dayAppointments.length > 0 && (
+                      {dayCards.length > 0 && (
                         <div className="flex items-center gap-0.5">
                           <div className="w-1 h-1 rounded-full bg-gray-400"></div>
                           <span className="text-[10px] font-medium text-gray-400">
-                            {dayAppointments.length}
+                            {dayCards.length}
                           </span>
                         </div>
                       )}
                     </div>
 
-                    {/* Appointments - use AppointmentCard for color logic */}
+                    {/* Appointments - one compact card per service, grouped per booking */}
                     <div className="space-y-1">
-                      {dayAppointments.slice(0, 3).map(apt => {
-                        const employeeColor = employeeAgendas.find(e => e.name === getPrimaryEmployeeName(apt))?.color;
-                        const serviceColor = services.find(s => s.name === apt.service)?.color;
-                        return (
-                          <AppointmentCard 
-                            key={apt.id} 
-                            apt={apt} 
-                            isCompact 
+                      {(() => {
+                        // Group consecutive cards belonging to the same original booking
+                        const groups: { aptId: string; cards: ServiceCardData[] }[] = [];
+                        for (const card of dayCards) {
+                          const last = groups[groups.length - 1];
+                          if (last && last.aptId === card.apt.id) last.cards.push(card);
+                          else groups.push({ aptId: card.apt.id, cards: [card] });
+                        }
+                        // Keep whole bookings intact but cap density: always show the
+                        // first group, then add groups while the card count stays <= 3.
+                        const visible: { aptId: string; cards: ServiceCardData[] }[] = [];
+                        let visibleCount = 0;
+                        for (const g of groups) {
+                          if (visible.length > 0 && visibleCount >= 3) break;
+                          visible.push(g);
+                          visibleCount += g.cards.length;
+                        }
+                        const hiddenCount = dayCards.length - visibleCount;
+                        const renderCard = (card: ServiceCardData) => (
+                          <AppointmentCard
+                            key={card.key}
+                            apt={card.apt}
+                            serviceCard={card}
+                            isCompact
                             onDragStart={handleDragStart}
                             onStatusUpdate={handleUpdateAppointmentStatus}
                             onShowDetails={handleShowDetails}
-                            employeeColor={employeeColor}
-                            serviceColor={serviceColor}
+                            employeeColor={card.color}
                             showColorInRDV={displaySettings.showColorInRDV}
                             displayFields={displaySettings.fields}
+                            hoveredBookingId={hoveredBookingId}
+                            onBookingHover={setHoveredBookingId}
                           />
                         );
-                      })}
-                      {/* More indicator */}
-                      {dayAppointments.length > 3 && (
-                        <div className="text-[10px] text-gray-500 font-medium px-1.5 py-1 hover:text-gray-900 transition-colors">
-                          +{dayAppointments.length - 3} autre{dayAppointments.length - 3 > 1 ? 's' : ''}
-                        </div>
-                      )}
+                        return (
+                          <>
+                            {visible.map((g) =>
+                              g.cards.length > 1 ? (
+                                <div
+                                  key={g.aptId}
+                                  className="rounded-md border border-gray-300 bg-gray-50/60 p-1 space-y-1"
+                                >
+                                  {g.cards.map(renderCard)}
+                                </div>
+                              ) : (
+                                <React.Fragment key={g.aptId}>{g.cards.map(renderCard)}</React.Fragment>
+                              )
+                            )}
+                            {/* More indicator */}
+                            {hiddenCount > 0 && (
+                              <div className="text-[10px] text-gray-500 font-medium px-1.5 py-1 hover:text-gray-900 transition-colors">
+                                +{hiddenCount} autre{hiddenCount > 1 ? 's' : ''}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
 
                     {/* Status Summary (on hover) */}
-                    {dayAppointments.length > 0 && (
+                    {dayCards.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity">
                         <div className="flex items-center gap-2 text-[9px] font-medium">
                           {confirmedCount > 0 && (
@@ -2754,7 +3281,7 @@ const RendezVousPage = () => {
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Clock size={16} />
-                    <span>{selectedAppointment.time} · {selectedAppointment.duration} min</span>
+                    <span>{selectedAppointment.time} → {selectedAppointment.endTime}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <User size={16} />
@@ -2927,6 +3454,20 @@ const RendezVousPage = () => {
               </select>
             </div>
             <div className="px-6 pb-6 flex flex-col gap-2">
+              {finalizeModal.appointment.bookingGroupId && (finalizeModal.appointment.bookingGroupParticipantCount ?? 0) > 1 && (
+                <button
+                  type="button"
+                  disabled={finalizeModal.loading || finalizeModal.groupAlreadyInvoiced}
+                  onClick={handleFinalizeGroupSale}
+                  className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                >
+                  {finalizeModal.loading
+                    ? 'Traitement…'
+                    : finalizeModal.groupAlreadyInvoiced
+                      ? 'Facturer le groupe indisponible — encaissement individuel'
+                      : 'Facturer le groupe'}
+                </button>
+              )}
               <button
                 type="button"
                 disabled={finalizeModal.loading}
@@ -2952,6 +3493,205 @@ const RendezVousPage = () => {
                 Annuler
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group Review Modal */}
+      {groupReviewModal && (
+        <div
+          className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4"
+          onClick={() => { if (!groupReviewModal.loading) setGroupReviewModal(null); }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-5 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-lg font-semibold text-gray-900">Facturer le groupe</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Vérifiez les prestations de chaque participant avant de facturer.
+              </p>
+            </div>
+
+            <div className="px-6 py-4 overflow-y-auto flex-1">
+              {groupReviewModal.participants.map((p, idx) => (
+                <div key={p.participantId} className={`${idx > 0 ? 'mt-4 pt-4 border-t border-gray-100' : ''}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold">
+                        {idx + 1}
+                      </span>
+                      <span className="text-sm font-medium text-gray-900">{p.displayName}</span>
+                      {p.isBooker && (
+                        <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full">Organisateur</span>
+                      )}
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900">{p.subtotal.toFixed(2)} MAD</span>
+                  </div>
+                  {p.services.map((svc, sIdx) => (
+                    <div key={sIdx} className="flex items-center justify-between text-xs text-gray-600 pl-8 py-0.5">
+                      <span>{svc.serviceName}{svc.employee ? ` — ${svc.employee.firstName} ${svc.employee.lastName}` : ''}</span>
+                      <span>{svc.price.toFixed(2)} MAD</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+
+              <div className="mt-4 pt-4 border-t border-gray-200 flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-900">Total</span>
+                <span className="text-base font-bold text-gray-900">{groupReviewModal.total.toFixed(2)} MAD</span>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <label className="block text-xs font-medium text-gray-500 mb-2">
+                  Qui paie la facture ?
+                </label>
+                <div className="space-y-2">
+                  {groupReviewModal.participants.filter(p => p.clientId).map((p) => (
+                    <label
+                      key={p.participantId}
+                      className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                        groupReviewModal.selectedPayerClientId === p.clientId
+                          ? 'border-purple-500 bg-purple-50'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="group-payer"
+                        checked={groupReviewModal.selectedPayerClientId === p.clientId}
+                        disabled={groupReviewModal.loading}
+                        onChange={() => setGroupReviewModal((prev) => prev ? { ...prev, selectedPayerClientId: p.clientId! } : null)}
+                        className="w-4 h-4 text-purple-600"
+                      />
+                      <span className="text-sm text-gray-900">{p.displayName}</span>
+                      {p.isBooker && <span className="text-[10px] text-gray-400">(organisateur)</span>}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                  Mode de paiement
+                </label>
+                <select
+                  value={groupReviewModal.paymentMethod}
+                  disabled={groupReviewModal.loading}
+                  onChange={(e) =>
+                    setGroupReviewModal((prev) => prev ? { ...prev, paymentMethod: e.target.value as FinalizePaymentMethod } : null)
+                  }
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {acceptedPaymentMethods.map((method) => (
+                    <option key={method} value={API_PAYMENT_KEY[method] || 'CASH'}>
+                      {method}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="px-6 pb-6 flex flex-col gap-2 flex-shrink-0">
+              {groupReviewModal.hasInvoicedAppointment && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Un participant a déjà été encaissé individuellement : la facturation
+                  du groupe n'est plus possible, encaissez chaque participant un par un.
+                </p>
+              )}
+              <button
+                type="button"
+                disabled={groupReviewModal.loading || !groupReviewModal.selectedPayerClientId || groupReviewModal.hasInvoicedAppointment}
+                onClick={handleGroupReviewConfirmCombined}
+                className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 transition-colors"
+              >
+                {groupReviewModal.loadingMode === 'combined' ? 'Traitement…' : 'Confirmer — facturer au participant sélectionné'}
+              </button>
+              <button
+                type="button"
+                disabled={groupReviewModal.loading || groupReviewModal.hasInvoicedAppointment}
+                onClick={handleGroupReviewSeparate}
+                className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors"
+              >
+                {groupReviewModal.loadingMode === 'separate' ? 'Traitement…' : 'Facturer séparément (chaque participant)'}
+              </button>
+              <button
+                type="button"
+                disabled={groupReviewModal.loading}
+                onClick={() => setGroupReviewModal(null)}
+                className="w-full px-4 py-2.5 rounded-full text-sm font-medium text-gray-500 hover:text-gray-800 disabled:opacity-50 transition-colors"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Move confirmation dialog */}
+      {moveConfirm && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6 space-y-4">
+            {moveConfirm.conflicts.length === 0 ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="w-6 h-6 text-green-500" />
+                  <h3 className="text-base font-semibold text-gray-900">Pas de conflit</h3>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Ce créneau est disponible. Confirmer la mise à jour du rendez-vous&nbsp;?
+                </p>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={cancelMove}
+                    className="flex-1 px-4 py-2.5 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={confirmMove}
+                    className="flex-1 px-4 py-2.5 rounded-full text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition-colors"
+                  >
+                    Confirmer la mise à jour
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="w-6 h-6 text-amber-500" />
+                  <h3 className="text-base font-semibold text-gray-900">Conflit détecté</h3>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-gray-600">
+                    Déplacer ce rendez-vous vers ce créneau créera un conflit&nbsp;:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
+                    {moveConfirm.conflicts.map((reason, i) => (
+                      <li key={i}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="text-sm text-gray-500">
+                  Êtes-vous sûr de vouloir continuer&nbsp;?
+                </p>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={cancelMove}
+                    className="flex-1 px-4 py-2.5 rounded-full text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+                  >
+                    Non, annuler
+                  </button>
+                  <button
+                    onClick={confirmMove}
+                    className="flex-1 px-4 py-2.5 rounded-full text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 transition-colors"
+                  >
+                    Oui, déplacer quand même
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

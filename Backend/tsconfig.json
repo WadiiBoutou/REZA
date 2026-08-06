@@ -20,8 +20,7 @@
   "include": ["src/**/*", "prisma/generated/**/*"],
   "exclude": [
     "node_modules",
-    "dist",
-    "src/prisma/seed.ts"
+    "dist"
   ]
 }
 

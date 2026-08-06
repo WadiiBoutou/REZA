@@ -3,9 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { Check, Mail, Trash2, Plus, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import SalonScopeNotice from '@/components/SalonScopeNotice';
 import toast from 'react-hot-toast';
 
 const NotificationRDVPage = () => {
+  const { isSalonFilterMulti } = useAuth();
   const [emails, setEmails] = useState<string[]>([]);
   const [newEmail, setNewEmail] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
@@ -95,6 +98,10 @@ const NotificationRDVPage = () => {
       handleAddEmail();
     }
   };
+
+  if (isSalonFilterMulti) {
+    return <SalonScopeNotice title="Notifications RDV" subtitle="Recevez un email dès qu'un rendez-vous est pris ou annulé en ligne" />;
+  }
 
   return (
     <div className="min-h-screen p-0 md:p-0 max-w-[2000px] mx-auto">

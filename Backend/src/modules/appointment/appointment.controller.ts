@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { appointmentService } from './appointment.service';
 import { schedulingService } from './scheduling.service';
-import { createAppointmentSchema, updateAppointmentSchema, planAppointmentSchema, clientDiagnosticsSchema } from './appointment.schema';
+import { createAppointmentSchema, updateAppointmentSchema, planAppointmentSchema, clientDiagnosticsSchema, validateMoveSchema } from './appointment.schema';
 import { isSalonRequiredError, resolveWriteTenantId } from '../../utils/salonScope';
 
 export class AppointmentController {
@@ -143,6 +143,25 @@ export class AppointmentController {
           message: error.details.message
         });
       }
+      next(error);
+    }
+  }
+
+  async validateMove(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = validateMoveSchema.parse(req.body);
+      const result = await appointmentService.validateMove(
+        req.salonIds || [req.tenantId!],
+        req.params.id,
+        data
+      );
+      res.json(result);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: 'Validation error', message: error.errors[0].message });
+      }
+      if (error.message === 'APPOINTMENT_NOT_FOUND') return res.status(404).json({ error: 'Appointment not found' });
+      if (error.message === 'INVALID_MOVE_DATA') return res.status(400).json({ error: 'Invalid move data', message: 'Le nouveau créneau est invalide.' });
       next(error);
     }
   }

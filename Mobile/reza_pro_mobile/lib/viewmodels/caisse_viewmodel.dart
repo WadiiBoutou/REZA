@@ -17,6 +17,10 @@ class CaisseViewModel extends ChangeNotifier {
   bool loading = true;
   bool saleBusy = false;
   String? error;
+  /// Monotonic request id — only the latest `load()` may publish its result,
+  /// so a slow/overlapping response can't clobber newer data (intermittent
+  /// “aucune transaction” until a manual refresh).
+  int _loadSeq = 0;
 
   static const paymentMethodLabels = <String, String>{
     'CASH': 'Espèces',
@@ -73,11 +77,14 @@ class CaisseViewModel extends ChangeNotifier {
   }
 
   Future<void> load() async {
+    final seq = ++_loadSeq;
     loading = true;
     error = null;
     notifyListeners();
     try {
       final raw = await invoiceService.list(limit: 100);
+      // A newer load started while this request was in flight — discard ours.
+      if (seq != _loadSeq) return;
       final start = _periodStart();
       final mapped = <Map<String, dynamic>>[];
       for (final inv in raw) {
@@ -122,10 +129,12 @@ class CaisseViewModel extends ChangeNotifier {
       loading = false;
       notifyListeners();
     } on ApiException catch (e) {
+      if (seq != _loadSeq) return;
       error = e.message;
       loading = false;
       notifyListeners();
     } catch (_) {
+      if (seq != _loadSeq) return;
       error = 'Impossible de charger la caisse';
       loading = false;
       notifyListeners();

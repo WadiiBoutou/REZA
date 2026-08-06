@@ -29,7 +29,6 @@ export default function ManicurePage() {
         
         // Fetch tenants for Manucure category to count salons per city
         const manucureResponse = await api.searchTenants(undefined, 'Manucure', undefined, 10000);
-        console.log('[Manucure] Total tenants from API:', manucureResponse.tenants?.length || 0);
         
         // For city counting, we only need category and city fields
         // Filter tenants that have at least category and city (required for counting)
@@ -37,7 +36,6 @@ export default function ManicurePage() {
           return tenant.category && tenant.category.trim() && 
                  tenant.city && tenant.city.trim();
         });
-        console.log('[Manucure] Tenants with category and city:', tenantsWithCityAndCategory.length);
         
         // Count tenants per city for Manucure category
         const cityCountMap = new Map<string, number>();
@@ -55,7 +53,6 @@ export default function ManicurePage() {
           }
         });
         
-        console.log('[Manucure] Cities with counts:', Array.from(cityCountMap.entries()));
         
         // Map city images (use available images or default)
         const cityImageMap: Record<string, string> = {

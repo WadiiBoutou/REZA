@@ -28,18 +28,32 @@ class ApiClient {
     return _decode(res);
   }
 
-  Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body, {Map<String, String>? query}) async {
+    final parsed = Uri.parse('$_base$path');
+    final uri = (query == null || query.isEmpty)
+        ? parsed
+        : parsed.replace(queryParameters: {
+            ...parsed.queryParameters,
+            ...query,
+          });
     final res = await _client.post(
-      Uri.parse('$_base$path'),
+      uri,
       headers: _headers,
       body: jsonEncode(body),
     );
     return _decode(res);
   }
 
-  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body, {Map<String, String>? query}) async {
+    final parsed = Uri.parse('$_base$path');
+    final uri = (query == null || query.isEmpty)
+        ? parsed
+        : parsed.replace(queryParameters: {
+            ...parsed.queryParameters,
+            ...query,
+          });
     final res = await _client.put(
-      Uri.parse('$_base$path'),
+      uri,
       headers: _headers,
       body: jsonEncode(body),
     );

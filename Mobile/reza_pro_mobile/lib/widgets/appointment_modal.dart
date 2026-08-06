@@ -32,7 +32,7 @@ Map<String, dynamic> buildAppointmentSubmissionPayload({
   }).toList();
 
   final firstEmpId = servicesPayload
-      .map((p) => p['employeeId'] as String?)
+      .map((p) => p['employeeId'])
       .firstWhere((e) => e != null && e.isNotEmpty, orElse: () => null);
 
   return {
@@ -295,8 +295,6 @@ class _NewAppointmentModalState extends State<NewAppointmentModal> {
     return auth.isSalonFilterMulti &&
         (_createTenantId == null || _createTenantId!.isEmpty);
   }
-
-  bool get _canProceed => !_needsSalonSelection;
 
   List<Map<String, dynamic>> get _enrichedClients {
     if (_clientAlerts.isEmpty) return _clients;
@@ -730,14 +728,6 @@ class _NewAppointmentModalState extends State<NewAppointmentModal> {
       setState(() => _planLoading = true);
       _loadClientAlerts();
       try {
-        final parts = _selectedTime.split(':');
-        final startLocal = DateTime(
-          widget.selectedDate.year,
-          widget.selectedDate.month,
-          widget.selectedDate.day,
-          int.parse(parts[0]),
-          int.parse(parts[1]),
-        );
         final tenantId = _createTenantId;
         final payload = {
           'serviceIds':
@@ -785,7 +775,7 @@ class _NewAppointmentModalState extends State<NewAppointmentModal> {
     final svcPlan = services
         .cast<Map<String, dynamic>>()
         .where(
-          (s) => s['serviceId'] == serviceId,
+          (s) => s['serviceId']?.toString() == serviceId,
         )
         .toList();
     if (svcPlan.isEmpty) return _employees;
@@ -798,7 +788,7 @@ class _NewAppointmentModalState extends State<NewAppointmentModal> {
       final planEmp = planEmployees
           .cast<Map<String, dynamic>>()
           .where(
-            (p) => p['employeeId'] == empId,
+            (p) => p['employeeId']?.toString() == empId || p['id']?.toString() == empId,
           )
           .toList();
       final p = planEmp.isNotEmpty ? planEmp.first : <String, dynamic>{};

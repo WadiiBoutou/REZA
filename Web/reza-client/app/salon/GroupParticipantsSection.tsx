@@ -6,17 +6,19 @@ import Link from 'next/link';
 export type GuestParticipant = {
   id: string;
   name: string;
+  /** Phone — used as the reliable duplicate signal for one-time guests. */
+  phone?: string;
   /** Family member id when picked from Mes proches (UI only; API gets name). */
   familyMemberId?: string;
   sameServicesAsBooker: boolean;
   serviceIds: string[];
   employeeId?: string | null;
+  /** Per-service employee selections (keyed by serviceId or serviceName) */
+  perServiceEmployees?: Record<string, string>;
   /** Custom time when participant has independent schedule (HH:MM) */
   customTime?: string;
   /** Custom date when participant has independent schedule (YYYY-MM-DD) */
   customDate?: string;
-  /** When true, participant mirrors the main booker's date/time */
-  followsBookerSchedule: boolean;
 };
 
 export type FamilyMemberOption = {
@@ -25,6 +27,9 @@ export type FamilyMemberOption = {
   firstName?: string;
   lastName?: string;
   relationship?: string;
+  /** Phone — used as the reliable duplicate signal when a proche matches a
+   *  guest created on the fly during this booking session. */
+  phone?: string;
 };
 
 type FlatService = {
@@ -71,7 +76,6 @@ export default function GroupParticipantsSection({
         name: '',
         sameServicesAsBooker: true,
         serviceIds: [],
-        followsBookerSchedule: true,
       },
     ]);
   };
@@ -92,7 +96,6 @@ export default function GroupParticipantsSection({
         name: displayName,
         sameServicesAsBooker: true,
         serviceIds: [],
-        followsBookerSchedule: true,
       },
     ]);
   };

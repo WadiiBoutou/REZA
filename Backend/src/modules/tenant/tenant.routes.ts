@@ -6,6 +6,7 @@ import { authMiddleware, requireRole } from '../../middleware/authenticateReques
 import { verifyToken } from '../../utils/jwt';
 import { prisma } from '../../lib/prisma';
 import { tenantController } from './tenant.controller';
+import * as log from '../../utils/logger';
 
 const router = express.Router();
 
@@ -117,7 +118,7 @@ router.get('/header-image-file', async (req, res, next) => {
     }
 
     if (tenantId === 'default') {
-      console.error('[Header Image File] SECURITY WARNING: Attempted access with tenantId="default"');
+      log.error('[Header Image File] SECURITY WARNING: Attempted access with tenantId="default"');
       return res.status(403).json({
         error: 'Invalid tenant',
         message: 'Your account needs to be updated. Please log out and log back in, or contact support.'
@@ -216,7 +217,7 @@ router.get('/header-image-file', async (req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.sendFile(imagePath);
   } catch (error: any) {
-    console.error('[Header Image File] Error:', error);
+    log.error('[Header Image File] Error:', error);
     next(error);
   }
 });
