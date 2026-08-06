@@ -18,10 +18,9 @@ export default function Home() {
     <div className="flex min-h-screen flex-col bg-white font-sans dark:bg-black overflow-x-hidden">
       <Header />
       <Hero />
-      <PlatformDescription />
       <RecommendedSection />
       <NewSalonsSection />
-      <About />
+      <PlatformDescription />
       <AppDownloadSection />
       <ProCTASection />
       <Locations />
