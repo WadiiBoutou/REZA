@@ -201,6 +201,38 @@ const weeklyHighlights = [
 // Elite Professionals data with real service references
 const professionals = [
   {
+    id: 'cms3cc7o000225kpq0exu6tbf', // Nadia Tazi
+    firstName: 'Nadia',
+    lastName: 'Tazi',
+    specialty: 'Esthéticienne & Soins Visage',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&h=256&q=80',
+    rating: 4.8,
+    reviews: 88,
+    salonName: 'Spa Royal Casablanca',
+    tenantId: 'cms3cc7h9001n5kpq744e1r1v',
+    category: 'Institut de beauté',
+    prestations: [
+      { id: 'cms3cc7hj001r5kpq32gwkrvk', name: 'Soin visage premium', price: '220 DH', duration: '50 min' },
+      { id: 'cms3cc7hj001r5kpq32gwkrve', name: 'Manucure complète', price: '150 DH', duration: '45 min' }
+    ]
+  },
+  {
+    id: 'cms3cc7o000225kpq0exu6tbc', // Hicham Alaoui
+    firstName: 'Hicham',
+    lastName: 'Alaoui',
+    specialty: 'Massothérapeute Expert',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&h=256&q=80',
+    rating: 4.9,
+    reviews: 104,
+    salonName: 'Spa Royal Casablanca',
+    tenantId: 'cms3cc7h9001n5kpq744e1r1v',
+    category: 'Spa',
+    prestations: [
+      { id: 'cms3cc7hh001q5kpqmfislgdb', name: 'Massage relaxant', price: '250 DH', duration: '60 min' },
+      { id: 'cms3cc7hj001r5kpq32gwkrvf', name: 'Soin visage hydratant', price: '220 DH', duration: '50 min' }
+    ]
+  },
+  {
     id: 'cms3cc78b000e5kpqeya5j5tg', // Rachid Tazi
     firstName: 'Rachid',
     lastName: 'Tazi',
@@ -630,151 +662,11 @@ export default function BeautyCarousel() {
   }
 
   return (
-    <div className="min-h-screen bg-white relative overflow-hidden">
+    <div className="bg-white relative overflow-hidden">
       <div className="absolute inset-0 bg-white" />
 
-      {/* Carousel Section */}
-      <div className="min-h-screen flex flex-col lg:flex-row items-center justify-center p-4 relative">
-        <div className="w-full max-w-7xl mx-auto relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center">
-            {/* Left: Content Section */}
-            <div className="order-1 lg:order-1 space-y-8 px-2 pt-6 pb-2 lg:px-0 lg:pt-0 lg:pb-0">
-              
-              <div className="overflow-hidden">
-                <h2
-                  key={`subtitle-${currentIndex}`}
-                  className="text-sm font-medium uppercase tracking-[0.2em] animate-slideUp text-black"
-                >
-                  {currentSlide.subtitle}
-                </h2>
-              </div>
-
-              <div className="overflow-hidden">
-                <h1
-                  key={`title-${currentIndex}`}
-                  className="text-3xl md:text-4xl lg:text-5xl font-light text-gray-900 leading-tight animate-slideUp"
-                  style={{
-                    background: 'none',
-                    WebkitBackgroundClip: undefined,
-                    WebkitTextFillColor: undefined,
-                    backgroundClip: undefined,
-                  }}
-                >
-                  {currentSlide.title}
-                </h1>
-              </div>
-
-              <div className="h-1 rounded-full animate-expand" style={{ background: '#8b7260' }} />
-
-              <div className="overflow-hidden">
-                <p
-                  key={`desc-${currentIndex}`}
-                  className="text-lg md:text-xl text-black/70 leading-relaxed max-w-xl animate-slideUp font-light"
-                >
-                  {currentSlide.description}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-6 -mt-6">
-                <button 
-                  onClick={() => {
-                    // Map display title back to API category name
-                    let categoryName = currentSlide.title;
-                    if (currentSlide.title === 'Centre de beauté') {
-                      categoryName = 'Institut de beauté';
-                    }
-                    router.push(`/search-results?query=${encodeURIComponent(currentSlide.title)}&category=${encodeURIComponent(categoryName)}`);
-                  }}
-                  className="px-0 py-4 text-black hover:text-black hover:underline font-medium transition-colors cursor-pointer"
-                >
-                  En savoir plus
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-2 pb-12 lg:pb-0">
-
-                <div className="flex items-center gap-2 mt-2 hidden lg:flex">
-                  {slides.map((_, index) => (
-                    <button
-                      key={index}
-                      onClick={() => goToSlide(index)}
-                      disabled={isAnimating}
-                      className="group relative h-3 rounded-xl transition-all duration-300 overflow-hidden"
-                      style={{ 
-                        width: index === currentIndex ? '48px' : '24px',
-                        backgroundColor: index === currentIndex ? 'transparent' : 'rgba(0,0,0,0.08)'
-                      }}
-                    >
-                      {index === currentIndex && (
-                        <>
-                          <div 
-                            className="absolute inset-0 rounded-xl opacity-20"
-                            style={{ backgroundColor: '#8b7260' }}
-                          />
-                          <div 
-                            className="absolute inset-0 rounded-xl transition-all duration-100"
-                            style={{ 
-                              backgroundColor: '#8b7260',
-                              width: `${progress}%`,
-                            }}
-                          />
-                        </>
-                      )}
-                    </button>
-                  ))}
-                  <div className="text-black/40 text-sm font-light ml-2">
-                    <span className="text-black font-medium">{(currentIndex + 1).toString().padStart(2, '0')}</span>
-                    {' '}/{' '}
-                    <span>{slides.length.toString().padStart(2, '0')}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Image Section */}
-            <div className="order-2 lg:order-2 relative h-[320px] md:h-[600px] lg:h-[700px] w-full flex justify-center items-center mt-4 lg:mt-0 mb-24 lg:mb-0">
-              <div className="relative h-full flex items-center justify-center">
-                {slides.map((slide, index) => {
-                  const offset = index - currentIndex;
-                  const isActive = offset === 0;
-                  
-                  return (
-                    <div
-                      key={slide.id}
-                      className="absolute transition-all duration-700 ease-out"
-                      style={{
-                        transform: `
-                          translateX(${offset * 100}%) 
-                          scale(${isActive ? 1 : 0.85}) 
-                          rotateY(${offset * -15}deg)
-                        `,
-                        opacity: isActive ? 1 : 0,
-                        zIndex: isActive ? 10 : 0,
-                        pointerEvents: isActive ? 'auto' : 'none',
-                      }}
-                    >
-                      <div className="relative w-[320px] h-[480px] md:w-[380px] md:h-[560px] lg:w-[540px] lg:h-[440px]">
-                        <div className="absolute inset-0 rounded-lg bg-black/5 backdrop-blur-xl">
-                          <div className="relative w-full h-full rounded-lg overflow-hidden">
-                            <img
-                              src={slide.image}
-                              alt={slide.title}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Professionals & Prestations Section */}
-      <div className="py-24 md:py-32 bg-white relative overflow-hidden">
+      <div className="pt-8 pb-24 md:pt-12 md:pb-32 bg-white relative overflow-hidden">
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
           {/* Section label */}
@@ -787,60 +679,55 @@ export default function BeautyCarousel() {
           {/* Divider */}
           <div className="h-[1px] bg-gray-200 mb-10" />
 
-          {/* Headline + subtitle */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-20 mb-16">
-            <h3 className="text-3xl md:text-4xl lg:text-[2.75rem] font-light text-gray-900 leading-[1.15] tracking-tight">
-              Réservez avec nos{" "}
-              <span className="font-semibold">experts d'élite</span>
-            </h3>
-            <div className="flex flex-col justify-end">
-              <p className="text-base text-gray-500 leading-relaxed font-light">
-                Sélectionnez un professionnel et réservez instantanément 
-                sa prestation. Coiffeurs, barbiers, spas — tous soigneusement choisis.
-              </p>
+          {/* Headline + Professional avatars selector side-by-side */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center mb-16">
+            <div className="lg:col-span-5">
+              <h3 className="text-3xl md:text-4xl lg:text-[2.5rem] font-light text-gray-900 leading-[1.15] tracking-tight">
+                Réservez avec nos{" "}
+                <span className="font-semibold">experts d'élite</span>
+              </h3>
             </div>
-          </div>
-
-          {/* Professional avatars — horizontal selector */}
-          <div className="flex gap-8 md:gap-12 overflow-x-auto pb-8 mb-12 no-scrollbar">
-            {professionals.map((prof, idx) => {
-              const isSelected = selectedProfIndex === idx;
-              return (
-                <button
-                  key={prof.id}
-                  onClick={() => setSelectedProfIndex(idx)}
-                  className="flex flex-col items-center gap-3 group flex-shrink-0 transition-opacity duration-300"
-                  style={{ opacity: isSelected ? 1 : 0.45 }}
-                >
-                  <div
-                    className={`w-16 h-16 md:w-20 md:h-20 flex-shrink-0 rounded-full flex items-center justify-center transition-all duration-500 ${
-                      isSelected ? "border-[1.5px] border-dashed border-black p-1" : "border-[1.5px] border-transparent p-1"
-                    }`}
+            
+            <div className="lg:col-span-7 flex gap-6 md:gap-8 overflow-x-auto pb-4 no-scrollbar justify-start lg:justify-end">
+              {professionals.map((prof, idx) => {
+                const isSelected = selectedProfIndex === idx;
+                return (
+                  <button
+                    key={prof.id}
+                    onClick={() => setSelectedProfIndex(idx)}
+                    className="flex flex-col items-center gap-2 group flex-shrink-0 transition-opacity duration-300"
+                    style={{ opacity: isSelected ? 1 : 0.45 }}
                   >
-                    <div className="w-full h-full rounded-full overflow-hidden bg-gray-100">
-                      <img
-                        src={prof.avatar}
-                        alt={`${prof.firstName} ${prof.lastName}`}
-                        className="w-full h-full object-cover"
-                      />
+                    <div
+                      className={`w-14 h-14 md:w-16 md:h-16 flex-shrink-0 rounded-full flex items-center justify-center transition-all duration-500 ${
+                        isSelected ? "border-[1.5px] border-dashed border-black p-0.5" : "border-[1.5px] border-transparent p-0.5"
+                      }`}
+                    >
+                      <div className="w-full h-full rounded-full overflow-hidden bg-gray-100">
+                        <img
+                          src={prof.avatar}
+                          alt={`${prof.firstName} ${prof.lastName}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs md:text-sm font-semibold text-gray-900 whitespace-nowrap">
-                      {prof.firstName} {prof.lastName}
-                    </p>
-                    <p className="text-[10px] md:text-xs text-gray-400 whitespace-nowrap">
-                      {prof.category}
-                    </p>
-                  </div>
-                  <div
-                    className={`h-[2px] w-full transition-all duration-300 ${
-                      isSelected ? "bg-black" : "bg-transparent"
-                    }`}
-                  />
-                </button>
-              );
-            })}
+                    <div className="text-center">
+                      <p className="text-[11px] md:text-xs font-semibold text-gray-900 whitespace-nowrap">
+                        {prof.firstName} {prof.lastName}
+                      </p>
+                      <p className="text-[9px] md:text-[10px] text-gray-400 whitespace-nowrap">
+                        {prof.category}
+                      </p>
+                    </div>
+                    <div
+                      className={`h-[1.5px] w-full transition-all duration-300 ${
+                        isSelected ? "bg-black" : "bg-transparent"
+                      }`}
+                    />
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Active professional detail + prestations */}

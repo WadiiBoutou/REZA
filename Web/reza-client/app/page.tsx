@@ -21,6 +21,7 @@ export default function Home() {
       <RecommendedSection />
       <NewSalonsSection />
       <PlatformDescription />
+      <About />
       <AppDownloadSection />
       <ProCTASection />
       <Locations />

@@ -46,7 +46,7 @@ const DigitRoll = ({ val }: { val: string }) => {
 export default function HeroAbout() {
   const [searchQuery, setSearchQuery] = useState('');
   const [location, setLocation] = useState('');
-  const [count, setCount] = useState(20178);
+  const [count, setCount] = useState(10766);
   
   useEffect(() => {
     const interval = setInterval(() => {
@@ -321,7 +321,7 @@ export default function HeroAbout() {
         style={{ backgroundImage: "url('/hero-bg.jpg')" }}
       />
       {/* Light white overlay so dark text stays readable */}
-      <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px]" />
+      <div className="absolute inset-0 bg-white/30 backdrop-blur-[0.5px]" />
 
       {/* Main Content */}
       <div className="relative z-10 w-full max-w-6xl mx-auto px-6 md:px-12 py-20">
@@ -331,7 +331,7 @@ export default function HeroAbout() {
             Réservez vos soins
           </h1>
           <p className="text-base md:text-[1.125rem] text-gray-800 font-normal max-w-3xl mx-auto animate-slide-up-2">
-            Les meilleurs experts beauté et bien-être, recommandés par des millions de personnes dans le monde.
+            Vos rendez-vous beauté et bien-être en un clic, partout au Maroc.
           </p>
         </div>
 

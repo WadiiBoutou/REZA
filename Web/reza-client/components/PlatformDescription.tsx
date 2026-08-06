@@ -21,7 +21,7 @@ export default function PlatformDescription() {
   return (
     <section
       ref={sectionRef}
-      className="relative w-full bg-gradient-to-b from-white via-[#faf9f8] to-white overflow-hidden py-24 md:py-32 border-t border-b border-gray-100"
+      className="relative w-full bg-gradient-to-b from-white via-[#faf9f8] to-white overflow-hidden pt-24 pb-12 md:pt-32 md:pb-16 border-t border-b border-gray-100"
     >
       {/* Background Decorative Glows */}
       <div className="absolute top-1/4 left-1/10 w-96 h-96 bg-[#8b7260]/5 rounded-full filter blur-3xl -z-10" />
@@ -35,7 +35,7 @@ export default function PlatformDescription() {
             visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
           }`}
         >
-         
+          
           <h2 className="text-3xl md:text-5xl font-light text-gray-900 leading-tight tracking-tight">
             La destination n° 1 au Maroc pour le{" "}
             <span className="font-semibold text-transparent bg-clip-text bg-gradient-to-r from-gray-900 via-[#8b7260] to-gray-900">
@@ -49,23 +49,26 @@ export default function PlatformDescription() {
 
         {/* Highlight Main Counter */}
         <div
-          className={`max-w-3xl mx-auto mb-20 transition-all duration-1000 delay-200 transform ${
-            visible ? "opacity-100 scale-100" : "opacity-0 scale-95"
+          className={`max-w-lg mx-auto mb-12 transition-all duration-1000 delay-200 transform ${
+            visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
           }`}
         >
-          <div className="bg-white/80 backdrop-blur-md rounded-2xl p-8 md:p-12 text-center shadow-sm border border-gray-100 relative group hover:shadow-md transition-all duration-500">
-            {/* Top Accent line */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-[3px] bg-gradient-to-r from-[#8b7260] to-[#bca695] rounded-b-full" />
+          <div className="bg-gradient-to-br from-white to-[#faf9f8] rounded-2xl p-6 md:p-8 text-center shadow-[0_12px_30px_rgba(139,114,96,0.04)] border border-[#8b7260]/10 relative overflow-hidden group hover:shadow-[0_18px_40px_rgba(139,114,96,0.08)] hover:-translate-y-0.5 transition-all duration-300">
+            {/* Inner background glow accents */}
+            <div className="absolute -top-12 -left-12 w-24 h-24 bg-[#8b7260]/5 rounded-full filter blur-xl" />
+            <div className="absolute -bottom-12 -right-12 w-24 h-24 bg-[#bca695]/5 rounded-full filter blur-xl" />
             
-            <span className="text-6xl md:text-7xl font-extrabold tracking-tight bg-gradient-to-r from-[#8b7260] to-[#bca695] bg-clip-text text-transparent select-none">
-              + de 10 000
-            </span>
-            <p className="text-lg md:text-xl font-medium text-gray-800 mt-4 tracking-wide">
-              rendez-vous pris sur REZA
-            </p>
-            <p className="text-sm text-gray-400 mt-2 font-light max-w-md mx-auto">
-              Rejoignez des milliers d'utilisateurs satisfaits qui réservent en un clic.
-            </p>
+            <div className="relative">
+              <span className="block text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 leading-none">
+                + de 10 000
+              </span>
+              <p className="text-base md:text-lg font-medium text-gray-800 mt-3 tracking-wide">
+                rendez-vous pris sur <span className="text-[#8b7260]">REZA</span>
+              </p>
+              <p className="text-xs text-gray-400 mt-2 font-light max-w-xs mx-auto leading-relaxed">
+                Rejoignez des milliers d'utilisateurs satisfaits qui réservent en un clic.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -125,14 +128,14 @@ export default function PlatformDescription() {
             </span>
             
             <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12">
-              {/* Visa (Direct Wikimedia Link to Modern All-Blue Logo) */}
+              {/* Visa (Direct stable jsDelivr link for modern blue logo) */}
               <div className="h-10 flex items-center" title="Visa">
-  <img
-    src="https://cdn.simpleicons.org/visa/1A1F71"
-    alt="Visa"
-    className="h-10 w-auto object-contain hover:brightness-110 transition-all duration-300"
-  />
-</div>
+                <img 
+                  src="https://cdn.jsdelivr.net/gh/aaronfagan/svg-credit-card-payment-icons/logo/visa.svg" 
+                  alt="Visa" 
+                  className="h-10 w-auto object-contain filter hover:brightness-110 transition-all duration-300" 
+                />
+              </div>
 
               {/* Mastercard */}
               <div className="h-8 flex items-center" title="Mastercard">
