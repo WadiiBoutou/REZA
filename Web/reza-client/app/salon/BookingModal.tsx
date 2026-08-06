@@ -68,6 +68,7 @@ type BookingModalProps = {
   slotsError?: string | null;
   lastUpdated?: Date | null;
   blockedDates?: string[];
+  preferredEmployeeId?: string | null;
 };
 
 // Utility to sum durations
@@ -136,6 +137,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
   slotsError = null,
   lastUpdated = null,
   blockedDates = [],
+  preferredEmployeeId = null,
 }) => {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
@@ -153,6 +155,12 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const [familyMembers, setFamilyMembers] = useState<FamilyMemberOption[]>([]);
   const [familyLoading, setFamilyLoading] = useState(false);
   const [selectedTeamMemberId, setSelectedTeamMemberId] = useState<string>('any');
+
+  useEffect(() => {
+    if (show) {
+      setSelectedTeamMemberId(preferredEmployeeId || 'any');
+    }
+  }, [show, preferredEmployeeId]);
 
   // "Même employé pour tous les services" feature
   const [sameEmployeeForAll, setSameEmployeeForAll] = useState(true);

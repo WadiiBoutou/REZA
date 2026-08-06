@@ -158,16 +158,16 @@ export default function BeautyInstitutePage() {
   return (
     <>
       <Header />
-      <div className="min-h-screen pt-24 bg-[#f5f7f3]">
+      <div className="min-h-screen pt-24 bg-white">
         {/* Hero Section with Search */}
-        <section className="relative bg-[#f5f7f3] py-16 px-4">
+        <section className="relative bg-white py-16 px-4">
           <div className="max-w-6xl mx-auto text-center">
             <h1 className="text-4xl md:text-5xl font-light text-gray-900 mb-8">
               Réserver en ligne un RDV dans un institut de beauté
             </h1>
             
             {/* Search Bar */}
-            <div className="max-w-4xl mx-auto bg-[#f5f7f3] rounded-full p-2 flex flex-col md:flex-row gap-2 items-center">
+            <div className="max-w-4xl mx-auto bg-white rounded-full p-2 flex flex-col md:flex-row gap-2 items-center">
               <div className="flex-1 relative w-full">
                 <label className="text-xs text-gray-500 absolute -top-5 left-4">
                   Que cherchez-vous ?
@@ -206,7 +206,7 @@ export default function BeautyInstitutePage() {
         </section>
 
         {/* Cities Section */}
-        <section className="py-16 px-4 bg-[#f5f7f3]">
+        <section className="py-16 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-2xl font-light text-gray-900 mb-8">Institut de beauté</h2>
             
@@ -220,7 +220,7 @@ export default function BeautyInstitutePage() {
         </section>
 
         {/* Popular Services */}
-        <section className="py-16 px-4 bg-[#f5f7f3]">
+        <section className="py-16 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-3xl font-light text-gray-900 mb-12">
               Nos prestations populaires à Casablanca et Marrakech
@@ -256,7 +256,7 @@ export default function BeautyInstitutePage() {
         </section>
 
         {/* Content Section */}
-        <section className="py-16 px-4 bg-[#f5f7f3]">
+        <section className="py-16 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <p className="text-lg text-gray-700 leading-relaxed mb-12">
               Vous recherchez un moment de détente et de bien-être pour prendre soin de vous ? 
@@ -270,21 +270,21 @@ export default function BeautyInstitutePage() {
 
             {/* Benefits Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-              <div className="bg-[#f5f7f3] border border-gray-300 rounded-xl p-6">
+              <div className="bg-white border border-gray-300 rounded-xl p-6">
                 <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mb-4">
                   <Sparkles className="w-6 h-6 text-white" />
                 </div>
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Expertise professionnelle</h3>
                 <p className="text-sm text-gray-600">Des esthéticiennes diplômées pour tous types de soins</p>
               </div>
-              <div className="bg-[#f5f7f3] border border-gray-300 rounded-xl p-6">
+              <div className="bg-white border border-gray-300 rounded-xl p-6">
                 <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mb-4">
                   <MapPin className="w-6 h-6 text-white" />
                 </div>
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Proximité garantie</h3>
                 <p className="text-sm text-gray-600">Trouvez facilement un institut près de chez vous à Casablanca ou Marrakech</p>
               </div>
-              <div className="bg-[#f5f7f3] border border-gray-300 rounded-xl p-6">
+              <div className="bg-white border border-gray-300 rounded-xl p-6">
                 <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mb-4">
                   <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -341,7 +341,7 @@ export default function BeautyInstitutePage() {
         </section>
 
         {/* Frequent Searches */}
-        <section className="py-0 px-4 bg-[#f5f7f3]">
+        <section className="py-0 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-2xl font-light text-gray-900 mb-8">Recherches fréquentes</h2>
             
@@ -360,28 +360,28 @@ export default function BeautyInstitutePage() {
             {/* Popular Treatments Showcase */}
             <h3 className="text-2xl font-light text-gray-900 mb-8 mt-16">Soins populaires</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-[#f5f7f3] rounded-xl overflow-hidden transition-shadow">
+              <div className="bg-white rounded-xl overflow-hidden transition-shadow">
                 <img src="/institut-de-beaute/soinhydratant.jpg" alt="Facial treatment" className="w-full h-48 object-cover" />
                 <div className="p-4">
                   <h4 className="font-medium text-gray-900 mb-1">Soin hydratant</h4>
                   <p className="text-sm text-gray-600">Éclat et confort immédiat</p>
                 </div>
               </div>
-              <div className="bg-[#f5f7f3] rounded-xl overflow-hidden transition-shadow">
+              <div className="bg-white rounded-xl overflow-hidden transition-shadow">
                 <img src="/institut-de-beaute/epilationcomplete.jpg" alt="Waxing" className="w-full h-48 object-cover" />
                 <div className="p-4">
                   <h4 className="font-medium text-gray-900 mb-1">Épilation complète</h4>
                   <p className="text-sm text-gray-600">Peau douce et lisse</p>
                 </div>
               </div>
-              <div className="bg-[#f5f7f3] rounded-xl overflow-hidden transition-shadow">
+              <div className="bg-white rounded-xl overflow-hidden transition-shadow">
                 <img src="/institut-de-beaute/massagerelaxant.jpg" alt="Massage" className="w-full h-48 object-cover" />
                 <div className="p-4">
                   <h4 className="font-medium text-gray-900 mb-1">Massage relaxant</h4>
                   <p className="text-sm text-gray-600">Détente et bien-être</p>
                 </div>
               </div>
-              <div className="bg-[#f5f7f3] rounded-xl overflow-hidden transition-shadow">
+              <div className="bg-white rounded-xl overflow-hidden transition-shadow">
                 <img src="/institut-de-beaute/makeupprofessional.jpg" alt="Makeup" className="w-full h-48 object-cover" />
                 <div className="p-4">
                   <h4 className="font-medium text-gray-900 mb-1">Maquillage pro</h4>
@@ -393,7 +393,7 @@ export default function BeautyInstitutePage() {
         </section>
 
         {/* Special Occasions Section */}
-        <section className="py-16 px-4 bg-[#f5f7f3]">
+        <section className="py-16 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-3xl font-light text-gray-900 mb-8">
               Des soins beauté sur-mesure à Casablanca et Marrakech
@@ -433,7 +433,7 @@ export default function BeautyInstitutePage() {
         </section>
 
         {/* Additional Services Section */}
-        <section className="py-0 px-4 bg-[#f5f7f3]">
+        <section className="py-0 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-3xl font-light text-gray-900 mb-8">
               Une approche holistique de la beauté
@@ -469,7 +469,7 @@ export default function BeautyInstitutePage() {
         </section>
 
         {/* Institute Owner CTA */}
-        <section className="py-0 pb-20 px-4 bg-[#f5f7f3]">
+        <section className="py-0 pb-20 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-3xl font-light text-gray-900 mb-8">
               Vous êtes gérant d'un institut de beauté au Maroc ?

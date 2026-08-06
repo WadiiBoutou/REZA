@@ -357,7 +357,7 @@ export default function HeroAbout() {
                 
                 {/* Search Dropdown */}
                 {showSearchDropdown && (
-                  <div className="absolute bottom-full left-0 right-0 mt-2 bg-[#f5f7f3] rounded-2xl shadow-sm border border-gray-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-96 overflow-y-auto">
+                  <div className="absolute bottom-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-96 overflow-y-auto">
                     <div className="p-3">
                       {searchQuery.trim().length === 0 ? (
                         <>
@@ -563,7 +563,7 @@ export default function HeroAbout() {
                     </div>
                     {/* Scrollable list of cities */}
                     <div 
-                      className="overflow-y-auto flex-1 custom-scrollbar bg-[#f5f7f3]"
+                      className="overflow-y-auto flex-1 custom-scrollbar bg-white"
                       style={{ 
                         maxHeight: '240px',
                         minHeight: '120px',
