@@ -313,15 +313,15 @@ export default function HeroAbout() {
   return (
     <section
       id="about"
-      className="relative w-full min-h-screen flex items-center justify-center overflow-hidden bg-white"
+      className="relative w-full min-h-screen flex items-center justify-center overflow-hidden"
     >
-      {/* Fresha-style White Background with Animated Soft Gradient Aura */}
-      <div className="absolute inset-0 w-full h-full bg-[#fdfdfd] overflow-hidden pointer-events-none">
-        {/* Deep purple/lavender glow on the left */}
-        <div className="absolute top-[5%] -left-[10%] w-[70vw] h-[70vw] md:w-[50vw] md:h-[50vw] bg-[#e1d5ff] rounded-full mix-blend-multiply filter blur-[100px] md:blur-[140px] opacity-80 animate-float-slow" />
-        {/* Soft pink glow extending towards the center */}
-        <div className="absolute -top-[10%] left-[15%] w-[70vw] h-[70vw] md:w-[50vw] md:h-[50vw] bg-[#ffebf9] rounded-full mix-blend-multiply filter blur-[100px] md:blur-[140px] opacity-70 animate-float-medium" />
-      </div>
+      {/* Real background image */}
+      <div
+        className="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: "url('/hero-bg.jpg')" }}
+      />
+      {/* Light white overlay so dark text stays readable */}
+      <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px]" />
 
       {/* Main Content */}
       <div className="relative z-10 w-full max-w-6xl mx-auto px-6 md:px-12 py-20">
@@ -337,9 +337,8 @@ export default function HeroAbout() {
 
         {/* Search Card */}
         <div className="max-w-full md:max-w-[1000px] mx-auto px-4 md:px-0 animate-slide-up-3 relative mt-10">
-          {/* Intense horizontal pink aura directly behind search bar */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#e3c7ff] via-[#ffc2f6] to-[#e3c7ff] rounded-full blur-[24px] md:blur-[32px] opacity-70 z-0 scale-y-110 scale-x-[1.02]"></div>
-          
+
+
           <div className="bg-white rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-gray-100 p-2 w-full relative z-20">
             <div className="flex flex-col md:flex-row items-center w-full">
               {/* Search Input */}

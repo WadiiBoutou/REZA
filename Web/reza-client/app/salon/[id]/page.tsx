@@ -1176,7 +1176,7 @@ export default function SalonDetail() {
             setSelectedServices([serviceItem]);
             setSlotServiceIds([service.id]);
           } else {
-            setSlotServiceIds(selectedServices.map(s => s.id).filter(Boolean));
+            setSlotServiceIds(selectedServices.map(s => s.id).filter(Boolean) as string[]);
           }
           
           setBookingStep(1);
