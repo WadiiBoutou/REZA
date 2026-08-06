@@ -1,19 +1,23 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Trash2, Calendar, Download, Printer, Check, Loader2 } from 'lucide-react';
+import { Trash2, Download, Printer, Check, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 export default function CancelledAppointments() {
+  const { isAuthenticated, salonFilter, effectiveSalonIds } = useAuth();
+  const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [appointments, setAppointments] = useState<any[]>([]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     setMounted(true);
     fetchCancelledAppointments();
-  }, []);
+  }, [isAuthenticated, salonFilterKey]);
 
   const fetchCancelledAppointments = async () => {
     try {
@@ -37,9 +41,8 @@ export default function CancelledAppointments() {
         const client = apt.client ? `${apt.client.firstName} ${apt.client.lastName}` : '-';
         const collaborator = apt.employee ? `${apt.employee.firstName} ${apt.employee.lastName}` : '-';
         
-        // Determine if taken online (if createdById exists and is different from employee, likely created by staff in salon)
-        // Or if client was created before appointment creation, it might be online
-        const takenOnline = !apt.createdBy || apt.createdBy.id === apt.client?.id;
+        // Backend computes takenOnline from appointment.source === 'ONLINE' (public bookings only)
+        const takenOnline = !!apt.takenOnline;
 
         return {
           id: apt.id,
@@ -108,8 +111,10 @@ export default function CancelledAppointments() {
   };
 
   const exportData = () => {
-    const csvContent = [
-      ['RDV avec', 'Date du RDV', 'Client(e)', 'Pris par Internet', 'Création', 'Annulation', 'Annulé par le client'].join(','),
+    // BOM + full quoting so accented characters survive Excel and commas in names don't break columns
+    const csvCell = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csvContent = '\uFEFF' + [
+      ['RDV avec', 'Date du RDV', 'Client(e)', 'Pris par Internet', 'Création', 'Annulation', 'Annulé par le client'].map(csvCell).join(','),
       ...appointments.map(apt => 
         [
           apt.collaborator, 
@@ -119,11 +124,11 @@ export default function CancelledAppointments() {
           `${apt.creationDate} ${apt.creationTime}`,
           `${apt.cancellationDate} ${apt.cancellationTime}`,
           apt.cancelledByClient ? 'Oui' : 'Non'
-        ].join(',')
+        ].map(csvCell).join(',')
       )
     ].join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

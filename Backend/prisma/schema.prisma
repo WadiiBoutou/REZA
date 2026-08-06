@@ -20,9 +20,10 @@ model Account {
 
   tenants      Tenant[]
   subscription Subscription?
+  payments     SubscriptionPayment[]
 
-  // Platform-billing payment method (how the salon pays the SAAS platform)
-  billingPaymentMethod Json? // { type: 'SEPA' | 'CARD', iban?: string, cardLast4?: string, holderName?: string }
+  // Legacy platform-billing payment method field (superseded by the virement flow)
+  billingPaymentMethod Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -32,14 +33,13 @@ model Account {
 
 // Subscription plans (managed by superadmin); salon limit is per plan
 model SubscriptionPlan {
-  id            String  @id @default(cuid())
-  name          String
-  priceCents    Int
-  currency      String  @default("MAD")
-  interval      String  @default("year")
-  maxSalons     Int
-  stripePriceId String?
-  isActive      Boolean @default(true)
+  id         String  @id @default(cuid())
+  name       String
+  priceCents Int
+  currency   String  @default("MAD")
+  interval   String  @default("year")
+  maxSalons  Int
+  isActive   Boolean @default(true)
 
   subscriptions Subscription[]
 
@@ -48,7 +48,6 @@ model SubscriptionPlan {
 
   @@map("subscription_plans")
 }
-
 model Subscription {
   id        String           @id @default(cuid())
   accountId String           @unique
@@ -56,10 +55,14 @@ model Subscription {
   planId    String
   plan      SubscriptionPlan @relation(fields: [planId], references: [id])
 
-  status               SubscriptionStatus @default(NONE)
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
-  currentPeriodEnd     DateTime?
+  status SubscriptionStatus @default(NONE)
+  // Billing coverage under the virement model (no Stripe):
+  // - salonsPaid: salons whose one-time setup fee has been paid (cumulative)
+  // - subscribedAt: date of superadmin approval (= subscription start)
+  // Per-salon employee coverage for the current period lives on Tenant.employeesPaid.
+  salonsPaid      Int        @default(0)
+  subscribedAt    DateTime?
+  currentPeriodEnd DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -67,11 +70,65 @@ model Subscription {
   @@map("subscriptions")
 }
 
+// Platform-wide billing configuration (virement model) — a single config row
+// editable by the superadmin. Pricing is per salon (one-time) + per employee
+// beyond a free threshold (per billing period).
+model BillingConfig {
+  id                    String   @id @default("default")
+  pricePerSalon         Float    @default(1000) // one-time per salon (MAD)
+  freeEmployeeThreshold Int      @default(2)    // employees included free per salon
+  pricePerEmployee      Float    @default(100)  // fallback rate per employee per period (MAD) when no tiers
+  // Progressive per-employee price tiers on the billable count per salon:
+  // [{ "min": 1, "max": 5, "price": 100 }, { "min": 6, "max": null, "price": 80 }]
+  // max = null means "unbounded". Empty/null → flat pricePerEmployee.
+  employeeTiers         Json?
+  currency              String   @default("MAD")
+  updatedAt             DateTime @updatedAt
+
+  @@map("billing_configs")
+}
+
 enum SubscriptionStatus {
   NONE
   ACTIVE
   PAST_DUE
   CANCELED
+}
+
+// Manual virement payment declarations — the salon admin declares a bank
+// transfer, the superadmin approves/rejects it. Approval applies the declared
+// coverage (salons + employees) and starts the subscription period.
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model SubscriptionPayment {
+  id         String        @id @default(cuid())
+  accountId  String
+  account    Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  amount      Float         // declared amount (MAD)
+  currency    String        @default("MAD")
+  status      PaymentStatus @default(PENDING)
+  reference   String?       // admin-provided transfer reference
+  // Snapshot of what this payment covers at declaration time:
+  // { salonsDue, employeesDue, employeesBySalon: { [tenantId]: count } }
+  details     Json?
+  rejectedReason String?
+
+  declaredById String?
+  declaredBy   User?  @relation("PaymentDeclaredBy", fields: [declaredById], references: [id], onDelete: SetNull)
+  approvedById  String?
+  approvedBy    User?  @relation("PaymentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, status])
+  @@map("subscription_payments")
 }
 
 // Multi-Tenant: Each tenant is an organization/establishment
@@ -98,6 +155,10 @@ model Tenant {
 
   isActive           Boolean @default(true)
   subscriptionActive Boolean @default(true)
+  // Number of this salon's employees covered by the current paid period —
+  // employees beyond this count stay hidden from the public site until the
+  // difference is paid and approved.
+  employeesPaid Int @default(0)
 
   // Multi-salon ownership
   accountId String?
@@ -149,6 +210,9 @@ model TenantSettings {
   // Photos/Gallery
   photos Json? // Store establishment photos as JSON array
 
+  // Landing-page cover images (JSON array of image URLs; primary cover lives on Tenant.coverImage)
+  coverImages Json?
+
   // Establishment description
   description String? // Store establishment description (À-propos section)
 
@@ -195,6 +259,8 @@ model User {
   serviceItems            AppointmentServiceItem[] @relation("ServiceItemEmployee")
   notifications           Notification[]
   ownedAccount            Account?                 @relation("AccountOwner")
+  declaredPayments        SubscriptionPayment[]    @relation("PaymentDeclaredBy")
+  approvedPayments        SubscriptionPayment[]    @relation("PaymentApprovedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -414,6 +480,7 @@ model Appointment {
   endTime   DateTime
   duration  Int // Duration in minutes
   status    AppointmentStatus @default(CONFIRMED)
+  source    AppointmentSource @default(STAFF)
   notes     String?
 
   // Cancellation
@@ -428,6 +495,7 @@ model Appointment {
   // Relations
   invoice  Invoice?
   services AppointmentServiceItem[]
+  reviews  Review[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -469,6 +537,11 @@ enum AppointmentStatus {
   COMPLETED
   CANCELLED
   NO_SHOW
+}
+
+enum AppointmentSource {
+  STAFF
+  ONLINE
 }
 
 // Invoices/Factures - belong to a tenant
@@ -571,13 +644,15 @@ model Review {
   client   Client @relation(fields: [clientId], references: [id])
 
   appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
-  rating      Int // 1-5 stars
-  comment     String?
-  status      ReviewStatus @default(PENDING)
-  moderatedBy String?
-  moderatedAt DateTime?
-  metadata    Json? // Store additional data (e.g., detailedRatings)
+  rating       Int // 1-5 stars
+  comment      String?
+  status       ReviewStatus @default(PENDING)
+  moderatedBy  String?
+  moderatedAt  DateTime?
+  rejectReason String? // Reason given by the admin when rejecting the review
+  metadata     Json? // Store additional data (e.g., detailedRatings)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -658,6 +733,7 @@ enum NotificationType {
   APPOINTMENT_CONFIRMED // Appointment confirmed by tenant
   APPOINTMENT_CANCELLED // Appointment cancelled
   APPOINTMENT_REMINDER // Appointment reminder
+  PAYMENT_DECLARED // Salon declared a virement payment (superadmin review)
   SYSTEM // System notification
 }
 

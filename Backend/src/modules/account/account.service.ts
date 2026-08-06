@@ -1,7 +1,11 @@
 import { prisma } from '../../lib/prisma';
 
-/** Salon limit when the account has no subscription plan yet. */
-export const DEFAULT_MAX_SALONS = 3;
+/**
+ * Under the virement model there is no per-plan salon cap — salons are paid
+ * for one-time each. The limit is effectively unlimited (enforcement is
+ * billing-based: unpaid salons stay hidden from the public site).
+ */
+export const UNLIMITED_SALON_LIMIT = 1000;
 
 export interface SalonSummary {
   id: string;
@@ -14,6 +18,7 @@ export interface SalonSummary {
   shortDescription: string | null;
   coverImage: string | null;
   subscriptionActive: boolean;
+  employeesPaid: number;
   latitude: number | null;
   longitude: number | null;
 }
@@ -23,8 +28,9 @@ export interface AccountContext {
   salons: SalonSummary[];
   subscription: {
     status: string;
+    salonsPaid: number;
+    subscribedAt: Date | null;
     currentPeriodEnd: Date | null;
-    plan: { id: string; name: string; priceCents: number; currency: string; interval: string; maxSalons: number } | null;
   } | null;
   salonLimit: number;
 }
@@ -51,22 +57,21 @@ export class AccountService {
             shortDescription: true,
             coverImage: true,
             subscriptionActive: true,
+            employeesPaid: true,
             latitude: true,
             longitude: true,
           },
           orderBy: { createdAt: 'asc' },
         },
-        subscription: { include: { plan: true } },
+        subscription: true,
       },
     });
 
     if (!account) {
-      return { account: null, salons: [], subscription: null, salonLimit: DEFAULT_MAX_SALONS };
+      return { account: null, salons: [], subscription: null, salonLimit: UNLIMITED_SALON_LIMIT };
     }
 
     const sub = account.subscription;
-    const salonLimit =
-      sub && sub.status === 'ACTIVE' && sub.plan ? sub.plan.maxSalons : DEFAULT_MAX_SALONS;
 
     return {
       account: { id: account.id, isActive: account.isActive },
@@ -74,20 +79,12 @@ export class AccountService {
       subscription: sub
         ? {
             status: sub.status,
+            salonsPaid: sub.salonsPaid,
+            subscribedAt: sub.subscribedAt,
             currentPeriodEnd: sub.currentPeriodEnd,
-            plan: sub.plan
-              ? {
-                  id: sub.plan.id,
-                  name: sub.plan.name,
-                  priceCents: sub.plan.priceCents,
-                  currency: sub.plan.currency,
-                  interval: sub.plan.interval,
-                  maxSalons: sub.plan.maxSalons,
-                }
-              : null,
           }
         : null,
-      salonLimit,
+      salonLimit: UNLIMITED_SALON_LIMIT,
     };
   }
 
@@ -109,17 +106,6 @@ export class AccountService {
     return tenant?.account?.ownerUserId === userId;
   }
 
-  /**
-   * Sync all tenants of an account with the subscription status:
-   * client visibility (Tenant.subscriptionActive) is on only when subscription is ACTIVE.
-   */
-  async syncTenantsVisibility(accountId: string, subscriptionActive: boolean) {
-    // Never re-activate soft-deleted salons
-    await prisma.tenant.updateMany({
-      where: { accountId, isActive: true },
-      data: { subscriptionActive },
-    });
-  }
 }
 
 export const accountService = new AccountService();

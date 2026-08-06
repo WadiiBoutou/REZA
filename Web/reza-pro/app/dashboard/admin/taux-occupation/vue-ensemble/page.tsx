@@ -255,10 +255,10 @@ const StatistiquesPage = () => {
               <Filter size={14} className="text-gray-400" />
               <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
                 <SelectTrigger className="w-[200px] rounded-full border-gray-200 text-sm">
-                  <SelectValue placeholder="Tous les collaborateurs" />
+                  <SelectValue placeholder="Tous les employés" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous les collaborateurs</SelectItem>
+                  <SelectItem value="all">Tous les employés</SelectItem>
                   <SelectItem value="yassine">Yassine El Fassi</SelectItem>
                   <SelectItem value="samira">Samira Bouzid</SelectItem>
                   <SelectItem value="khalid">Khalid Ait Lahcen</SelectItem>

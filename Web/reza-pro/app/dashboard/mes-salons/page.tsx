@@ -7,17 +7,16 @@ import {
   Plus,
   Check,
   Loader2,
-  CreditCard,
   FileText,
   ImagePlus,
   X,
   Pencil,
   Trash2,
   Clock,
+  Landmark,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth, type Salon } from '@/contexts/AuthContext';
-import { api } from '@/lib/api';
 import { getImageUrl } from '@/lib/utils';
 import { SalonFilterControl } from '@/components/SalonFilterControl';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -60,7 +59,6 @@ function coverUrl(path?: string | null): string | null {
 export default function MesSalonsPage() {
   const {
     salons,
-    salonLimit,
     subscription,
     subscriptionActive,
     setSalonFilter,
@@ -80,12 +78,9 @@ export default function MesSalonsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Salon | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const effectiveLimit = salonLimit > 0 ? salonLimit : 3;
-  const limitReached = salons.length >= effectiveLimit;
   const isEditing = !!editingId;
 
   useEffect(() => {
@@ -223,18 +218,6 @@ export default function MesSalonsPage() {
     setSwitching(tenantId);
     setSalonFilter([tenantId]);
     setSwitching(null);
-  };
-
-  const handleSubscribe = async () => {
-    setCheckoutLoading(true);
-    setError(null);
-    try {
-      const { url } = await api.startCheckout();
-      if (url) window.location.href = url;
-    } catch (e: any) {
-      setError(e.message || 'Impossible de démarrer le paiement');
-      setCheckoutLoading(false);
-    }
   };
 
   const confirmDelete = async () => {
@@ -434,8 +417,7 @@ export default function MesSalonsPage() {
             Salons
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            {salons.length} / {effectiveLimit} salon{salons.length > 1 ? 's' : ''} utilisé
-            {salons.length > 1 ? 's' : ''}
+            {salons.length} salon{salons.length > 1 ? 's' : ''} {salons.length > 1 ? 'utilisés' : 'utilisé'}
           </p>
           {salons.length > 1 && (
             <p className="text-xs text-gray-400 mt-2 max-w-lg">
@@ -451,13 +433,7 @@ export default function MesSalonsPage() {
               resetForm();
               setShowAddForm((v) => !v);
             }}
-            disabled={limitReached}
-            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-all ${
-              limitReached
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-[#002366] text-white hover:bg-[#001a4d]'
-            }`}
-            title={limitReached ? `Limite de ${effectiveLimit} salons atteinte` : 'Ajouter un salon'}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold bg-[#002366] text-white hover:bg-[#001a4d] transition-all"
           >
             <Plus size={18} />
             Ajouter un salon
@@ -473,7 +449,7 @@ export default function MesSalonsPage() {
         <div>
           <p className={`text-sm font-semibold ${subscriptionActive ? 'text-green-800' : 'text-amber-800'}`}>
             {subscriptionActive
-              ? `Abonnement actif${subscription?.plan ? ` — ${subscription.plan.name}` : ''}`
+              ? 'Abonnement actif'
               : 'Aucun abonnement actif'}
           </p>
           <p className={`text-xs mt-1 ${subscriptionActive ? 'text-green-700' : 'text-amber-700'}`}>
@@ -481,25 +457,24 @@ export default function MesSalonsPage() {
               ? subscription?.currentPeriodEnd
                 ? `Valable jusqu'au ${new Date(subscription.currentPeriodEnd).toLocaleDateString('fr-FR')}`
                 : 'Vos salons sont visibles par les clients.'
-              : 'Vos salons ne sont pas visibles par les clients tant que vous n\u2019êtes pas abonné.'}
+              : 'Vos salons ne sont pas visibles par les clients tant que votre facturation n’est pas réglée.'}
           </p>
           <Link
-            href="/dashboard/admin/mes-factures/liste-des-factures"
+            href="/dashboard/admin/mon-abonnement"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-[#002366] hover:underline mt-1"
           >
             <FileText size={12} />
-            Voir les factures
+            Voir mon abonnement
           </Link>
         </div>
         {!subscriptionActive && (
-          <button
-            onClick={handleSubscribe}
-            disabled={checkoutLoading}
+          <Link
+            href="/dashboard/admin/mon-abonnement"
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#002366] text-white text-sm font-semibold hover:bg-[#001a4d] transition-all shrink-0"
           >
-            {checkoutLoading ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
-            S&apos;abonner — 800 DH/an
-          </button>
+            <Landmark size={16} />
+            Régler ma facture
+          </Link>
         )}
       </div>
 

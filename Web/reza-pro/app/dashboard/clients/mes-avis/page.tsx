@@ -7,7 +7,7 @@ export default function MesAvisPage() {
   const router = useRouter();
   
   useEffect(() => {
-    router.replace('/dashboard/clients/mes-avis/statistiques-avis');
+    router.replace('/dashboard/clients/mes-avis/avis-a-moderer');
   }, [router]);
   
   return null;

@@ -26,7 +26,6 @@ import familyMemberRoutes from './modules/family-member/familyMember.routes';
 import dashboardRoutes from './modules/dashboard/dashboard.routes';
 import salonRoutes from './modules/salon/salon.routes';
 import subscriptionRoutes from './modules/subscription/subscription.routes';
-import stripeWebhookRoutes from './modules/subscription/stripe.webhook';
 import superAdminRoutes from './modules/superadmin/superadmin.routes';
 
 // Import middleware
@@ -100,10 +99,6 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
-
-// Stripe webhook needs the raw body for signature verification —
-// must be mounted BEFORE the JSON body parser
-app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }), stripeWebhookRoutes);
 
 // Increase body parser limit for photo uploads (50MB)
 app.use(express.json({ limit: '50mb' }));

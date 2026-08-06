@@ -52,10 +52,6 @@ router.get('/collaborateurs', (req, res, next) => statsController.getCollaborate
 router.get('/rdv', (req, res, next) => statsController.getDailyRdvStats(req, res, next));
 
 /**
- * GET /api/stats/rdv-pas-venus
- * Get daily statistics for appointments that were not honored (no-shows)
- */
-router.get('/rdv-pas-venus', (req, res, next) => statsController.getNoShowStats(req, res, next));
 
 /**
  * GET /api/stats/occupation/vue-ensemble

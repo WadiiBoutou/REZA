@@ -8,7 +8,8 @@ export const createReviewSchema = z.object({
 });
 
 export const updateReviewStatusSchema = z.object({
-  status: z.enum(['APPROVED', 'REJECTED'])
+  status: z.enum(['APPROVED', 'REJECTED', 'PENDING']), // PENDING = unpublish/restore to moderation
+  rejectReason: z.string().trim().optional()
 });
 
 export type CreateReviewInput = z.infer<typeof createReviewSchema>;

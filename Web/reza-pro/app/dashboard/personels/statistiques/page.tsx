@@ -1,13 +1,73 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, Users, Calendar, DollarSign, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Users, Calendar, DollarSign, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 
+const deltaPct = (current: number, previous: number) => {
+  if (previous > 0) return Math.round(((current - previous) / previous) * 100);
+  return current > 0 ? 100 : 0;
+};
+
+const DeltaBadge = ({ current, previous }: { current: number; previous: number }) => {
+  const delta = deltaPct(current, previous);
+  if (delta === 0) {
+    return (
+      <div className="flex items-center gap-1 text-gray-500 bg-gray-50 px-2 py-1 rounded-lg">
+        <span className="text-[10px] font-medium">0%</span>
+      </div>
+    );
+  }
+  const positive = delta > 0;
+  return (
+    <div className={`flex items-center gap-1 px-2 py-1 rounded-lg ${positive ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
+      {positive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+      <span className="text-[10px] font-medium">{positive ? '+' : ''}{delta}%</span>
+    </div>
+  );
+};
+
+// Date windows matching the backend's parseDateRange semantics (stats.service.ts)
+const buildWindow = (period: 'week' | 'month' | 'year', month: number, year: number) => {
+  const now = new Date();
+  let start: Date;
+  let end: Date;
+  if (period === 'month') {
+    start = new Date(year, month, 1);
+    end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+  } else if (period === 'week') {
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7, 0, 0, 0, 0);
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  } else {
+    start = new Date(now.getFullYear(), 0, 1);
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  }
+  return { start, end };
+};
+
+// Equivalent previous period: previous calendar month for 'month', same-length window immediately before otherwise
+const prevWindowFor = (period: 'week' | 'month' | 'year', month: number, year: number) => {
+  if (period === 'month') {
+    const prevMonth = month === 0 ? 11 : month - 1;
+    const prevYear = month === 0 ? year - 1 : year;
+    return {
+      start: new Date(prevYear, prevMonth, 1),
+      end: new Date(prevYear, prevMonth + 1, 0, 23, 59, 59, 999),
+    };
+  }
+  const w = buildWindow(period, month, year);
+  const len = w.end.getTime() - w.start.getTime();
+  return {
+    start: new Date(w.start.getTime() - len),
+    end: new Date(w.start.getTime() - 1),
+  };
+};
+
 export default function CollaborateurStats() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, salonFilter, effectiveSalonIds } = useAuth();
+  const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -28,21 +88,58 @@ export default function CollaborateurStats() {
     }
   });
 
+  // Previous-period totals for real delta badges (vs the equivalent previous period)
+  const [prevTotals, setPrevTotals] = useState({
+    totalServices: 0,
+    inSalon: 0,
+    online: 0,
+    revenue: 0,
+    onlineRate: 0
+  });
+
   useEffect(() => {
     if (!isAuthenticated) return;
     setMounted(true);
     fetchStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, timeFilter, selectedMonth, selectedYear]);
+  }, [isAuthenticated, timeFilter, selectedMonth, selectedYear, salonFilterKey]);
+
+  const exportCSV = () => {
+    const header = ['Employé', 'Total Prestations', 'Pris en Salon', 'Pris en Ligne', 'Taux en Ligne (%)', "Chiffre d'affaires (MAD)"];
+    const rows = collaborators.map((c: { name: string; totalServices: number; inSalon: number; online: number; onlineRate: number; revenue: number }) => [
+      c.name, c.totalServices, c.inSalon, c.online, c.onlineRate, c.revenue
+    ]);
+    rows.push(['Total', totals.totalServices, totals.inSalon, totals.online, totals.onlineRate, totals.revenue]);
+    const csv = '\uFEFF' + [header, ...rows]
+      .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `statistiques-employes-${timeFilter}-${selectedMonth + 1}-${selectedYear}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const data = await api.getCollaborateursStats({
-        period: timeFilter,
-        month: selectedMonth,
-        year: selectedYear
-      });
+      const window = buildWindow(timeFilter, selectedMonth, selectedYear);
+      const prevWindow = prevWindowFor(timeFilter, selectedMonth, selectedYear);
+
+      const [data, prevData] = await Promise.all([
+        api.getCollaborateursStats({
+          period: timeFilter,
+          startDate: window.start.toISOString(),
+          endDate: window.end.toISOString()
+        }),
+        api.getCollaborateursStats({
+          period: timeFilter,
+          startDate: prevWindow.start.toISOString(),
+          endDate: prevWindow.end.toISOString()
+        })
+      ]);
 
       setStatsData({
         collaborators: data.collaborators || [],
@@ -53,6 +150,13 @@ export default function CollaborateurStats() {
           revenue: 0,
           onlineRate: 0
         }
+      });
+      setPrevTotals(prevData.totals || {
+        totalServices: 0,
+        inSalon: 0,
+        online: 0,
+        revenue: 0,
+        onlineRate: 0
       });
     } catch (err: any) {
       console.error('Error fetching collaborateurs stats:', err);
@@ -163,7 +267,7 @@ export default function CollaborateurStats() {
             </div>
             <div className="h-8 w-px bg-gray-200"></div>
             {/* Export Button */}
-            <button className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors">
+            <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors">
               <Download size={14} />
               Exporter
             </button>
@@ -178,10 +282,7 @@ export default function CollaborateurStats() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
               <Calendar size={20} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+18%</span>
-            </div>
+            <DeltaBadge current={totals.totalServices} previous={prevTotals.totalServices} />
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1 font-medium">Total Prestations</p>
@@ -194,10 +295,7 @@ export default function CollaborateurStats() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
               <Users size={20} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+12%</span>
-            </div>
+            <DeltaBadge current={totals.online} previous={prevTotals.online} />
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1 font-medium">Pris en Ligne</p>
@@ -210,10 +308,7 @@ export default function CollaborateurStats() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
               <TrendingUp size={20} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+24%</span>
-            </div>
+            <DeltaBadge current={totals.onlineRate} previous={prevTotals.onlineRate} />
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1 font-medium">Taux en Ligne</p>
@@ -226,13 +321,10 @@ export default function CollaborateurStats() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
               <DollarSign size={20} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+15%</span>
-            </div>
+            <DeltaBadge current={totals.revenue} previous={prevTotals.revenue} />
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium">Total des RDV</p>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Chiffre d&apos;affaires</p>
             <p className="text-3xl font-light text-gray-900">{totals.revenue.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD</p>
           </div>
         </div>
@@ -260,7 +352,7 @@ export default function CollaborateurStats() {
                   Taux en Ligne
                 </th>
                 <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total des RDV
+                  Chiffre d&apos;affaires
                 </th>
               </tr>
             </thead>

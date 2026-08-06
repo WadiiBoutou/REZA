@@ -13,6 +13,7 @@ import { seedRezaAccount } from './reza-account';
 import { seedSpaRoyalAccount } from './spa-royal-account';
 import { seedSubscriptionPlan } from './subscription-plan';
 import { seedSuperadmin } from './superadmin';
+import { seedRefill } from './refill-data';
 
 async function main() {
   console.log('🌱 REZA demo seed (mockdata branch)\n');
@@ -23,6 +24,10 @@ async function main() {
   await seedSuperadmin(prisma);
   await seedRezaAccount(prisma, plan);
   await seedSpaRoyalAccount(prisma, plan);
+
+  // Wipes data (already empty after cleanup) and generates the large test dataset:
+  // ~500 RDV, ~160 factures, ~70 avis, group bookings, billing scenarios.
+  await seedRefill(prisma);
 
   console.log('\n🎉 Seed complete\n');
   console.log('Logins:');

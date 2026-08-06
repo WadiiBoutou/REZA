@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, X, Star, MessageSquare, Eye, EyeOff, Reply, Trash2, Share2, ExternalLink, TrendingUp, User, Bubbles } from 'lucide-react';
+import { Search, Star, MessageSquare, Trash2, User, Bubbles } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { api } from '@/lib/api';
@@ -16,10 +16,6 @@ interface Review {
   service?: string;
   date: Date;
   status: 'approved';
-  isPublic: boolean;
-  views?: number;
-  reply?: string;
-  replyDate?: Date;
   employeeName?: string;
 }
 
@@ -28,10 +24,8 @@ export default function AvisModeresPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [ratingFilter, setRatingFilter] = useState<'all' | '1' | '2' | '3' | '4' | '5'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [showReplyModal, setShowReplyModal] = useState(false);
   const [showUnpublishModal, setShowUnpublishModal] = useState(false);
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
-  const [replyText, setReplyText] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -42,14 +36,14 @@ export default function AvisModeresPage() {
     try {
       setLoading(true);
       toast.loading('Chargement des avis modérés...', { id: 'loading-reviews' });
-      
+
       const response = await api.getApprovedReviews();
-      
+
       // Transform API response to match Review interface
       const formattedReviews: Review[] = (response.reviews || response || []).map((review: any) => ({
         id: review.id,
-        clientName: review.client 
-          ? `${review.client.firstName || ''} ${review.client.lastName || ''}`.trim() 
+        clientName: review.client
+          ? `${review.client.firstName || ''} ${review.client.lastName || ''}`.trim()
           : review.clientName || 'Client',
         clientEmail: review.client?.email || review.clientEmail || '',
         rating: review.rating || 0,
@@ -57,15 +51,11 @@ export default function AvisModeresPage() {
         service: review.service?.name || review.serviceName || review.service,
         date: review.createdAt ? new Date(review.createdAt) : new Date(),
         status: 'approved' as const,
-        isPublic: review.isPublic !== false, // Default to true if not specified
-        views: review.views || 0,
-        reply: review.reply || review.replyText,
-        replyDate: review.replyDate ? new Date(review.replyDate) : undefined,
-        employeeName: review.employee 
+        employeeName: review.employee
           ? `${review.employee.firstName || ''} ${review.employee.lastName || ''}`.trim()
           : review.employeeName,
       }));
-      
+
       setReviews(formattedReviews);
       toast.success(`${formattedReviews.length} avis modéré(s) chargé(s)`, { id: 'loading-reviews' });
     } catch (err: any) {
@@ -83,57 +73,11 @@ export default function AvisModeresPage() {
       review.clientEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
       review.comment.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (review.service && review.service.toLowerCase().includes(searchTerm.toLowerCase()));
-    
+
     const matchesRating = ratingFilter === 'all' || review.rating.toString() === ratingFilter;
-    
+
     return matchesSearch && matchesRating;
   });
-
-  const handleReply = (review: Review) => {
-    setSelectedReview(review);
-    setReplyText(review.reply || '');
-    setShowReplyModal(true);
-  };
-
-  const submitReply = async () => {
-    if (!selectedReview || !replyText.trim()) return;
-
-    try {
-      // TODO: Add API endpoint for replying to reviews if available
-      // For now, update local state
-      const updatedReviews = reviews.map(r =>
-        r.id === selectedReview.id
-          ? { ...r, reply: replyText, replyDate: new Date() }
-          : r
-      );
-      setReviews(updatedReviews);
-      toast.success('Réponse enregistrée');
-      setShowReplyModal(false);
-      setSelectedReview(null);
-      setReplyText('');
-    } catch (err: any) {
-      console.error('Error submitting reply:', err);
-      toast.error(err.message || 'Erreur lors de l\'enregistrement de la réponse');
-    }
-  };
-
-  const togglePublic = async (reviewId: string) => {
-    try {
-      const review = reviews.find(r => r.id === reviewId);
-      if (!review) return;
-
-      // TODO: Add API endpoint for toggling review visibility if available
-      // For now, update local state
-      const updatedReviews = reviews.map(r =>
-        r.id === reviewId ? { ...r, isPublic: !r.isPublic } : r
-      );
-      setReviews(updatedReviews);
-      toast.success(review.isPublic ? 'Avis rendu privé' : 'Avis rendu public');
-    } catch (err: any) {
-      console.error('Error toggling review visibility:', err);
-      toast.error(err.message || 'Erreur lors de la modification');
-    }
-  };
 
   const handleUnpublish = (review: Review) => {
     setSelectedReview(review);
@@ -146,14 +90,14 @@ export default function AvisModeresPage() {
     try {
       // Update review status to PENDING via API
       await api.moderateReview(selectedReview.id, 'PENDING');
-      
+
       const updatedReviews = reviews.filter(r => r.id !== selectedReview.id);
       setReviews(updatedReviews);
       toast.success('Avis renvoyé vers la modération');
-      
+
       setShowUnpublishModal(false);
       setSelectedReview(null);
-      
+
       // Refresh the list
       await fetchApprovedReviews();
     } catch (err: any) {
@@ -179,8 +123,6 @@ export default function AvisModeresPage() {
   const averageRating = reviews.length > 0
     ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
     : '0.0';
-
-  const totalViews = reviews.reduce((sum, r) => sum + (r.views || 0), 0);
 
   return (
     <div className="min-h-screen">
@@ -219,7 +161,7 @@ export default function AvisModeresPage() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-6 mb-8 animate-fadeIn">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8 animate-fadeIn">
         <div className="bg-white rounded-lg border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Note moyenne</span>
@@ -231,21 +173,21 @@ export default function AvisModeresPage() {
         </div>
         <div className="bg-white rounded-lg border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Total vues</span>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Total avis</span>
             <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center">
-              <Eye className="text-gray-600" size={16} />
+              <MessageSquare className="text-gray-600" size={16} />
             </div>
           </div>
-          <p className="text-3xl font-light text-black">{totalViews}</p>
+          <p className="text-3xl font-light text-black">{reviews.length}</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Publics</span>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">5 étoiles</span>
             <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center">
-              <ExternalLink className="text-emerald-600" size={16} />
+              <Star className="text-emerald-600" size={16} />
             </div>
           </div>
-          <p className="text-3xl font-light text-black">{reviews.filter(r => r.isPublic).length}</p>
+          <p className="text-3xl font-light text-black">{reviews.filter(r => r.rating === 5).length}</p>
         </div>
       </div>
 
@@ -323,51 +265,18 @@ export default function AvisModeresPage() {
                     {review.employeeName}
                   </span>
                 )}
-                <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium ${review.isPublic ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{review.isPublic ? 'Public' : 'Privé'}</span>
               </div>
               <div className="mb-4">
                 <p className="text-xs text-gray-600 line-clamp-3 leading-relaxed">{review.comment}</p>
               </div>
-              {review.reply && (
-                <div className="bg-blue-50 rounded-lg p-3 mb-4">
-                  <div className="flex items-start gap-2">
-                    <Reply size={12} className="text-blue-600 mt-1 shrink-0" />
-                    <div>
-                      <p className="text-xs text-blue-900 mb-1">{review.reply}</p>
-                      {review.replyDate && (
-                        <span className="text-[10px] text-blue-600">
-                          {format(new Date(review.replyDate), 'dd MMM yyyy', { locale: fr })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className="flex items-center gap-2 text-[10px] text-gray-400 mb-4 pb-4 border-b border-gray-100">
-                <Eye size={10} />
-                <span>{review.views || 0} vues</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleReply(review)}
-                  className="flex-1 px-3 py-2 bg-blue-50 text-blue-700 text-xs font-medium rounded-full hover:bg-blue-100 transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <Reply size={12} />
-                  {review.reply ? 'Modifier' : 'Répondre'}
-                </button>
-                <button
-                  onClick={() => togglePublic(review.id)}
-                  className="p-2 accent-text hover:text-blue-700 hover:bg-gray-100 rounded-full transition-colors"
-                  title={review.isPublic ? 'Rendre privé' : 'Rendre public'}
-                >
-                  {review.isPublic ? <Eye size={14} /> : <EyeOff size={14} />}
-                </button>
+              <div className="pt-4 border-t border-gray-100">
                 <button
                   onClick={() => handleUnpublish(review)}
-                  className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                  className="w-full px-3 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 border border-gray-200 rounded-full transition-colors flex items-center justify-center gap-1.5 text-xs font-medium"
                   title="Dépublier"
                 >
                   <Trash2 size={14} />
+                  Dépublier
                 </button>
               </div>
             </div>
@@ -387,8 +296,6 @@ export default function AvisModeresPage() {
                   <th className="px-6 py-4 text-left text-[10px] font-medium text-gray-400 uppercase tracking-wider hidden lg:table-cell">Service</th>
                   <th className="px-6 py-4 text-left text-[10px] font-medium text-gray-400 uppercase tracking-wider hidden xl:table-cell">Employé</th>
                   <th className="px-6 py-4 text-left text-[10px] font-medium text-gray-400 uppercase tracking-wider">Commentaire</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-medium text-gray-400 uppercase tracking-wider hidden md:table-cell">Statut</th>
-                  <th className="px-6 py-4 text-left text-[10px] font-medium text-gray-400 uppercase tracking-wider hidden xl:table-cell">Vues</th>
                   <th className="px-6 py-4 text-right text-[10px] font-medium text-gray-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -430,45 +337,10 @@ export default function AvisModeresPage() {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="max-w-md">
-                        <p className="text-xs text-gray-600 line-clamp-2 mb-1">{review.comment}</p>
-                        {review.reply && (
-                          <div className="flex items-start gap-1 mt-2">
-                            <Reply size={10} className="text-blue-600 mt-0.5 shrink-0" />
-                            <p className="text-xs text-blue-900 line-clamp-1">{review.reply}</p>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
-                      <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                        review.isPublic ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {review.isPublic ? 'Public' : 'Privé'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-xs text-gray-400 whitespace-nowrap hidden xl:table-cell">
-                      <div className="flex items-center gap-1">
-                        <Eye size={12} className="text-gray-400" />
-                        {review.views || 0}
-                      </div>
+                      <p className="text-xs text-gray-600 line-clamp-2 max-w-md">{review.comment}</p>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleReply(review)}
-                          className="p-2 accent-text hover:text-blue-700 hover:bg-gray-100 rounded-md transition-colors"
-                          title="Répondre"
-                        >
-                          <Reply size={14} />
-                        </button>
-                        <button
-                          onClick={() => togglePublic(review.id)}
-                          className="p-2 accent-text hover:text-blue-700 hover:bg-gray-100 rounded-md transition-colors"
-                          title={review.isPublic ? 'Rendre privé' : 'Rendre public'}
-                        >
-                          {review.isPublic ? <Eye size={14} /> : <EyeOff size={14} />}
-                        </button>
+                      <div className="flex items-center justify-end">
                         <button
                           onClick={() => handleUnpublish(review)}
                           className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
@@ -499,77 +371,6 @@ export default function AvisModeresPage() {
         </div>
       )}
 
-      {/* Reply Modal */}
-      {showReplyModal && selectedReview && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-slideUp">
-            <div className="sticky top-0 bg-white border-b border-gray-100 px-8 py-6 z-10">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
-                    <Reply className="accent-text" size={20} />
-                  </div>
-                  <h2 className="text-2xl font-light accent-text">Répondre à l'avis</h2>
-                </div>
-                <button 
-                  onClick={() => setShowReplyModal(false)}
-                  className="p-2 text-gray-400 hover:text-gray-900 transition-colors"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-            <div className="px-8 py-6">
-              <div className="bg-gray-50 rounded-lg p-6 mb-6">
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="w-12 h-12 rounded-full accent-bg flex items-center justify-center shrink-0">
-                    <span className="text-white font-medium text-lg">
-                      {selectedReview.clientName.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-gray-900 mb-1">{selectedReview.clientName}</h3>
-                    <div className="flex items-center gap-2 mb-2">
-                      {renderStars(selectedReview.rating)}
-                    </div>
-                  </div>
-                </div>
-                <p className="text-gray-700 text-sm leading-relaxed">{selectedReview.comment}</p>
-              </div>
-              <div className="mb-6">
-                <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">
-                  Votre réponse
-                </label>
-                <textarea
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  rows={6}
-                  placeholder="Rédigez votre réponse..."
-                  className="w-full px-4 py-3 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-900 focus:border-transparent transition-all resize-none"
-                />
-              </div>
-            </div>
-            <div className="sticky bottom-0 bg-white border-t border-gray-100 px-8 py-4 flex gap-3">
-              <button 
-                type="button"
-                onClick={() => setShowReplyModal(false)}
-                className="flex-1 px-6 py-2.5 text-sm font-medium accent-text hover:text-blue-700 transition-colors"
-              >
-                Annuler
-              </button>
-              <button 
-                type="button"
-                onClick={submitReply}
-                disabled={!replyText.trim()}
-                className="flex-1 px-6 py-2.5 accent-bg text-white text-sm font-medium rounded-full hover:bg-blue-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Publier la réponse
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Unpublish Modal */}
       {showUnpublishModal && selectedReview && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
@@ -586,14 +387,14 @@ export default function AvisModeresPage() {
               </p>
             </div>
             <div className="border-t border-gray-100 px-8 py-4 flex gap-3">
-              <button 
+              <button
                 type="button"
                 onClick={() => setShowUnpublishModal(false)}
                 className="flex-1 px-6 py-2.5 text-sm font-medium accent-text hover:text-blue-700 transition-colors"
               >
                 Annuler
               </button>
-              <button 
+              <button
                 type="button"
                 onClick={confirmUnpublish}
                 className="flex-1 px-6 py-2.5 bg-red-600 text-white text-sm font-medium rounded-full hover:bg-red-700 transition-colors"

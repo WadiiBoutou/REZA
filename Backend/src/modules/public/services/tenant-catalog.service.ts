@@ -77,9 +77,20 @@ export class TenantCatalogService {
           { domain: tenantId },
           { id: tenantId }
         ],
-        isActive: true
+        isActive: true,
+        subscriptionActive: true
       },
-      select: { id: true }
+      select: {
+        id: true,
+        employeesPaid: true,
+        account: {
+          select: {
+            subscription: {
+              select: { status: true, currentPeriodEnd: true }
+            }
+          }
+        }
+      }
     });
 
     if (!tenant) {
@@ -128,8 +139,21 @@ export class TenantCatalogService {
       return !status || status === 'active';
     });
 
+    // Billing coverage slice: only employees within the free threshold plus the
+    // paid covered count (for the current period) are shown publicly. Employees
+    // added beyond coverage stay hidden until the owner pays the difference.
+    const sub = tenant.account?.subscription;
+    const periodActive =
+      sub?.status === 'ACTIVE' &&
+      (!sub.currentPeriodEnd || sub.currentPeriodEnd.getTime() > Date.now());
+    const covered =
+      (await this.getFreeEmployeeThreshold()) + (periodActive ? (tenant.employeesPaid ?? 0) : 0);
+    const visibleEmployees = covered >= filteredEmployees.length
+      ? filteredEmployees
+      : filteredEmployees.slice(0, Math.max(0, covered));
+
     // Transform employees to include services array
-    const employeesWithServices = filteredEmployees.map(employee => ({
+    const employeesWithServices = visibleEmployees.map(employee => ({
       id: employee.id,
       firstName: employee.firstName,
       lastName: employee.lastName,
@@ -144,6 +168,16 @@ export class TenantCatalogService {
   } catch (error) {
     throw error;
   }
+  }
+
+  /** Free employee threshold from the platform billing config (defaults to 2). */
+  private async getFreeEmployeeThreshold(): Promise<number> {
+    try {
+      const config = await prisma.billingConfig.findUnique({ where: { id: 'default' } });
+      return config?.freeEmployeeThreshold ?? 2;
+    } catch {
+      return 2;
+    }
   }
 
   async getTenantReviews(tenantId: string, query: Record<string, unknown>) {

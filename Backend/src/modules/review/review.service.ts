@@ -26,6 +26,12 @@ export class ReviewService {
               lastName: true,
               email: true
             }
+          },
+          appointment: {
+            include: {
+              service: { select: { name: true } },
+              employee: { select: { firstName: true, lastName: true } }
+            }
           }
         }
       }),
@@ -156,7 +162,9 @@ export class ReviewService {
       data: {
         status,
         moderatedBy: userId,
-        moderatedAt: new Date()
+        moderatedAt: new Date(),
+        // Persist the rejection reason (cleared on non-rejection)
+        rejectReason: status === 'REJECTED' ? input.rejectReason || null : null
       },
       include: {
         client: true
@@ -164,6 +172,33 @@ export class ReviewService {
     });
 
     return { review: updated };
+  }
+
+  /**
+   * Hard-delete a review — RESTRICTED to REJECTED-status reviews (moderation purge).
+   * Active/approved reviews can't be removed through this endpoint.
+   */
+  async deleteReview(tenantId: string, reviewId: string) {
+    const review = await prisma.review.findFirst({
+      where: { id: reviewId, tenantId },
+    });
+
+    if (!review) {
+      throw {
+        status: 404,
+        error: 'Review not found',
+      };
+    }
+
+    if (review.status !== 'REJECTED') {
+      throw {
+        status: 400,
+        error: 'Seuls les avis refusés peuvent être supprimés définitivement.',
+      };
+    }
+
+    await prisma.review.delete({ where: { id: reviewId } });
+    return { success: true };
   }
 }
 

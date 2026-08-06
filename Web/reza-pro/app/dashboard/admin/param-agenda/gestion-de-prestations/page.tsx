@@ -1426,18 +1426,6 @@ const ServiceModal = ({
                 </div>
               </div>
             </div>
-
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="onQuote"
-                checked={formData.onQuote}
-                onCheckedChange={(checked) => setFormData({ ...formData, onQuote: !!checked })}
-                className="w-4 h-4 rounded-full text-[#002366] border-gray-300 focus:ring-gray-900"
-              />
-              <label htmlFor="onQuote" className="text-sm text-gray-700">
-                Sur devis
-              </label>
-            </div>
           </div>
 
           {/* Category & Visibility */}
@@ -1483,14 +1471,14 @@ const ServiceModal = ({
             </div>
           </div>
 
-          {/* Collaborateurs */}
+          {/* Employés */}
           {showAdvanced && (
             <div className="space-y-4">
               <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Collaborateurs
+                Employés
               </h3>
               <p className="text-xs text-gray-500">
-                Sélectionnez les collaborateurs qui peuvent effectuer cette prestation
+                Sélectionnez les employés qui peuvent effectuer cette prestation
               </p>
 
               <div className="space-y-3">

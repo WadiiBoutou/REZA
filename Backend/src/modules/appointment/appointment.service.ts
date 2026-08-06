@@ -269,6 +269,7 @@ export class AppointmentService {
         endTime,
         duration,
         status: data.status || 'CONFIRMED',
+        source: isPublicBooking ? 'ONLINE' : 'STAFF',
         notes: stripGeneratedServicesNotes(data.notes),
         services: {
           create: services.map((service, index) => ({

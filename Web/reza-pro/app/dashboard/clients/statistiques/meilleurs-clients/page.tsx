@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Trophy } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 import {
   Select,
@@ -24,6 +25,8 @@ type TopClient = {
 };
 
 export default function MeilleursClientsPage() {
+  const { salonFilter, effectiveSalonIds } = useAuth();
+  const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<'all' | 'year' | 'month'>('all');
   const [clients, setClients] = useState<TopClient[]>([]);
@@ -42,7 +45,7 @@ export default function MeilleursClientsPage() {
       }
     };
     load();
-  }, [period]);
+  }, [period, salonFilterKey]);
 
   return (
     <div className="p-8">
@@ -83,7 +86,7 @@ export default function MeilleursClientsPage() {
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Client</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Contact</th>
                 <th className="text-right px-4 py-3 font-medium text-gray-600">Visites</th>
-                <th className="text-right px-4 py-3 font-medium text-gray-600">CA (MAD)</th>
+                <th className="text-right px-4 py-3 font-medium text-gray-600">MAD</th>
               </tr>
             </thead>
             <tbody>

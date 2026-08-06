@@ -665,6 +665,7 @@ export class BookingService {
             serviceId: participant.services[0].id,
             employeeId: participant.serviceEmployees ? null : participant.userEmployeeId,
             createdById: systemUser.id,
+            source: 'ONLINE',
             startTime: participant.startTime,
             endTime: participant.endTime,
             duration: participant.duration,

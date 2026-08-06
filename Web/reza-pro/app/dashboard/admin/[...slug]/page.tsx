@@ -13,17 +13,12 @@ const createDynamicPageLoader = (routePath: string) => {
   const routeToPathMap: Record<string, () => Promise<any>> = {
     // Paramétrage Établissement
     'param-etablissement/informations-landing-page': () => import('../param-etablissement/informations-landing-page/page'),
-    'param-etablissement/gestion-photos': () => import('../param-etablissement/gestion-photos/page'),
     'param-etablissement/gestion-horaires-delais': () => import('../param-etablissement/gestion-horaires-delais/page'),
-    'param-etablissement/descriptif-etablissement': () => import('../param-etablissement/descriptif-etablissement/page'),
-    'param-etablissement/gestion-liste-attente': () => import('../param-etablissement/gestion-liste-attente/page'),
-    'param-etablissement/gestion-message': () => import('../param-etablissement/gestion-message/page'),
     'param-etablissement/notifications-rdv-web': () => import('../param-etablissement/notifications-rdv-web/page'),
     'param-etablissement/moyen-de-paiement': () => import('../param-etablissement/moyen-de-paiement/page'),
     
     // Paramétrage Agenda
     'param-agenda/gestion-de-prestations': () => import('../param-agenda/gestion-de-prestations/page'),
-    'param-agenda/gestion-des-agendas': () => import('../param-agenda/gestion-des-agendas/page'),
     'param-agenda/gestion-affichage-rdv': () => import('../param-agenda/gestion-affichage-rdv/page'),
     
     // Statistiques RDV
@@ -31,7 +26,6 @@ const createDynamicPageLoader = (routePath: string) => {
     'statistiques-rdv/autres': () => import('../statistiques-rdv/autres/page'),
     'statistiques-rdv/prestations': () => import('../statistiques-rdv/prestations/page'),
     'statistiques-rdv/rdv': () => import('../statistiques-rdv/rdv/page'),
-    'statistiques-rdv/rdv-pas-venus': () => import('../statistiques-rdv/rdv-pas-venus/page'),
     
     // Taux d'occupation
     'taux-occupation/prestations': () => import('../taux-occupation/prestations/page'),
@@ -132,6 +126,12 @@ export default function DynamicAdminPage({ params }: { params: Promise<{ slug: s
         // If this is a parent route, redirect to default sub-route
         if (defaultRedirects[routeKey]) {
           router.replace(`/dashboard/admin/${defaultRedirects[routeKey]}`);
+          return;
+        }
+
+        // Employee management moved to /dashboard/personels/gestion — keep old deep links working
+        if (routeKey === 'param-agenda/gestion-des-agendas') {
+          router.replace('/dashboard/personels/gestion');
           return;
         }
         

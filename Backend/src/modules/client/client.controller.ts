@@ -102,7 +102,7 @@ export class ClientController {
 
   async mergeClients(req: Request, res: Response, next: NextFunction) {
     try {
-      const { primaryClientId, duplicateClientIds } = req.body;
+      const { primaryClientId, duplicateClientIds, fields } = req.body;
       if (!primaryClientId || !Array.isArray(duplicateClientIds) || duplicateClientIds.length === 0) {
         return res.status(400).json({
           error: 'Invalid request',
@@ -113,7 +113,8 @@ export class ClientController {
       await clientService.mergeClients(
         req.salonIds || [req.tenantId!],
         primaryClientId,
-        duplicateClientIds
+        duplicateClientIds,
+        fields
       );
       res.json({ 
         message: 'Clients merged successfully',

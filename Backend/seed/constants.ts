@@ -76,6 +76,27 @@ export const EMPLOYEE_WORKING_HOURS = [
 ];
 
 /**
+ * Deterministic birth date for a demo client (spread across ages 19–64 so the
+ * "Répartition par âge" stat has data in every bucket). Same email always maps
+ * to the same date — safe to re-run the seed or backfill repeatedly.
+ */
+export function birthDateFor(email: string): string {
+  let hash = 0;
+  const seed = `birth|${email}`;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  const age = 19 + (hash % 46); // 19..64
+  const year = new Date().getFullYear() - age;
+  const month = (hash % 12) + 1;
+  const day = (hash % 27) + 1;
+  const y = year.toString().padStart(4, '0');
+  const m = month.toString().padStart(2, '0');
+  const d = day.toString().padStart(2, '0');
+  return `${y}-${m}-${d}T00:00:00.000Z`;
+}
+
+/**
  * Deterministic avatar URL for a demo person.
  *
  * Uses randomuser.me portraits (stable, internet-hosted real-people photos)

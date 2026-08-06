@@ -21,4 +21,10 @@ router.post('/', (req, res, next) => reviewController.createReview(req, res, nex
  */
 router.put('/:id/status', (req, res, next) => reviewController.updateReviewStatus(req, res, next));
 
+/**
+ * DELETE /api/reviews/:id
+ * Permanently delete a review — RESTRICTED to REJECTED-status reviews (moderation purge)
+ */
+router.delete('/:id', (req, res, next) => reviewController.deleteReview(req, res, next));
+
 export default router;

@@ -552,13 +552,13 @@ const ClientsSidebar = () => {
 		avis: [
 			{ label: 'Avis à modérer', path: '/dashboard/clients/mes-avis/avis-a-moderer' },
 			{ label: 'Avis modérés', path: '/dashboard/clients/mes-avis/avis-moderes' },
-			{ label: 'Avis refusés', path: '/dashboard/clients/mes-avis/avis-refuses' },
-			{ label: 'Statistiques avis', path: '/dashboard/clients/mes-avis/statistiques-avis' }
+			{ label: 'Avis refusés', path: '/dashboard/clients/mes-avis/avis-refuses' }
 		],
 		stats: [
 			{ label: '100 meilleurs clients', path: '/dashboard/clients/statistiques/meilleurs-clients' },
 			{ label: 'Nouveaux clients', path: '/dashboard/clients/statistiques/nouveaux-clients' },
-			{ label: 'Fréquences globales', path: '/dashboard/clients/statistiques/frequences-globales' }
+			{ label: 'Fréquences globales', path: '/dashboard/clients/statistiques/frequences-globales' },
+			{ label: 'Statistiques avis', path: '/dashboard/clients/statistiques/avis' }
 		]
 	};
 
@@ -732,10 +732,6 @@ const AdminSidebar = () => {
 
 	const paramEtablissementLinks = [
 		{ label: 'Informations Landing Page', path: '/dashboard/admin/param-etablissement/informations-landing-page' },
-		{ label: 'Descriptif établissement', path: '/dashboard/admin/param-etablissement/descriptif-etablissement' },
-		{ label: 'Gestion photos', path: '/dashboard/admin/param-etablissement/gestion-photos' },
-		{ label: 'Gestion liste d\'attente', path: '/dashboard/admin/param-etablissement/gestion-liste-attente' },
-		{ label: 'Gestion messages', path: '/dashboard/admin/param-etablissement/gestion-message' },
 		{ label: 'Notifications RDV Web', path: '/dashboard/admin/param-etablissement/notifications-rdv-web' },
 		{ label: 'Moyen de paiement', path: '/dashboard/admin/param-etablissement/moyen-de-paiement' },
 	];
@@ -744,8 +740,7 @@ const AdminSidebar = () => {
 	    { label: 'Indicateurs clés', path: '/dashboard/admin/statistiques-rdv/indicateurs-cles' },
 	    { label: 'Autres indicateurs', path: '/dashboard/admin/statistiques-rdv/autres' },
 	    { label: 'Prestations', path: '/dashboard/admin/statistiques-rdv/prestations' },
-	    { label: 'RDV', path: '/dashboard/admin/statistiques-rdv/rdv' },
-	    { label: 'RDV pas venus', path: '/dashboard/admin/statistiques-rdv/rdv-pas-venus' },
+    { label: 'RDV', path: '/dashboard/admin/statistiques-rdv/rdv' },
 	];
 
 	useEffect(() => {
@@ -769,7 +764,7 @@ const AdminSidebar = () => {
 		if (pathname?.startsWith('/dashboard/admin/corbeille-rdv')) {
 			setShowCorbeilleRDV(true);
 		}
-		if (pathname?.startsWith('/dashboard/admin/mes-factures')) {
+		if (pathname?.startsWith('/dashboard/admin/mes-factures') || pathname?.startsWith('/dashboard/admin/mon-abonnement')) {
 			setShowMesFactures(true);
 		}
 	}, [pathname]);
@@ -966,10 +961,16 @@ const AdminSidebar = () => {
 					{showMesFactures && (
 						<div className="space-y-1 animate-fadeIn">
 							<Link
-								href="/dashboard/admin/mes-factures/liste-des-factures"
-								className={`block w-full px-3 py-2 text-left text-sm rounded-full transition-all ${pathname === '/dashboard/admin/mes-factures/liste-des-factures' ? 'bg-[#002366] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+								href="/dashboard/admin/mes-factures"
+								className={`block w-full px-3 py-2 text-left text-sm rounded-full transition-all ${pathname === '/dashboard/admin/mes-factures' ? 'bg-[#002366] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
 							>
-								Liste des factures
+								Mes factures
+							</Link>
+							<Link
+								href="/dashboard/admin/mon-abonnement"
+								className={`block w-full px-3 py-2 text-left text-sm rounded-full transition-all ${pathname === '/dashboard/admin/mon-abonnement' ? 'bg-[#002366] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+							>
+								Mon abonnement
 							</Link>
 							<Link
 								href="/dashboard/admin/mes-factures/moyen-paiement-plateforme"

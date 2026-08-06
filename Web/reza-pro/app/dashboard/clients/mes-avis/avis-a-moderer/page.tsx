@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, X, Star, ThumbsUp, ThumbsDown, Mail, Check, AlertCircle, Eye, Grid3x3, List, User, Bubbles } from 'lucide-react';
+import { Search, X, Star, ThumbsUp, ThumbsDown, Mail, Check, AlertCircle, User, Bubbles } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -100,7 +100,11 @@ export default function AvisAModererPage() {
 
     try {
       const status = actionType === 'approve' ? 'APPROVED' : 'REJECTED';
-      await api.moderateReview(selectedReview.id, status);
+      await api.moderateReview(
+        selectedReview.id,
+        status,
+        status === 'REJECTED' && rejectReason.trim() ? rejectReason.trim() : undefined
+      );
       
       // Remove from list
       const updatedReviews = reviews.filter(r => r.id !== selectedReview.id);
@@ -219,12 +223,6 @@ export default function AvisAModererPage() {
                     </div>
                   </div>
                 </div>
-                <button
-                  className="text-gray-400 text-xs underline hover:text-gray-900 transition-colors p-1"
-                  title="Voir détails"
-                >
-                  RDV
-                </button>
               </div>
 
               {/* Service & Date */}

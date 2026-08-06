@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, X, Star, AlertCircle, RotateCcw, Trash2, MessageSquare, Eye, Bubbles, User, Scissors, FileText } from 'lucide-react';
+import { Search, X, Star, AlertCircle, RotateCcw, Trash2, MessageSquare, Eye, Bubbles, User, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface RejectedReview {
   id: string;
@@ -29,6 +30,7 @@ export default function AvisRefusesPage() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [selectedReview, setSelectedReview] = useState<RejectedReview | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -96,6 +98,28 @@ export default function AvisRefusesPage() {
     setShowRestoreModal(true);
   };
 
+  const handleDelete = (review: RejectedReview) => {
+    setSelectedReview(review);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedReview) return;
+    setDeleting(true);
+    try {
+      await api.deleteReview(selectedReview.id);
+      // Remove from the current list without a full reload.
+      setReviews(prev => prev.filter(r => r.id !== selectedReview.id));
+      toast.success('Avis supprimé définitivement');
+      setSelectedReview(null);
+    } catch (err: any) {
+      console.error('Error deleting review:', err);
+      toast.error(err.message || 'Erreur lors de la suppression de l\'avis');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const confirmRestore = async () => {
     if (!selectedReview) return;
 
@@ -115,34 +139,6 @@ export default function AvisRefusesPage() {
     } catch (err: any) {
       console.error('Error restoring review:', err);
       toast.error(err.message || 'Erreur lors de la restauration');
-    }
-  };
-
-  const handleDelete = (review: RejectedReview) => {
-    setSelectedReview(review);
-    setShowDeleteModal(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!selectedReview) return;
-
-    try {
-      // TODO: Add API endpoint for deleting reviews if available
-      // For now, we'll use the moderateReview endpoint or a delete endpoint if it exists
-      // await api.deleteReview(selectedReview.id);
-      
-      const updatedReviews = reviews.filter(r => r.id !== selectedReview.id);
-      setReviews(updatedReviews);
-      toast.success('Avis supprimé');
-      
-      setShowDeleteModal(false);
-      setSelectedReview(null);
-      
-      // Refresh the list
-      await fetchRejectedReviews();
-    } catch (err: any) {
-      console.error('Error deleting review:', err);
-      toast.error(err.message || 'Erreur lors de la suppression');
     }
   };
 
@@ -458,7 +454,7 @@ export default function AvisRefusesPage() {
                         <button
                           onClick={() => handleDelete(review)}
                           className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                          title="Supprimer"
+                          title="Supprimer définitivement"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -562,6 +558,19 @@ export default function AvisRefusesPage() {
         </div>
       )}
 
+      {/* Delete Confirmation Dialog (standard destructive pattern) */}
+      <ConfirmDialog
+        open={showDeleteModal}
+        onOpenChange={setShowDeleteModal}
+        onConfirm={confirmDelete}
+        title="Supprimer définitivement cet avis ?"
+        description={`L'avis de "${selectedReview?.clientName || 'ce client'}" sera supprimé de manière permanente. Cette action est irréversible.`}
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        variant="destructive"
+        loading={deleting}
+      />
+
       {/* Restore Modal */}
       {showRestoreModal && selectedReview && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
@@ -595,38 +604,6 @@ export default function AvisRefusesPage() {
         </div>
       )}
 
-      {/* Delete Modal */}
-      {showDeleteModal && selectedReview && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full animate-slideUp">
-            <div className="px-8 py-6">
-              <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
-                <Trash2 className="text-red-600" size={24} />
-              </div>
-              <h2 className="text-xl font-medium text-gray-900 text-center mb-2">
-                Supprimer définitivement ?
-              </h2>
-              <p className="text-sm text-gray-600 text-center mb-6">
-                Cette action est irréversible. L'avis sera supprimé de manière permanente.
-              </p>
-            </div>
-            <div className="border-t border-gray-100 px-8 py-4 flex gap-3">
-              <button 
-                onClick={() => setShowDeleteModal(false)}
-                className="flex-1 px-6 py-2.5 text-sm font-medium accent-text hover:text-blue-700 transition-colors"
-              >
-                Annuler
-              </button>
-              <button 
-                onClick={confirmDelete}
-                className="flex-1 px-6 py-2.5 bg-red-600 text-white text-sm font-medium rounded-full hover:bg-red-700 transition-colors"
-              >
-                Supprimer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

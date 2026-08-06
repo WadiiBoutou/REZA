@@ -1,15 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, TrendingUp, Users, Clock, ArrowUpRight, Instagram, ArrowDownRight,ChevronLeft,ChevronRight, DollarSign, Phone, Mail, MapPin, Eye, Star, MessageSquare, BarChart3, PieChart, FileText, Download, Globe, Smartphone, Store, Loader2 } from 'lucide-react';
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart as RePieChart, Pie } from 'recharts';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Calendar, TrendingUp, Users, Clock, ArrowDownRight, ChevronLeft, ChevronRight, Star, BarChart3, Download, Globe, Store, Loader2 } from 'lucide-react';
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -20,6 +13,7 @@ export default function SMEDashboard() {
   // Add month picker state
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [employeePage, setEmployeePage] = useState(1);
 
   // Dashboard data state
   const [dashboardData, setDashboardData] = useState({
@@ -53,7 +47,9 @@ export default function SMEDashboard() {
     // Demographics
     ageDistribution: [] as any[],
     visitFrequency: [] as any[],
-    timePreferences: [] as any[]
+    timePreferences: [] as any[],
+    // Real period-over-period deltas (null = no previous-period data)
+    deltas: {} as Record<string, number | null>
   });
 
   useEffect(() => {
@@ -96,7 +92,8 @@ export default function SMEDashboard() {
         bookingChannels: data.bookingChannels || [],
         ageDistribution: data.ageDistribution || [],
         visitFrequency: data.visitFrequency || [],
-        timePreferences: data.timePreferences || []
+        timePreferences: data.timePreferences || [],
+        deltas: data.deltas || {}
       });
     } catch (err: any) {
       console.error('Error fetching dashboard data:', err);
@@ -135,11 +132,33 @@ export default function SMEDashboard() {
   // Time slot popularity - use real data only
   const timeSlotData = dashboardData.timeSlotData || [];
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  // Real period-over-period delta badge (value null → hidden: no previous-period data).
+  const DeltaBadge = ({ value, suffix = '%' }: { value: number | null | undefined; suffix?: string }) => {
+    if (value === null || value === undefined || isNaN(value)) return null;
+    const positive = value >= 0;
+    const Icon = positive ? TrendingUp : ArrowDownRight;
+    return (
+      <div className={`flex items-center gap-1 px-2 py-1 rounded-lg ${positive ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
+        <Icon size={12} />
+        <span className="text-[10px] font-medium">{positive ? '+' : ''}{value}{suffix}</span>
+      </div>
+    );
+  };
+
+  // Shows the exact value(s) at the hovered point — the x label plus EVERY
+  // series at that point (each with its own color), not just the first/peak one.
+  const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white px-3 py-2 rounded-lg shadow-lg border border-gray-100">
-          <p className="text-sm font-medium text-gray-900">{payload[0].value}</p>
+          {label !== undefined && label !== '' && (
+            <p className="text-xs font-medium text-gray-400 mb-1">{label}</p>
+          )}
+          {payload.map((entry: any, i: number) => (
+            <p key={i} className="text-sm font-medium" style={{ color: entry.color || entry.stroke || '#111827' }}>
+              {entry.name}: {typeof entry.value === 'number' ? entry.value.toLocaleString('fr-FR') : entry.value}
+            </p>
+          ))}
         </div>
       );
     }
@@ -242,10 +261,7 @@ export default function SMEDashboard() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <Calendar size={18} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+12%</span>
-            </div>
+            <DeltaBadge value={dashboardData.deltas.onlineAppointments} />
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-1">Nombre de RDV en ligne</p>
@@ -259,10 +275,7 @@ export default function SMEDashboard() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <Users size={18} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+8%</span>
-            </div>
+            <DeltaBadge value={dashboardData.deltas.totalAppointments} />
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-1">Nombre de RDV</p>
@@ -276,10 +289,7 @@ export default function SMEDashboard() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <BarChart3 size={18} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+15%</span>
-            </div>
+            <DeltaBadge value={dashboardData.deltas.onlineRate} />
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-1">Taux en ligne</p>
@@ -293,10 +303,7 @@ export default function SMEDashboard() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <Download size={18} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+5%</span>
-            </div>
+            <DeltaBadge value={dashboardData.deltas.newOnlineClients} />
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-1">Nouveaux clients en ligne</p>
@@ -310,10 +317,7 @@ export default function SMEDashboard() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <Clock size={18} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+2%</span>
-            </div>
+            <DeltaBadge value={dashboardData.deltas.newSalonClients} />
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-1">Nouveaux clients en salon</p>
@@ -409,6 +413,7 @@ export default function SMEDashboard() {
                   stroke="#002366" 
                   strokeWidth={2}
                   fill="url(#colorRevenue)" 
+                  name="CA (MAD)"
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -494,7 +499,7 @@ export default function SMEDashboard() {
                   tickLine={false}
                 />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="count" name="RDV" radius={[4, 4, 0, 0]}>
                   {timeSlotData.map((entry, index) => (
                     <Cell 
                       key={`cell-${index}`} 
@@ -528,10 +533,7 @@ export default function SMEDashboard() {
                   <p className="text-lg font-medium text-gray-900">{dashboardData.attendanceRate.toFixed(1)}%</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1 text-emerald-600">
-                <ArrowUpRight size={14} />
-                <span className="text-xs font-medium">+3.2%</span>
-              </div>
+              <DeltaBadge value={dashboardData.deltas.attendanceRate} />
             </div>
 
             <div className="flex items-center justify-between">
@@ -544,10 +546,7 @@ export default function SMEDashboard() {
                   <p className="text-lg font-medium text-gray-900">{dashboardData.avgDuration} min</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1 text-emerald-600">
-                <ArrowUpRight size={14} />
-                <span className="text-xs font-medium">+5 min</span>
-              </div>
+              <DeltaBadge value={dashboardData.deltas.avgDuration} suffix=" min" />
             </div>
 
             <div className="flex items-center justify-between">
@@ -560,10 +559,7 @@ export default function SMEDashboard() {
                   <p className="text-lg font-medium text-gray-900">{dashboardData.avgSatisfaction.toFixed(1)}/5</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1 text-emerald-600">
-                <ArrowUpRight size={14} />
-                <span className="text-xs font-medium">+0.3</span>
-              </div>
+              <DeltaBadge value={dashboardData.deltas.avgSatisfaction} suffix="" />
             </div>
 
             <div className="flex items-center justify-between">
@@ -576,10 +572,7 @@ export default function SMEDashboard() {
                   <p className="text-lg font-medium text-gray-900">{dashboardData.loyaltyRate.toFixed(0)}%</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1 text-emerald-600">
-                <ArrowUpRight size={14} />
-                <span className="text-xs font-medium">+8%</span>
-              </div>
+              <DeltaBadge value={dashboardData.deltas.loyaltyRate} />
             </div>
           </div>
         </div>
@@ -587,22 +580,54 @@ export default function SMEDashboard() {
 
       {/* Employee Performance */}
       <div className="animate-fadeIn">
-        <div className="mb-6">
-          <h2 className="text-2xl font-light text-gray-900 mb-1">Performance des employés</h2>
-          <p className="text-xs text-gray-400">Statistiques individuelles du mois</p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-light text-gray-900 mb-1">Performance des employés</h2>
+            <p className="text-xs text-gray-400">Statistiques individuelles du mois</p>
+          </div>
+          {employeeData.length > 8 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setEmployeePage(p => Math.max(1, p - 1))}
+                disabled={employeePage === 1}
+                className="p-2 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-xs font-medium text-gray-700 min-w-[60px] text-center">
+                {employeePage} / {Math.ceil(employeeData.length / 8)}
+              </span>
+              <button
+                onClick={() => setEmployeePage(p => Math.min(Math.ceil(employeeData.length / 8), p + 1))}
+                disabled={employeePage === Math.ceil(employeeData.length / 8)}
+                className="p-2 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4">
-          {employeeData.map((employee, index) => (
+          {employeeData.slice((employeePage - 1) * 8, employeePage * 8).map((employee, index) => (
             <div key={index} className="bg-white rounded-lg border border-gray-100 p-6 hover:shadow-md transition-all">
               <div className="flex items-center justify-between">
                 {/* Employee Info */}
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                    <span className="text-sm font-medium text-gray-700">
-                      {employee.name.split(' ').map((n: string) => n[0]).join('')}
-                    </span>
-                  </div>
+                  {employee.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={employee.avatar}
+                      alt={employee.name}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                      <span className="text-sm font-medium text-gray-700">
+                        {employee.name.split(' ').map((n: string) => n[0]).join('')}
+                      </span>
+                    </div>
+                  )}
                   <div>
                     <h3 className="text-sm font-medium text-gray-900">{employee.name}</h3>
                     <p className="text-xs text-gray-400">Praticien</p>
@@ -627,11 +652,6 @@ export default function SMEDashboard() {
                       <Star size={14} className="text-[#002366] fill-[#002366]" />
                       <p className="text-lg font-medium text-gray-900">{employee.rating}</p>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full">
-                    <ArrowUpRight size={12} />
-                    <span className="text-xs font-medium">{employee.growth}</span>
                   </div>
                 </div>
               </div>
@@ -661,10 +681,7 @@ export default function SMEDashboard() {
         <div className="bg-white rounded-lg border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs text-gray-400">Taux d'annulation</p>
-            <div className="flex items-center gap-1 text-emerald-600">
-              <ArrowDownRight size={12} />
-              <span className="text-[10px] font-medium">-2.1%</span>
-            </div>
+            <DeltaBadge value={dashboardData.deltas.cancellationRate} />
           </div>
           <p className="text-2xl font-light text-gray-900 mb-1">{dashboardData.cancellationRate.toFixed(1)}%</p>
           <p className="text-xs text-gray-500">En baisse ce mois</p>
@@ -673,10 +690,7 @@ export default function SMEDashboard() {
         <div className="bg-white rounded-lg border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs text-gray-400">Réservations anticipées</p>
-            <div className="flex items-center gap-1 text-emerald-600">
-              <ArrowUpRight size={12} />
-              <span className="text-[10px] font-medium">+18%</span>
-            </div>
+            <DeltaBadge value={dashboardData.deltas.advanceBookingRate} />
           </div>
           <p className="text-2xl font-light text-gray-900 mb-1">{dashboardData.advanceBookingRate.toFixed(0)}%</p>
           <p className="text-xs text-gray-500">Plus de 2 jours</p>
@@ -685,10 +699,7 @@ export default function SMEDashboard() {
         <div className="bg-white rounded-lg border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs text-gray-400">Panier moyen</p>
-            <div className="flex items-center gap-1 text-emerald-600">
-              <ArrowUpRight size={12} />
-              <span className="text-[10px] font-medium">+8.5%</span>
-            </div>
+            <DeltaBadge value={dashboardData.deltas.avgBasket} />
           </div>
           <p className="text-2xl font-light text-gray-900 mb-1">{dashboardData.avgBasket.toLocaleString()} MAD</p>
           <p className="text-xs text-gray-500">Par rendez-vous</p>
@@ -697,10 +708,7 @@ export default function SMEDashboard() {
         <div className="bg-white rounded-lg border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs text-gray-400">Clients fidèles</p>
-            <div className="flex items-center gap-1 text-emerald-600">
-              <ArrowUpRight size={12} />
-              <span className="text-[10px] font-medium">+12%</span>
-            </div>
+            <DeltaBadge value={dashboardData.deltas.loyalClientsCount} />
           </div>
           <p className="text-2xl font-light text-gray-900 mb-1">{dashboardData.loyalClientsCount}</p>
           <p className="text-xs text-gray-500">3+ visites</p>
@@ -751,11 +759,10 @@ export default function SMEDashboard() {
               dashboardData.bookingChannels.map((channel: any, index: number) => {
                 const total = dashboardData.bookingChannels.reduce((sum: number, c: any) => sum + c.count, 0);
                 const percentage = total > 0 ? Math.round((channel.count / total) * 100) : 0;
+                // Only two booking origins are tracked in the data model: online (Site web)
+                // and staff-created (En salon). Instagram/WhatsApp/phone are not recorded.
                 const icons: { [key: string]: React.ReactElement } = {
                   globe: <Globe size={18} className="text-[#002366]" />,
-                  instagram: <Instagram size={18} className="text-[#002366]" />,
-                  whatsapp: <WhatsAppIcon />,
-                  phone: <Phone size={18} className="text-[#002366]" />,
                   store: <Store size={18} className="text-[#002366]" />
                 };
                 return (
@@ -831,8 +838,8 @@ export default function SMEDashboard() {
 
           <div className="bg-white rounded-lg border border-gray-100 p-6">
             <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-900 mb-1">Fréquence de visite</h3>
-              <p className="text-xs text-gray-400">Comportement client</p>
+              <h3 className="text-sm font-medium text-gray-900 mb-1">Répartition (période sélectionnée)</h3>
+              <p className="text-xs text-gray-400">Fréquence des visites sur la période</p>
             </div>
             <div className="space-y-4">
               {dashboardData.visitFrequency.length > 0 ? (
@@ -872,11 +879,12 @@ export default function SMEDashboard() {
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs text-gray-600 w-20">{day.day}</span>
                         <div className="flex-1 flex gap-1">
+                          {/* Distinct hues per time-of-day: amber = matin, bleu nuit = après-midi, violet = soir */}
                           <div 
-                            className="h-6 bg-blue-100 rounded transition-all duration-500 flex items-center justify-center"
+                            className="h-6 bg-amber-300 rounded transition-all duration-500 flex items-center justify-center"
                             style={{ width: `${day.morning}%` }}
                           >
-                            {day.morning > 25 && <span className="text-[9px] text-blue-600 font-medium">{day.morning}%</span>}
+                            {day.morning > 25 && <span className="text-[9px] text-amber-900 font-medium">{day.morning}%</span>}
                           </div>
                           <div 
                             className="h-6 bg-[#002366] rounded transition-all duration-500 flex items-center justify-center"
@@ -885,10 +893,10 @@ export default function SMEDashboard() {
                             {day.afternoon > 25 && <span className="text-[9px] text-white font-medium">{day.afternoon}%</span>}
                           </div>
                           <div 
-                            className="h-6 bg-blue-200 rounded transition-all duration-500 flex items-center justify-center"
+                            className="h-6 bg-violet-300 rounded transition-all duration-500 flex items-center justify-center"
                             style={{ width: `${day.evening}%` }}
                           >
-                            {day.evening > 25 && <span className="text-[9px] text-blue-700 font-medium">{day.evening}%</span>}
+                            {day.evening > 25 && <span className="text-[9px] text-violet-900 font-medium">{day.evening}%</span>}
                           </div>
                         </div>
                       </div>
@@ -896,7 +904,7 @@ export default function SMEDashboard() {
                   ))}
                   <div className="flex items-center justify-center gap-4 pt-3 border-t border-gray-100 mt-4">
                     <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-blue-100"></div>
+                      <div className="w-2 h-2 rounded-full bg-amber-300"></div>
                       <span className="text-[10px] text-gray-500">Matin</span>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -904,7 +912,7 @@ export default function SMEDashboard() {
                       <span className="text-[10px] text-gray-500">Après-midi</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-blue-200"></div>
+                      <div className="w-2 h-2 rounded-full bg-violet-300"></div>
                       <span className="text-[10px] text-gray-500">Soir</span>
                     </div>
                   </div>
@@ -921,12 +929,3 @@ export default function SMEDashboard() {
     </div>
   );
 }
-
-// WhatsApp SVG icon as React component
-const WhatsAppIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-brand-whatsapp text-[#002366]">
-    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-    <path d="M3 21l1.65 -3.8a9 9 0 1 1 3.4 2.9l-5.05 .9" />
-    <path d="M9 10a.5 .5 0 0 0 1 0v-1a.5 .5 0 0 0 -1 0v1a5 5 0 0 0 5 5h1a.5 .5 0 0 0 0 -1h-1a.5 .5 0 0 0 0 1" />
-  </svg>
-);

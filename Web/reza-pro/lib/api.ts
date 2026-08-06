@@ -478,36 +478,47 @@ class ApiClient {
     return data;
   }
 
-  // Subscription endpoints
+  // Subscription endpoints (virement billing)
+  /** Full billing overview: config, live bill, salon coverage, payment history. */
+  async getBillingOverview() {
+    return this.request<{
+      account: any;
+      subscription: any;
+      bill: any;
+      salons: any[];
+      payments: any[];
+    }>('/subscription');
+  }
+
+  /** Minimal subscription info for auth context. */
   async getSubscription() {
-    return this.request<{ account: any; subscription: any; salonLimit: number; salonCount: number }>(
-      '/subscription'
+    return this.request<{ account: any; subscription: any }>('/subscription');
+  }
+
+  /** Declare a virement payment for the current bill. */
+  async declarePayment(input: { amount?: number; reference?: string } = {}) {
+    return this.request<{ payment: { id: string; amount: number; status: string; createdAt: string } }>(
+      '/subscription/declare-payment',
+      { method: 'POST', body: JSON.stringify(input) }
     );
   }
 
-  async startCheckout(planId?: string) {
-    return this.request<{ url: string; sessionId: string }>('/subscription/checkout', {
-      method: 'POST',
-      body: JSON.stringify(planId ? { planId } : {}),
-    });
+  /** Payment history for the account owner. */
+  async getPayments() {
+    return this.request<{ payments: any[] }>('/subscription/payments');
+  }
+
+  /** Subscription invoice history (SUBSCRIPTION-type invoices for this account). */
+  async getSubscriptionInvoices() {
+    return this.request<{ invoices: any[] }>('/tenant/subscription-invoices');
   }
 
   // Superadmin endpoints
-  async superAdminGetAccounts(params?: {
-    page?: number;
-    limit?: number;
-    q?: string;
-    planId?: string;
-    endsAfter?: string;
-    endsBefore?: string;
-  }) {
+  async superAdminGetAccounts(params?: { page?: number; limit?: number; q?: string }) {
     const qs = new URLSearchParams();
     if (params?.page != null) qs.set('page', String(params.page));
     if (params?.limit != null) qs.set('limit', String(params.limit));
     if (params?.q) qs.set('q', params.q);
-    if (params?.planId) qs.set('planId', params.planId);
-    if (params?.endsAfter) qs.set('endsAfter', params.endsAfter);
-    if (params?.endsBefore) qs.set('endsBefore', params.endsBefore);
     const query = qs.toString();
     return this.request<{
       accounts: any[];
@@ -522,7 +533,6 @@ class ApiClient {
     data: {
       isActive?: boolean;
       subscriptionStatus?: 'NONE' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
-      planId?: string;
       currentPeriodEnd?: string | null;
     }
   ) {
@@ -532,39 +542,38 @@ class ApiClient {
     });
   }
 
-  async superAdminGetPlans() {
-    return this.request<{ plans: any[] }>('/superadmin/plans');
+  async superAdminGetBillingConfig() {
+    return this.request<{ config: any }>('/superadmin/billing-config');
   }
 
-  async superAdminCreatePlan(data: {
-    name: string;
-    priceCents: number;
+  async superAdminUpdateBillingConfig(data: {
+    pricePerSalon?: number;
+    freeEmployeeThreshold?: number;
+    pricePerEmployee?: number;
+    employeeTiers?: { min: number; max: number | null; price: number }[] | null;
     currency?: string;
-    interval?: 'month' | 'year';
-    maxSalons: number;
-    stripePriceId?: string;
   }) {
-    return this.request<{ plan: any }>('/superadmin/plans', {
-      method: 'POST',
+    return this.request<{ config: any }>('/superadmin/billing-config', {
+      method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async superAdminUpdatePlan(
-    planId: string,
-    data: {
-      name?: string;
-      priceCents?: number;
-      currency?: string;
-      interval?: 'month' | 'year';
-      maxSalons?: number;
-      stripePriceId?: string | null;
-      isActive?: boolean;
-    }
-  ) {
-    return this.request<{ plan: any }>(`/superadmin/plans/${planId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
+  async superAdminGetPayments(status?: 'PENDING' | 'APPROVED' | 'REJECTED') {
+    const qs = status ? `?status=${status}` : '';
+    return this.request<{ payments: any[]; total: number }>(`/superadmin/payments${qs}`);
+  }
+
+  async superAdminApprovePayment(paymentId: string) {
+    return this.request<{ success: boolean }>(`/superadmin/payments/${paymentId}/approve`, {
+      method: 'POST',
+    });
+  }
+
+  async superAdminRejectPayment(paymentId: string, reason?: string) {
+    return this.request<{ success: boolean }>(`/superadmin/payments/${paymentId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     });
   }
 
@@ -626,10 +635,10 @@ class ApiClient {
     return this.request<any>('/clients/duplicates');
   }
 
-  async mergeClients(primaryClientId: string, duplicateClientIds: string[]) {
+  async mergeClients(primaryClientId: string, duplicateClientIds: string[], fields?: Record<string, any>) {
     return this.request<any>('/clients/merge', {
       method: 'POST',
-      body: JSON.stringify({ primaryClientId, duplicateClientIds }),
+      body: JSON.stringify({ primaryClientId, duplicateClientIds, fields }),
     });
   }
 
@@ -951,10 +960,17 @@ class ApiClient {
     });
   }
 
-  async moderateReview(id: string, status: 'APPROVED' | 'REJECTED' | 'PENDING') {
+  async moderateReview(id: string, status: 'APPROVED' | 'REJECTED' | 'PENDING', rejectReason?: string) {
     return this.request<any>(`/reviews/${id}/status`, {
       method: 'PUT',
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, ...(rejectReason ? { rejectReason } : {}) }),
+    });
+  }
+
+  /** Permanently delete a review — backend restricts this to REJECTED reviews. */
+  async deleteReview(id: string) {
+    return this.request<{ success: boolean }>(`/reviews/${id}`, {
+      method: 'DELETE',
     });
   }
 
@@ -968,7 +984,7 @@ class ApiClient {
   }
 
   async getReviewStatistics() {
-    return this.request<any>('/dashboard/clients/mes-avis/statistiques-avis');
+    return this.request<any>('/dashboard/clients/statistiques/avis');
   }
 
   // Statistics endpoints
@@ -1105,18 +1121,6 @@ class ApiClient {
     });
   }
 
-  // Establishment description endpoints
-  async getEstablishmentDescription() {
-    const settings = await this.getTenantSettings();
-    return { description: settings.settings?.description || '' };
-  }
-
-  async updateEstablishmentDescription(description: string) {
-    return this.request<any>('/tenant/settings', {
-      method: 'PUT',
-      body: JSON.stringify({ description }),
-    });
-  }
 
   // Appointment notification emails endpoints
   async getAppointmentNotificationEmails() {
@@ -1182,29 +1186,6 @@ class ApiClient {
     });
   }
 
-  // Message settings endpoints
-  async getMessageSettings() {
-    return this.request<{ enabled: boolean; content: string }>('/tenant/settings/message');
-  }
-
-  async updateMessageSettings(enabled: boolean, content: string) {
-    return this.request<any>('/tenant/settings/message', {
-      method: 'PUT',
-      body: JSON.stringify({ enabled, content }),
-    });
-  }
-
-  // Waiting list settings endpoints
-  async getWaitingListSettings() {
-    return this.request<{ activated: boolean }>('/tenant/settings/waiting-list');
-  }
-
-  async updateWaitingListSettings(activated: boolean) {
-    return this.request<any>('/tenant/settings/waiting-list', {
-      method: 'PUT',
-      body: JSON.stringify({ activated }),
-    });
-  }
 
   // Client field settings endpoints
   async getClientFieldSettings() {
@@ -1307,22 +1288,6 @@ class ApiClient {
     return this.request<any>(`/stats/rdv?${query.toString()}`);
   }
 
-  // RDV Pas Venus statistics endpoints
-  async getRdvPasVenusStats(params?: {
-    period?: 'week' | 'month' | 'year' | 'all';
-    startDate?: string;
-    endDate?: string;
-    month?: number;
-    year?: number;
-  }) {
-    const query = new URLSearchParams();
-    if (params?.period) query.append('period', params.period);
-    if (params?.startDate) query.append('startDate', params.startDate);
-    if (params?.endDate) query.append('endDate', params.endDate);
-    if (params?.month !== undefined) query.append('month', params.month.toString());
-    if (params?.year !== undefined) query.append('year', params.year.toString());
-    return this.request<any>(`/stats/rdv-pas-venus?${query.toString()}`);
-  }
 
   // Occupation statistics endpoints
   async getOccupationVueEnsemble(params?: {
@@ -1443,38 +1408,6 @@ class ApiClient {
     });
   }
 
-  // Photo endpoints
-  async getPhotos() {
-    return this.request<any>('/tenant/photos');
-  }
-
-  async uploadPhotos(photos: any[]) {
-    return this.request<any>('/tenant/photos', {
-      method: 'POST',
-      body: JSON.stringify({ photos }),
-    });
-  }
-
-  async updatePhoto(id: string, updates: any) {
-    return this.request<any>(`/tenant/photos/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates),
-    });
-  }
-
-  async deletePhoto(id: string) {
-    return this.request<any>(`/tenant/photos/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  async deletePhotos(ids: string[]) {
-    return this.request<any>('/tenant/photos', {
-      method: 'DELETE',
-      body: JSON.stringify({ ids }),
-    });
-  }
-
   // Cash Transaction endpoints
   async getCashTransactions(params?: {
     startDate?: string;
@@ -1516,21 +1449,7 @@ class ApiClient {
   }
 
   // Subscription invoices (SUBSCRIPTION type)
-  async getSubscriptionInvoices() {
-    return this.request<{ invoices: any[] }>('/tenant/subscription-invoices');
-  }
 
-  // Billing payment method (platform billing, not client-facing)
-  async getBillingPaymentMethod() {
-    return this.request<{ method: any }>('/tenant/billing-payment-method');
-  }
-
-  async setBillingPaymentMethod(method: { type: string; iban?: string; cardLast4?: string; holderName?: string }) {
-    return this.request<{ method: any }>('/tenant/billing-payment-method', {
-      method: 'PUT',
-      body: JSON.stringify(method),
-    });
-  }
 }
 
 export const api = new ApiClient(API_BASE_URL);

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Printer, ChevronLeft, ChevronRight, Users, TrendingUp, Activity, BarChart3, Filter, Clock, DollarSign, Percent, Loader2 } from 'lucide-react';
+import { Calendar, Download, Printer, ChevronLeft, ChevronRight, Users, TrendingUp, Activity, BarChart3, Filter, Clock, DollarSign, Percent, Search, Loader2 } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -30,6 +30,9 @@ const StatistiquesPage = () => {
   const [selectedEmployee, setSelectedEmployee] = useState('all');
   const [timeRange, setTimeRange] = useState('all');
   const [compareMode, setCompareMode] = useState(false);
+  const [search, setSearch] = useState('');
+  // Collapsible per-category sections so a large catalog (~200 services) stays navigable
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
   // Statistics data state
   const [statsData, setStatsData] = useState({
@@ -113,6 +116,34 @@ const StatistiquesPage = () => {
 
   const stats = statsData.stats;
   const servicesData = statsData.servicesData;
+
+  const filteredServicesData = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return servicesData;
+    return servicesData
+      .map((cat) => ({
+        ...cat,
+        services: cat.services.filter((s) => s.name.toLowerCase().includes(q)),
+      }))
+      .filter((cat) => cat.services.length > 0);
+  }, [servicesData, search]);
+
+  // Bar widths are relative to the highest occupancy rate currently displayed
+  // (the top service shows a full bar), so a "20%" rate no longer looks like a
+  // full bar — the label always shows the real percentage.
+  const maxOccupancy = React.useMemo(() => {
+    let max = 0;
+    for (const cat of filteredServicesData) {
+      for (const s of cat.services) {
+        if (s.occupancyRate > max) max = s.occupancyRate;
+      }
+    }
+    return max;
+  }, [filteredServicesData]);
+
+  const toggleCategory = (category: string) => {
+    setCollapsedCategories(prev => ({ ...prev, [category]: !prev[category] }));
+  };
 
   const exportData = () => {
     if (viewMode === 'services') {
@@ -237,12 +268,22 @@ const StatistiquesPage = () => {
 
           {/* Filters only (removed view toggle and compare mode) */}
           <div className="flex items-center gap-6 no-print">
+            <div className="relative">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Rechercher une prestation..."
+                className="w-56 pl-9 pr-3 py-2 border border-gray-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]"
+              />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            </div>
             <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
               <SelectTrigger className="w-[200px] rounded-full border-gray-200 text-sm">
-                <SelectValue placeholder="Tous les collaborateurs" />
+                <SelectValue placeholder="Tous les employés" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Tous les collaborateurs</SelectItem>
+                <SelectItem value="all">Tous les employés</SelectItem>
                 {employees.map((employee) => (
                   <SelectItem key={employee.id} value={employee.id}>
                     {employee.name}
@@ -329,41 +370,50 @@ const StatistiquesPage = () => {
 
             {/* Body */}
             <tbody className="divide-y divide-gray-100">
-              {servicesData.length > 0 ? (
-                servicesData.map((category, catIndex) => (
+              {filteredServicesData.length > 0 ? (
+                filteredServicesData.map((category, catIndex) => (
                   <React.Fragment key={catIndex}>
-                    {/* Category Header */}
-                    <tr className="bg-gray-50/50">
+                    {/* Category Header (click to collapse/expand) */}
+                    <tr
+                      className="bg-gray-50/50 cursor-pointer hover:bg-gray-100/70 transition-colors"
+                      onClick={() => toggleCategory(category.category)}
+                    >
                       <td colSpan={4} className="px-6 py-3">
-                        <span className="text-sm font-medium text-gray-900">{category.category}</span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-900">{category.category}</span>
+                          <span className="text-xs text-gray-500">
+                            {category.services.length} prestation{category.services.length > 1 ? 's' : ''}
+                          </span>
+                        </div>
                       </td>
                     </tr>
-                    
+
                     {/* Services */}
-                    {category.services.map((service, serviceIndex) => (
-                      <tr key={serviceIndex} className="hover:bg-gray-50/30 transition-colors">
-                        <td className="px-6 py-4">
-                          <span className="text-sm text-gray-700">{service.name}</span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm font-medium text-gray-900">{service.occupancyRate.toFixed(2)} %</span>
-                            <div className="flex-1 max-w-[120px] h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-emerald-500 rounded-full transition-all"
-                                style={{ width: `${Math.min(service.occupancyRate * 5, 100)}%` }}
-                              />
+                    {!collapsedCategories[category.category] &&
+                      category.services.map((service, serviceIndex) => (
+                        <tr key={serviceIndex} className="hover:bg-gray-50/30 transition-colors">
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-700">{service.name}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-medium text-gray-900">{service.occupancyRate.toFixed(2)} %</span>
+                              <div className="flex-1 max-w-[120px] h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-emerald-500 rounded-full transition-all"
+                                  style={{ width: maxOccupancy > 0 ? `${Math.min(100, (service.occupancyRate / maxOccupancy) * 100)}%` : '0%' }}
+                                />
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-sm text-gray-600">{service.hoursWorked}</span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-sm font-medium text-gray-900">{service.totalRevenue.toFixed(2)} MAD</span>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-600">{service.hoursWorked}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm font-medium text-gray-900">{service.totalRevenue.toFixed(2)} MAD</span>
+                          </td>
+                        </tr>
+                      ))}
                   </React.Fragment>
                 ))
               ) : (

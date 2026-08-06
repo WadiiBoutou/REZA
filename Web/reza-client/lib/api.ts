@@ -112,6 +112,8 @@ class ApiClient {
     participants?: Array<{
       name: string;
       clientId?: string;
+      phone?: string;
+      email?: string;
       sameServicesAsBooker?: boolean;
       serviceIds?: string[];
       employeeId?: string | null;

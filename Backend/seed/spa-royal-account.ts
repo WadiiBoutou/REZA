@@ -5,6 +5,7 @@ import type {
 import { hashPassword } from '../src/utils/password';
 import {
   avatarUrlFor,
+  birthDateFor,
   EMPLOYEE_WORKING_HOURS,
   PASSWORDS,
   SPA_ROYAL_ADMIN,
@@ -28,7 +29,17 @@ type ClientDef = {
   email: string;
   phone: string;
   withPassword?: boolean;
+  /** Override the deterministic birth date if needed */
+  dateOfBirth?: string;
+  /** Pin the client's createdAt (drives nouveaux-clients / frequences stats windows) */
+  createdAtDaysAgo?: number;
 };
+
+function daysAgoDate(daysAgo: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return d;
+}
 
 type EmployeeDef = {
   firstName: string;
@@ -76,7 +87,7 @@ type SalonDef = {
 
 // ─── DATA ──────────────────────────────────────────────────────
 
-const SPA_ROYAL_CASA: SalonDef = {
+export const SPA_ROYAL_CASA: SalonDef = {
   subdomain: 'spa-royal',
   name: 'Spa Royal Casablanca',
   email: 'contact@sparoyal.ma',
@@ -104,6 +115,44 @@ const SPA_ROYAL_CASA: SalonDef = {
     { firstName: 'Fatima', lastName: 'Zahra Alaoui', email: 'fatima.alaoui@email.ma', phone: '+212661234503' },
     { firstName: 'Amina', lastName: 'Benali', email: 'amina.benali@email.ma', phone: '+212661234504' },
     { firstName: 'Nawal', lastName: 'El Fassi', email: 'nawal.elfassi@email.ma', phone: '+212661234505' },
+    // ── Recent (last 30 days → nouveaux-clients current window) ──
+    { firstName: 'Imane', lastName: 'Berrada', email: 'imane.berrada@email.ma', phone: '+212661234510', createdAtDaysAgo: 5 },
+    { firstName: 'Sara', lastName: 'El Amri', email: 'sara.elamri@email.ma', phone: '+212661234511', createdAtDaysAgo: 8 },
+    { firstName: 'Mehdi', lastName: 'Naciri', email: 'mehdi.naciri@email.ma', phone: '+212661234512', createdAtDaysAgo: 12 },
+    { firstName: 'Salma', lastName: 'Lahlou', email: 'salma.lahlou@email.ma', phone: '+212661234513', createdAtDaysAgo: 15 },
+    { firstName: 'Youssef', lastName: 'Benkiran', email: 'youssef.benkiran@email.ma', phone: '+212661234514', createdAtDaysAgo: 18 },
+    { firstName: 'Kenza', lastName: 'Zouiten', email: 'kenza.zouiten@email.ma', phone: '+212661234515', createdAtDaysAgo: 21 },
+    { firstName: 'Adil', lastName: 'El Malki', email: 'adil.elmalki@email.ma', phone: '+212661234516', createdAtDaysAgo: 25 },
+    { firstName: 'Rania', lastName: 'Bouzidi', email: 'rania.bouzidi@email.ma', phone: '+212661234517', createdAtDaysAgo: 28 },
+    // ── Mid (30–58 days ago → previous-period delta window) ──
+    { firstName: 'Nisrine', lastName: 'Chahid', email: 'nisrine.chahid@email.ma', phone: '+212661234518', createdAtDaysAgo: 32 },
+    { firstName: 'Walid', lastName: 'El Hamidi', email: 'walid.elhamidi@email.ma', phone: '+212661234519', createdAtDaysAgo: 35 },
+    { firstName: 'Douae', lastName: 'Lamrani', email: 'douae.lamrani@email.ma', phone: '+212661234520', createdAtDaysAgo: 38 },
+    { firstName: 'Reda', lastName: 'Sebti', email: 'reda.sebti@email.ma', phone: '+212661234521', createdAtDaysAgo: 42 },
+    { firstName: 'Ilham', lastName: 'Faris', email: 'ilham.faris@email.ma', phone: '+212661234522', createdAtDaysAgo: 45 },
+    { firstName: 'Zakaria', lastName: 'Idrissi', email: 'zakaria.idrissi@email.ma', phone: '+212661234523', createdAtDaysAgo: 48 },
+    { firstName: 'Hafsa', lastName: 'Bennani', email: 'hafsa.bennani@email.ma', phone: '+212661234524', createdAtDaysAgo: 52 },
+    { firstName: 'Marouane', lastName: 'El Fahsi', email: 'marouane.elfahsi@email.ma', phone: '+212661234525', createdAtDaysAgo: 56 },
+    // ── Older (60–120 days ago) ──
+    { firstName: 'Ghita', lastName: 'Soufiani', email: 'ghita.soufiani@email.ma', phone: '+212661234526', createdAtDaysAgo: 62 },
+    { firstName: 'Anass', lastName: 'Loukili', email: 'anass.loukili@email.ma', phone: '+212661234527', createdAtDaysAgo: 68 },
+    { firstName: 'Mouna', lastName: 'Belkadi', email: 'mouna.belkadi@email.ma', phone: '+212661234528', createdAtDaysAgo: 74 },
+    { firstName: 'Soufiane', lastName: 'Guennoun', email: 'soufiane.guennoun@email.ma', phone: '+212661234529', createdAtDaysAgo: 80 },
+    { firstName: 'Latifa', lastName: 'Meskini', email: 'latifa.meskini@email.ma', phone: '+212661234530', createdAtDaysAgo: 86 },
+    { firstName: 'Hamza', lastName: 'Talbi', email: 'hamza.talbi@email.ma', phone: '+212661234531', createdAtDaysAgo: 92 },
+    { firstName: 'Nada', lastName: 'El Yousfi', email: 'nada.elyousfi@email.ma', phone: '+212661234532', createdAtDaysAgo: 98 },
+    { firstName: 'Badr', lastName: 'Charki', email: 'badr.charki@email.ma', phone: '+212661234533', createdAtDaysAgo: 104 },
+    { firstName: 'Siham', lastName: 'Kabli', email: 'siham.kabli@email.ma', phone: '+212661234534', createdAtDaysAgo: 110 },
+    { firstName: 'Omar', lastName: 'Sekkat', email: 'omar.sekkat@email.ma', phone: '+212661234535', createdAtDaysAgo: 115 },
+    { firstName: 'Rajae', lastName: 'Belhaj', email: 'rajae.belhaj@email.ma', phone: '+212661234536', createdAtDaysAgo: 118 },
+    { firstName: 'Tarek', lastName: 'Ziani', email: 'tarek.ziani@email.ma', phone: '+212661234537', createdAtDaysAgo: 120 },
+    // ── Duplicate pairs (flagged by /clients/fichier-client/doublons) ──
+    { firstName: 'Hind', lastName: 'Alaoui', email: 'hind.alaoui@email.ma', phone: '+212661234801' },
+    { firstName: 'Hinde', lastName: 'Alaoui', email: 'hinde.alaoui@email.ma', phone: '+212661234801' },
+    { firstName: 'Nizar', lastName: 'El Fassi', email: 'nizar.elfassi@email.ma', phone: '+212661234802' },
+    { firstName: 'Nissar', lastName: 'El Fassi', email: 'nizar.elfassi@email.ma', phone: '+212661234803' },
+    { firstName: 'Salma', lastName: 'Bennani', email: 'salma.bennani@email.ma', phone: '+212661234804' },
+    { firstName: 'Salima', lastName: 'Bennani', email: 'salima.bennani@email.ma', phone: '+212661234804' },
   ],
   employees: [
     {
@@ -130,6 +179,42 @@ const SPA_ROYAL_CASA: SalonDef = {
       firstName: 'Hicham', lastName: 'Alaoui', email: 'hicham.alaoui@spa-royal.ma',
       color: '#3B82F6', role: 'Massothérapeute',
       serviceIndices: [1, 3], // Massage, Soin visage
+    },
+    // ── Added for pagination / stats volume testing ──
+    {
+      firstName: 'Imane', lastName: 'Chraibi', email: 'imane.chraibi@spa-royal.ma',
+      color: '#0EA5E9', role: 'Esthéticienne',
+      serviceIndices: [3, 4],
+    },
+    {
+      firstName: 'Samira', lastName: 'Berrada', email: 'samira.berrada@spa-royal.ma',
+      color: '#F97316', role: 'Massothérapeute',
+      serviceIndices: [1, 2],
+    },
+    {
+      firstName: 'Yassine', lastName: 'El Idrissi', email: 'yassine.elidrissi@spa-royal.ma',
+      color: '#84CC16', role: 'Hammam Thérapeute',
+      serviceIndices: [0, 2],
+    },
+    {
+      firstName: 'Khadija', lastName: 'Bennani', email: 'khadija.bennani@spa-royal.ma',
+      color: '#D946EF', role: 'Spa praticienne',
+      serviceIndices: [0, 1, 3],
+    },
+    {
+      firstName: 'Mehdi', lastName: 'Zouiten', email: 'mehdi.zouiten@spa-royal.ma',
+      color: '#06B6D4', role: 'Massothérapeute',
+      serviceIndices: [1, 5],
+    },
+    {
+      firstName: 'Hanane', lastName: 'El Amrani', email: 'hanane.elamrani@spa-royal.ma',
+      color: '#A855F7', role: 'Esthéticienne',
+      serviceIndices: [3, 4, 5],
+    },
+    {
+      firstName: 'Amine', lastName: 'Benslimane', email: 'amine.benslimane@spa-royal.ma',
+      color: '#EAB308', role: 'Spa Thérapeute',
+      serviceIndices: [0, 1, 2, 5],
     },
   ],
   reviews: [
@@ -177,11 +262,25 @@ const SPA_ROYAL_2: SalonDef = {
 
 // ─── Seed one salon ────────────────────────────────────────────
 
+/**
+ * Everything a downstream consumer (test-data seeding) needs to reference
+ * the entities created inside this salon.
+ */
+export type SeededSalonCtx = {
+  tenant: { id: string; name: string };
+  /** email → client id */
+  clients: Map<string, string>;
+  /** service name → { id, duration, price } */
+  services: Map<string, { id: string; duration: number; price: number | null }>;
+  /** STAFF user records (used as AppointmentServiceItem.employeeId / creator) */
+  staffUsers: { id: string; firstName: string; lastName: string }[];
+};
+
 async function seedOneSalon(
   prisma: PrismaClient,
   def: SalonDef,
   accountId: string
-) {
+): Promise<SeededSalonCtx> {
   const tenant = await prisma.tenant.create({
     data: {
       name: def.name,
@@ -248,7 +347,7 @@ async function seedOneSalon(
   const clients = new Map<string, string>();
   const clientPassword = await hashPassword(PASSWORDS.client);
   for (const c of def.clients) {
-    const row = await prisma.client.create({
+      const row = await prisma.client.create({
       data: {
         tenantId: tenant.id,
         firstName: c.firstName,
@@ -257,15 +356,19 @@ async function seedOneSalon(
         phone: c.phone,
         password: c.withPassword ? clientPassword : undefined,
         status: 'ACTIVE',
+        // Deterministic birth date → the "Répartition par âge" stat has data
+        dateOfBirth: c.dateOfBirth ?? birthDateFor(c.email),
+        createdAt: c.createdAtDaysAgo ? daysAgoDate(c.createdAtDaysAgo) : undefined,
       },
     });
     clients.set(c.email, row.id);
   }
 
   // ── Employees (Employee record + User record with STAFF role) ──
+  const staffUsers: SeededSalonCtx['staffUsers'] = [];
   for (const e of def.employees) {
     // User record (used by AppointmentServiceItem.employeeId)
-    await prisma.user.create({
+    const staffUser = await prisma.user.create({
       data: {
         tenantId: tenant.id,
         email: e.email,
@@ -277,6 +380,7 @@ async function seedOneSalon(
         isActive: true,
       },
     });
+    staffUsers.push({ id: staffUser.id, firstName: e.firstName, lastName: e.lastName });
 
     // Employee record (used for scheduling / working hours)
     const emp = await prisma.employee.create({
@@ -339,7 +443,7 @@ async function seedOneSalon(
     `  ✓ ${def.name} — ${def.clients.length} clients, ${def.services.length} services, ` +
     `${def.employees.length} employés`
   );
-  return tenant;
+  return { tenant, clients, services, staffUsers };
 }
 
 // ─── Entry point ────────────────────────────────────────────────
@@ -368,39 +472,56 @@ export async function seedSpaRoyalAccount(prisma: PrismaClient, plan: Subscripti
   const periodEnd = new Date();
   periodEnd.setFullYear(periodEnd.getFullYear() + 1);
 
+  // Demo billing state: only the FIRST salon is paid for (one-time salon fee
+  // covered). The second salon stays hidden from the public site until the
+  // owner declares a virement payment and the superadmin approves it.
   await prisma.subscription.create({
-    data: { accountId: account.id, planId: plan.id, status: 'ACTIVE', currentPeriodEnd: periodEnd },
+    data: {
+      accountId: account.id,
+      planId: plan.id,
+      status: 'ACTIVE',
+      salonsPaid: 1,
+      subscribedAt: new Date(),
+      currentPeriodEnd: periodEnd,
+    },
   });
 
   const casa = await seedOneSalon(prisma, SPA_ROYAL_CASA, account.id);
   await seedOneSalon(prisma, SPA_ROYAL_2, account.id);
 
-  // Subscription invoice (after salons exist so tenantId is available)
-  await prisma.invoice.create({
-    data: {
-      tenantId: casa.id,
-      accountId: account.id,
-      type: 'SUBSCRIPTION',
-      invoiceNumber: `INV-SUB-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-0001`,
-      amount: 800,
-      tax: 0,
-      total: 800,
-      status: 'PAID',
-      paymentMethod: 'BANK_TRANSFER',
-      paidAt: new Date(),
-      periodStart: new Date(),
-      periodEnd,
-      notes: 'Standard — Annuel',
-    },
+  // Public visibility follows salon coverage: only the paid salon is visible
+  await prisma.tenant.updateMany({
+    where: { accountId: account.id },
+    data: { subscriptionActive: false },
   });
+  await prisma.tenant.update({
+    where: { id: casa.tenant.id },
+    data: { subscriptionActive: true },
+  });
+
+  // Cover all current employees of the paid salon for the demo period
+  const spaTenants = await prisma.tenant.findMany({
+    where: { accountId: account.id },
+    include: { _count: { select: { employees: { where: { isActive: true } } } } },
+  });
+  await Promise.all(
+    spaTenants.map((t) =>
+      prisma.tenant.update({
+        where: { id: t.id },
+        data: { employeesPaid: Math.max(0, t._count.employees - 2) },
+      })
+    )
+  );
 
   // Admin JWT tenant = primary salon
   await prisma.user.update({
     where: { id: adminUser.id },
-    data: { tenantId: casa.id },
+    data: { tenantId: casa.tenant.id },
   });
 
   console.log(
     `  ✓ Admin ${SPA_ROYAL_ADMIN.email} / ${PASSWORDS.admin} → dashboard + Mes salons (2 salons)`
   );
+
+  return { casa, adminUserId: adminUser.id };
 }

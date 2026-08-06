@@ -140,12 +140,13 @@ export function serializeAppointmentWithServices<T extends AppointmentLike>(appo
   const services = normalizeAppointmentServices(appointment);
   // Remove legacy top-level fields superseded by services[]:
   //   serviceId, service object, employeeId — these are no longer part of the API response.
-  const { serviceId: _sid, service: _svc, employeeId: _eid, ...rest } = appointment as any;
+  const { serviceId: _sid, service: _svc, employeeId: _eid, source: _src, ...rest } = appointment as any;
   return {
     ...rest,
     notes: stripGeneratedServicesNotes(appointment.notes),
     services,
     totalDuration: sumReservationDuration(services),
     totalPrice: sumReservationPrice(services),
+    takenOnline: _src === 'ONLINE',
   };
 }

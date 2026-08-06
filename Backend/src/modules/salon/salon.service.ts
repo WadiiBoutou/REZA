@@ -110,8 +110,10 @@ export class SalonService {
 
   /**
    * Create a new salon for the owner's account.
-   * Enforces the plan (or default) salon limit. New salons stay hidden from
-   * clients (subscriptionActive=false) until the account subscription is active.
+   * Under the virement model there is no salon-cap limit — salons are paid for
+   * one-time each. A new salon is only visible to clients if it falls within
+   * the already-paid salon count (salonsPaid); otherwise it stays hidden until
+   * the owner pays the difference and the superadmin approves.
    * Completeness fields required so incomplete salons never get created.
    */
   async createForOwner(userId: string, input: CreateSalonInput) {
@@ -140,16 +142,10 @@ export class SalonService {
     }
 
     const ctx = await accountService.getContextForUser(userId);
-    if (ctx.salons.length >= ctx.salonLimit) {
-      throw {
-        status: 403,
-        error: 'Salon limit reached',
-        message: `Vous avez atteint la limite de ${ctx.salonLimit} salon(s) pour votre abonnement`,
-      };
-    }
-
-    // Client visibility follows the subscription status
-    const subscriptionActive = ctx.subscription?.status === 'ACTIVE';
+    // New salon is appended last (ordered by createdAt): covered only if the
+    // account has already paid for more salons than currently exist.
+    const salonsPaid = ctx.subscription?.salonsPaid ?? 0;
+    const subscriptionActive = ctx.salons.length < salonsPaid;
 
     const tenant = await prisma.tenant.create({
       data: {

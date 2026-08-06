@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { TrendingUp, Users, Calendar, DollarSign, Download, ChevronLeft, ChevronRight, Loader2, RotateCcw, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, Users, Calendar, DollarSign, Download, ChevronLeft, ChevronRight, Loader2, RotateCcw, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,8 +9,68 @@ import toast from 'react-hot-toast';
 
 type SortKey = 'name' | 'occupationRate' | 'workedHours' | 'revenue';
 
+const deltaPct = (current: number, previous: number) => {
+  if (previous > 0) return Math.round(((current - previous) / previous) * 100);
+  return current > 0 ? 100 : 0;
+};
+
+const DeltaBadge = ({ current, previous }: { current: number; previous: number }) => {
+  const delta = deltaPct(current, previous);
+  if (delta === 0) {
+    return (
+      <div className="flex items-center gap-1 text-gray-500 bg-gray-50 px-2 py-1 rounded-lg">
+        <span className="text-[10px] font-medium">0%</span>
+      </div>
+    );
+  }
+  const positive = delta > 0;
+  return (
+    <div className={`flex items-center gap-1 px-2 py-1 rounded-lg ${positive ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
+      {positive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+      <span className="text-[10px] font-medium">{positive ? '+' : ''}{delta}%</span>
+    </div>
+  );
+};
+
+// Date windows matching the backend's parseDateRange semantics (stats.service.ts)
+const buildWindow = (period: 'week' | 'month' | 'year', month: number, year: number) => {
+  const now = new Date();
+  let start: Date;
+  let end: Date;
+  if (period === 'month') {
+    start = new Date(year, month, 1);
+    end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+  } else if (period === 'week') {
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7, 0, 0, 0, 0);
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  } else {
+    start = new Date(now.getFullYear(), 0, 1);
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  }
+  return { start, end };
+};
+
+// Equivalent previous period: previous calendar month for 'month', same-length window immediately before otherwise
+const prevWindowFor = (period: 'week' | 'month' | 'year', month: number, year: number) => {
+  if (period === 'month') {
+    const prevMonth = month === 0 ? 11 : month - 1;
+    const prevYear = month === 0 ? year - 1 : year;
+    return {
+      start: new Date(prevYear, prevMonth, 1),
+      end: new Date(prevYear, prevMonth + 1, 0, 23, 59, 59, 999),
+    };
+  }
+  const w = buildWindow(period, month, year);
+  const len = w.end.getTime() - w.start.getTime();
+  return {
+    start: new Date(w.start.getTime() - len),
+    end: new Date(w.start.getTime() - 1),
+  };
+};
+
 export default function OccupancyCollaborateurs() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, salonFilter, effectiveSalonIds } = useAuth();
+  const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -29,6 +89,17 @@ export default function OccupancyCollaborateurs() {
 
   // Statistics data state
   const [statsData, setStatsData] = useState({
+    collaborators: [] as any[],
+    totals: {
+      occupationRate: 0,
+      workedHours: 0,
+      revenue: 0,
+      appointmentCount: 0
+    }
+  });
+
+  // Previous-period data for real delta badges (vs the equivalent previous period)
+  const [prevStatsData, setPrevStatsData] = useState({
     collaborators: [] as any[],
     totals: {
       occupationRate: 0,
@@ -58,22 +129,43 @@ export default function OccupancyCollaborateurs() {
       }
     };
     fetchCatalog();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, salonFilterKey]);
 
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const data = await api.getOccupationCollaborateurs({
-        period: timeFilter,
-        month: selectedMonth,
-        year: selectedYear,
-        categoryId,
-        serviceId
-      });
+      const window = buildWindow(timeFilter, selectedMonth, selectedYear);
+      const prevWindow = prevWindowFor(timeFilter, selectedMonth, selectedYear);
+
+      const [data, prevData] = await Promise.all([
+        api.getOccupationCollaborateurs({
+          period: timeFilter,
+          startDate: window.start.toISOString(),
+          endDate: window.end.toISOString(),
+          categoryId,
+          serviceId
+        }),
+        api.getOccupationCollaborateurs({
+          period: timeFilter,
+          startDate: prevWindow.start.toISOString(),
+          endDate: prevWindow.end.toISOString(),
+          categoryId,
+          serviceId
+        })
+      ]);
 
       setStatsData({
         collaborators: data.collaborators || [],
         totals: data.totals || {
+          occupationRate: 0,
+          workedHours: 0,
+          revenue: 0,
+          appointmentCount: 0
+        }
+      });
+      setPrevStatsData({
+        collaborators: prevData.collaborators || [],
+        totals: prevData.totals || {
           occupationRate: 0,
           workedHours: 0,
           revenue: 0,
@@ -92,7 +184,25 @@ export default function OccupancyCollaborateurs() {
     setMounted(true);
     fetchStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeFilter, selectedMonth, selectedYear, categoryId, serviceId]);
+  }, [timeFilter, selectedMonth, selectedYear, categoryId, serviceId, salonFilterKey]);
+
+  const exportCSV = () => {
+    const header = ['Employé', "Taux d'occupation (%)", 'Heures travaillées', "Chiffre d'affaires (MAD)"];
+    const rows = collaborators.map((c: any) => [
+      c.name, c.occupationRate, c.workedHours, c.revenue
+    ]);
+    rows.push(['Total', totals.occupationRate, totals.workedHours, totals.revenue]);
+    const csv = '\uFEFF' + [header, ...rows]
+      .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `taux-occupation-employes-${timeFilter}-${selectedMonth + 1}-${selectedYear}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const navigateMonth = (direction: 'prev' | 'next') => {
     if (direction === 'prev') {
@@ -131,6 +241,10 @@ export default function OccupancyCollaborateurs() {
   }, [statsData.collaborators, sortKey, sortDir]);
 
   const totals = statsData.totals;
+
+  // Only employees with at least one appointment in the period count as active
+  const activeCount = collaborators.filter((c: { appointmentCount: number }) => c.appointmentCount > 0).length;
+  const prevActiveCount = prevStatsData.collaborators.filter((c: { appointmentCount: number }) => c.appointmentCount > 0).length;
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -247,7 +361,7 @@ export default function OccupancyCollaborateurs() {
             </div>
             <div className="h-8 w-px bg-gray-200"></div>
             {/* Export Button */}
-            <button className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors">
+            <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors">
               <Download size={14} />
               Exporter
             </button>
@@ -299,10 +413,7 @@ export default function OccupancyCollaborateurs() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
               <Calendar size={20} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+18%</span>
-            </div>
+            <DeltaBadge current={totals.occupationRate} previous={prevStatsData.totals.occupationRate} />
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1 font-medium">Taux d'occupation moyen</p>
@@ -315,10 +426,7 @@ export default function OccupancyCollaborateurs() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
               <Users size={20} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+12%</span>
-            </div>
+            <DeltaBadge current={totals.workedHours} previous={prevStatsData.totals.workedHours} />
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1 font-medium">Total heures travaillées</p>
@@ -331,13 +439,10 @@ export default function OccupancyCollaborateurs() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
               <TrendingUp size={20} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+24%</span>
-            </div>
+            <DeltaBadge current={totals.revenue} previous={prevStatsData.totals.revenue} />
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium">Total des RDV</p>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Chiffre d&apos;affaires</p>
             <p className="text-3xl font-light text-gray-900">{totals.revenue.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD</p>
           </div>
         </div>
@@ -347,14 +452,11 @@ export default function OccupancyCollaborateurs() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
               <DollarSign size={20} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+15%</span>
-            </div>
+            <DeltaBadge current={activeCount} previous={prevActiveCount} />
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1 font-medium">Employés actifs</p>
-            <p className="text-3xl font-light text-gray-900">{collaborators.length}</p>
+            <p className="text-3xl font-light text-gray-900">{activeCount}</p>
           </div>
         </div>
       </div>
@@ -375,7 +477,7 @@ export default function OccupancyCollaborateurs() {
                   <SortButton label="Heures travaillées" k="workedHours" />
                 </th>
                 <th className="px-6 py-4 text-right">
-                  <SortButton label="Total des RDV" k="revenue" align="right" />
+                  <SortButton label="Chiffre d'affaires" k="revenue" align="right" />
                 </th>
               </tr>
             </thead>

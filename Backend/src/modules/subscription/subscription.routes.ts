@@ -7,11 +7,11 @@ const router = express.Router();
 
 /**
  * GET /api/subscription
- * Current subscription + plan + salon limit for the owner's account.
+ * Billing overview: config, live bill, salon coverage, payment history.
  */
 router.get('/', authMiddleware, async (req, res, next) => {
   try {
-    const result = await subscriptionService.getForUser(req.userId!);
+    const result = await subscriptionService.getOverview(req.userId!);
     res.json(result);
   } catch (error: any) {
     if (error.status) {
@@ -22,19 +22,38 @@ router.get('/', authMiddleware, async (req, res, next) => {
 });
 
 /**
- * POST /api/subscription/checkout
- * Create a Stripe Checkout session (test mode) and return its URL.
+ * POST /api/subscription/declare-payment
+ * Declare a virement payment for the current bill (amount defaults to the bill).
  */
-router.post('/checkout', authMiddleware, async (req, res, next) => {
+router.post('/declare-payment', authMiddleware, async (req, res, next) => {
   try {
-    const schema = z.object({ planId: z.string().optional() });
-    const { planId } = schema.parse(req.body ?? {});
-    const result = await subscriptionService.createCheckout(req.userId!, planId);
-    res.json(result);
+    const schema = z.object({
+      amount: z.number().positive().optional(),
+      reference: z.string().max(200).optional(),
+    });
+    const { amount, reference } = schema.parse(req.body ?? {});
+    const result = await subscriptionService.declarePayment(req.userId!, { amount, reference });
+    res.status(201).json(result);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Validation error', message: error.errors[0].message });
     }
+    if (error.status) {
+      return res.status(error.status).json({ error: error.error, message: error.message });
+    }
+    next(error);
+  }
+});
+
+/**
+ * GET /api/subscription/payments
+ * Payment history for the account owner.
+ */
+router.get('/payments', authMiddleware, async (req, res, next) => {
+  try {
+    const result = await subscriptionService.listPayments(req.userId!);
+    res.json(result);
+  } catch (error: any) {
     if (error.status) {
       return res.status(error.status).json({ error: error.error, message: error.message });
     }

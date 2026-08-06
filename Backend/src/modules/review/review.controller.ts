@@ -57,6 +57,18 @@ export class ReviewController {
       next(error);
     }
   }
+
+  async deleteReview(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await reviewService.deleteReview(req.tenantId!, req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      if (error.status) {
+        return res.status(error.status).json({ error: error.error });
+      }
+      next(error);
+    }
+  }
 }
 
 export const reviewController = new ReviewController();

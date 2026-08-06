@@ -119,23 +119,6 @@ export class StatsController {
     }
   }
 
-  async getNoShowStats(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { period, startDate, endDate, month, year } = req.query;
-      const result = await statsService.getNoShowStats(
-        req.tenantId!,
-        period as string,
-        startDate as string,
-        endDate as string,
-        month as string,
-        year as string
-      );
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-
   async getOccupancyOverview(req: Request, res: Response, next: NextFunction) {
     try {
       const { month, year, employeeId } = req.query;
@@ -189,7 +172,7 @@ export class StatsController {
     try {
       const { limit, period, startDate, endDate, month, year } = req.query;
       const result = await statsService.getTopClients(
-        req.tenantId!,
+        req.salonIds && req.salonIds.length > 0 ? req.salonIds : req.tenantId!,
         limit ? parseInt(limit as string, 10) : 100,
         period as string,
         startDate as string,
@@ -207,7 +190,7 @@ export class StatsController {
     try {
       const { period, startDate, endDate, month, year } = req.query;
       const result = await statsService.getNewClientsStats(
-        req.tenantId!,
+        req.salonIds && req.salonIds.length > 0 ? req.salonIds : req.tenantId!,
         period as string,
         startDate as string,
         endDate as string,
@@ -224,7 +207,7 @@ export class StatsController {
     try {
       const { period, startDate, endDate, month, year } = req.query;
       const result = await statsService.getClientFrequencyStats(
-        req.tenantId!,
+        req.salonIds && req.salonIds.length > 0 ? req.salonIds : req.tenantId!,
         period as string,
         startDate as string,
         endDate as string,

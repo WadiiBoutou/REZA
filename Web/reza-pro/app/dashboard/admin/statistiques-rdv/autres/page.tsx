@@ -2,14 +2,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { TrendingUp, Users, Calendar, Clock, BarChart3, Download, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Users, Calendar, Clock, BarChart3, Download, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 export default function IndicateursPage() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
+  // True once the first fetch has completed: after that, period changes refetch
+  // in the background WITHOUT blanking the whole page — each graph keeps its
+  // previous data until the new data arrives (no reload of other graphs).
+  const [initialLoaded, setInitialLoaded] = useState(false);
   const [timeFilter, setTimeFilter] = useState<'week' | 'month' | 'year'>('month');
   const [chartViews, setChartViews] = useState<{[key: string]: 'graphe' | 'tableau'}>({});
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -65,6 +68,7 @@ export default function IndicateursPage() {
       toast.error(err.message || 'Erreur lors du chargement des statistiques');
     } finally {
       setLoading(false);
+      setInitialLoaded(true);
     }
   };
 
@@ -79,11 +83,6 @@ export default function IndicateursPage() {
     return chartViews[chartId] || 'graphe';
   };
 
-  // Default/fallback data
-  const defaultRdvPrisData = [
-    { name: 'Pris en salon', value: 40, color: '#10b981' },
-    { name: 'Pris en ligne', value: 60, color: '#d1d5db' },
-  ];
 
   const DonutChart = ({ data, title, subtitle, chartId }: { data: any[], title: string, subtitle?: string, chartId: string }) => {
     const total = data.reduce((sum, item) => sum + item.value, 0);
@@ -221,7 +220,7 @@ export default function IndicateursPage() {
     );
   };
 
-  if (!mounted || loading) {
+  if (!mounted || (loading && !initialLoaded)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 p-6">
         <div className="flex flex-col items-center justify-center py-20">
@@ -253,7 +252,7 @@ export default function IndicateursPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-5xl font-light text-gray-900 tracking-tight mb-2">Indicateurs</h1>
-            <p className="text-sm text-gray-400">Analyse détaillée des performances par collaborateur</p>
+            <p className="text-sm text-gray-400">Analyse détaillée des performances par employé</p>
           </div>
           <div className="flex items-center gap-6">
             {/* Date Navigation - same design as vue-ensemble */}
@@ -316,10 +315,6 @@ export default function IndicateursPage() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <Calendar size={18} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+12%</span>
-            </div>
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-1">Total RDV</p>
@@ -332,13 +327,9 @@ export default function IndicateursPage() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <Users size={18} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+8%</span>
-            </div>
           </div>
           <div>
-            <p className="text-xs text-gray-400 mb-1">Collaborateurs actifs</p>
+            <p className="text-xs text-gray-400 mb-1">Employés actifs</p>
             <p className="text-3xl font-light text-gray-900">{statsData.activeCollaborateurs}</p>
           </div>
         </div>
@@ -347,10 +338,6 @@ export default function IndicateursPage() {
           <div className="flex items-start justify-between mb-8">
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <BarChart3 size={18} className="text-gray-400" />
-            </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+15%</span>
             </div>
           </div>
           <div>
@@ -364,10 +351,6 @@ export default function IndicateursPage() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <Clock size={18} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-              <TrendingUp size={12} />
-              <span className="text-[10px] font-medium">+5%</span>
-            </div>
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-1">Durée moyenne</p>
@@ -379,33 +362,27 @@ export default function IndicateursPage() {
       {/* First Row - 3 Charts */}
       <div className="grid grid-cols-3 gap-6 mb-6 animate-fadeIn">
         <DonutChart 
-          data={statsData.rdvPrisData.length > 0 ? statsData.rdvPrisData : defaultRdvPrisData}
+          data={statsData.rdvPrisData.length > 0 ? statsData.rdvPrisData : []}
           title="RDV pris"
           subtitle="Répartition par canal"
           chartId="rdv-pris"
         />
         <DonutChart 
           data={statsData.prestationsSalonData.length > 0 ? statsData.prestationsSalonData : []}
-          title="Nombre de prestations en salon par collaborateur"
+          title="Nombre de prestations en salon par employé"
           subtitle="Distribution par praticien"
           chartId="prestations-salon"
         />
         <DonutChart 
           data={statsData.prestationsLigneData.length > 0 ? statsData.prestationsLigneData : []}
-          title="Nombre de prestations en ligne par collaborateur"
+          title="Nombre de prestations en ligne par employé"
           subtitle="Réservations en ligne"
           chartId="prestations-ligne"
         />
       </div>
 
-      {/* Second Row - 3 Charts */}
-      <div className="grid grid-cols-3 gap-6 mb-6 animate-fadeIn">
-        <DonutChart 
-          data={statsData.totalPrestationsData.length > 0 ? statsData.totalPrestationsData : []}
-          title="Nombre total de prestations par collaborateur"
-          subtitle="Volume global"
-          chartId="total-prestations"
-        />
+      {/* Second Row - 2 Charts */}
+      <div className="grid grid-cols-2 gap-6 mb-6 animate-fadeIn">
         <DonutChart 
           data={statsData.rdvSalonParPrestationData.length > 0 ? statsData.rdvSalonParPrestationData : []}
           title="Nombre de RDV pris en salon par prestation"
@@ -420,19 +397,11 @@ export default function IndicateursPage() {
         />
       </div>
 
-      {/* Third Row - 1 Chart */}
-      <div className="grid grid-cols-3 gap-6 mb-6 animate-fadeIn">
-        <DonutChart 
-          data={statsData.totalRdvParPrestationData.length > 0 ? statsData.totalRdvParPrestationData : []}
-          title="Nombre total de RDV par prestation"
-          subtitle="Distribution complète des services"
-          chartId="total-rdv-prestation"
-        />
-
-        {/* Performance Summary */}
-        <div className="col-span-2 bg-white rounded-lg border border-gray-100 p-6">
+      {/* Performance Summary */}
+      <div className="animate-fadeIn mb-6">
+        <div className="bg-white rounded-lg border border-gray-100 p-6">
           <div className="mb-6">
-            <h3 className="text-sm font-medium text-gray-900 mb-1">Performance par collaborateur</h3>
+            <h3 className="text-sm font-medium text-gray-900 mb-1">Performance par employé</h3>
             <p className="text-xs text-gray-400">Classement du mois</p>
           </div>
 
@@ -441,12 +410,21 @@ export default function IndicateursPage() {
               statsData.performanceData.map((collab, index) => (
                 <div 
                   key={index} 
-                  className="flex items-center justify-between p-4 rounded-lg hover:bg-gray-50 transition-colors group cursor-pointer"
+                  className="flex items-center justify-between p-4 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center flex-shrink-0">
-                      <span className="text-sm font-medium text-gray-700">{collab.avatar}</span>
-                    </div>
+                    {collab.avatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={collab.avatar}
+                        alt={collab.name}
+                        className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center flex-shrink-0">
+                        <span className="text-sm font-medium text-gray-700">{collab.initials || collab.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2)}</span>
+                      </div>
+                    )}
                     <div>
                       <p className="text-sm font-medium text-gray-900">{collab.name}</p>
                       <p className="text-xs text-gray-400">{collab.prestations} prestations</p>
@@ -463,14 +441,12 @@ export default function IndicateursPage() {
                       <p className="text-xs text-gray-400 mb-1">Taux en ligne</p>
                       <p className="text-lg font-medium text-emerald-600">{collab.taux}%</p>
                     </div>
-
-                    <ChevronRight size={16} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </div>
               ))
             ) : (
               [
-                { name: 'Aucun collaborateur', rdv: 0, prestations: 0, taux: 0, avatar: 'N/A' },
+                { name: 'Aucun employé', rdv: 0, prestations: 0, taux: 0, initials: 'N/A' },
               ].map((collab, index) => (
                 <div 
                   key={index} 
@@ -478,7 +454,7 @@ export default function IndicateursPage() {
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center flex-shrink-0">
-                      <span className="text-sm font-medium text-gray-700">{collab.avatar}</span>
+                      <span className="text-sm font-medium text-gray-700">{collab.initials}</span>
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">{collab.name}</p>

@@ -3,15 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Save,
-  X,
   Loader2,
   Check
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 type FieldConfig = {
@@ -24,8 +22,9 @@ type FieldConfig = {
 };
 
 const GestionFicheClients = () => {
+  const { isAuthenticated, salonFilter, effectiveSalonIds } = useAuth();
+  const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
   const [mounted, setMounted] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -56,13 +55,10 @@ const GestionFicheClients = () => {
   const [fields, setFields] = useState<FieldConfig[]>(defaultFields);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     setMounted(true);
     fetchFieldSettings();
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  }, [isAuthenticated, salonFilterKey]);
 
   const fetchFieldSettings = async () => {
     try {
@@ -96,18 +92,6 @@ const GestionFicheClients = () => {
     } finally {
       setSaving(false);
     }
-  };
-
-  const toggleDisplay = (index: number) => {
-    const newFields = [...fields];
-    newFields[index].display = !newFields[index].display;
-    setFields(newFields);
-  };
-
-  const toggleRequired = (index: number) => {
-    const newFields = [...fields];
-    newFields[index].required = !newFields[index].required;
-    setFields(newFields);
   };
 
   const toggleYearOnly = (index: number) => {

@@ -20,10 +20,10 @@ router.get('/clients/mes-avis/avis-refuses', (req, res, next) =>
 );
 
 /**
- * GET /api/dashboard/clients/mes-avis/statistiques-avis
+ * GET /api/dashboard/clients/statistiques/avis
  * Get review statistics for the dashboard
  */
-router.get('/clients/mes-avis/statistiques-avis', (req, res, next) =>
+router.get('/clients/statistiques/avis', (req, res, next) =>
   dashboardController.getReviewStatistics(req, res, next)
 );
 

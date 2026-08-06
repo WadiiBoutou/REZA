@@ -35,14 +35,8 @@ export interface Salon {
 export interface SubscriptionInfo {
   status: string;
   currentPeriodEnd: string | null;
-  plan: {
-    id: string;
-    name: string;
-    priceCents: number;
-    currency: string;
-    interval: string;
-    maxSalons: number;
-  } | null;
+  salonsPaid: number;
+  subscribedAt: string | null;
 }
 
 export type SalonFilter = 'all' | string[];
@@ -142,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [salons, setSalons] = useState<Salon[]>([]);
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
-  const [salonLimit, setSalonLimit] = useState(3);
+  const [salonLimit, setSalonLimit] = useState(999); // virement model: no per-plan cap
   const [salonFilter, setSalonFilterState] = useState<SalonFilter>('all');
   // Bumped on every user-initiated filter change so the dashboard layout can
   // remount pages exactly when the filter changes (not during localStorage hydration).

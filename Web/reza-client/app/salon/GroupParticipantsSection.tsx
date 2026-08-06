@@ -8,6 +8,8 @@ export type GuestParticipant = {
   name: string;
   /** Phone — used as the reliable duplicate signal for one-time guests. */
   phone?: string;
+  /** Email — carried to the backend so guest Clients get the real contact. */
+  email?: string;
   /** Family member id when picked from Mes proches (UI only; API gets name). */
   familyMemberId?: string;
   sameServicesAsBooker: boolean;

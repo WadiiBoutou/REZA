@@ -50,6 +50,25 @@ export class StatsService {
     return { start, end };
   }
 
+  /**
+   * Largest-remainder percentage distribution: returns integer percentages that
+   * always sum to exactly 100 (when total > 0), so stacked donut totals reconcile.
+   */
+  private roundTo100(values: number[], total: number): number[] {
+    if (total <= 0 || values.length === 0) return values.map(() => 0);
+    const exact = values.map((v) => (v / total) * 100);
+    const rounded = exact.map((v) => Math.floor(v));
+    let remainder = 100 - rounded.reduce((s, v) => s + v, 0);
+    const byFraction = exact
+      .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+      .sort((a, b) => b.frac - a.frac);
+    for (let k = 0; k < byFraction.length && remainder > 0; k++) {
+      rounded[byFraction[k].i] += 1;
+      remainder -= 1;
+    }
+    return rounded;
+  }
+
   async getOverview(tenantId: string, startDate?: string, endDate?: string) {
     const where: any = { tenantId };
 
@@ -139,8 +158,146 @@ export class StatsService {
     return { revenue };
   }
 
+  /**
+   * Revenue for one appointment following the app-wide convention: the sum of
+   * per-service item prices (AppointmentServiceItem.price), falling back to the
+   * legacy appointment-level service price, then to the PAID invoice total only
+   * when no service price is available. Never used for SUBSCRIPTION invoices.
+   */
+  private appointmentRevenue(apt: any): number {
+    const items = apt.services && apt.services.length > 0 ? apt.services : null;
+    if (items) {
+      return items.reduce((sum: number, item: any) => sum + (item.price || 0), 0);
+    }
+    if (apt.service?.price) return apt.service.price;
+    if (apt.invoice?.status === 'PAID') return apt.invoice.total || 0;
+    return 0;
+  }
+
+  /**
+   * Compute the scalar metrics that drive the KPI cards, for an arbitrary window.
+   * Used twice by getDashboardStats (current + previous period) so the delta
+   * badges on the indicateurs-cles page compare real period-over-period data
+   * instead of hardcoded values.
+   */
+  private async computeScalarMetrics(tenantId: string, start: Date, end: Date) {
+    const tenantWhere = { tenantId };
+    const appointmentWhere: any = { ...tenantWhere, startTime: { gte: start, lte: end } };
+
+    const appointments = await prisma.appointment.findMany({
+      where: appointmentWhere,
+      include: {
+        service: true,
+        services: { include: { service: true } },
+        invoice: { select: { total: true, status: true } },
+      },
+    });
+
+    const totalAppointments = appointments.length;
+    const onlineAppointments = appointments.filter((a) => a.source === 'ONLINE').length;
+
+    const completed = appointments.filter((a) => a.status === 'COMPLETED').length;
+    const noShow = appointments.filter((a) => a.status === 'NO_SHOW').length;
+    const attendanceRate = completed + noShow > 0 ? (completed / (completed + noShow)) * 100 : 0;
+
+    const totalDuration = appointments.reduce((s, a) => s + (a.duration || 0), 0);
+    const avgDuration = totalAppointments > 0 ? Math.round(totalDuration / totalAppointments) : 0;
+
+    const cancelled = appointments.filter((a) => a.status === 'CANCELLED').length;
+    const cancellationRate = totalAppointments > 0 ? (cancelled / totalAppointments) * 100 : 0;
+
+    const advance = appointments.filter((a) => (new Date(a.startTime).getTime() - new Date(a.createdAt).getTime()) / 86400000 >= 2).length;
+    const advanceBookingRate = totalAppointments > 0 ? (advance / totalAppointments) * 100 : 0;
+
+    // Revenue = sum of per-service item prices for non-cancelled appointments
+    // (the app-wide convention — never Invoice data, so the platform SUBSCRIPTION
+    // invoice can never leak into salon revenue).
+    const activeAppointments = appointments.filter((a) => a.status !== 'CANCELLED');
+    const totalRevenue = activeAppointments.reduce((s, a) => s + this.appointmentRevenue(a), 0);
+    const revenueAppointments = activeAppointments.filter((a) => this.appointmentRevenue(a) > 0);
+    const avgBasket = revenueAppointments.length > 0 ? totalRevenue / revenueAppointments.length : 0;
+
+    const perClient: Record<string, number> = {};
+    activeAppointments.forEach((a) => { perClient[a.clientId] = (perClient[a.clientId] || 0) + 1; });
+    const loyalClientsCount = Object.values(perClient).filter((c) => c >= 3).length;
+    const uniqueClients = Object.keys(perClient).length;
+    const loyaltyRate = uniqueClients > 0 ? (loyalClientsCount / uniqueClients) * 100 : 0;
+
+    const newClients = await prisma.client.findMany({
+      where: { ...tenantWhere, createdAt: { gte: start, lte: end } },
+      select: { id: true },
+    });
+    // New-client origin follows the same source-based classification as the rest
+    // of the stats section (Appointment.source is the only tracked origin).
+    const onlineClientIds = new Set(appointments.filter((a) => a.source === 'ONLINE').map((a) => a.clientId));
+    const salonClientIds = new Set(appointments.filter((a) => a.source !== 'ONLINE').map((a) => a.clientId));
+    const newOnlineClients = newClients.filter((c) => onlineClientIds.has(c.id)).length;
+    const newSalonClients = newClients.filter((c) => salonClientIds.has(c.id) && !onlineClientIds.has(c.id)).length;
+
+    const reviews = await prisma.review.findMany({
+      where: { ...tenantWhere, createdAt: { gte: start, lte: end }, status: 'APPROVED' },
+      select: { rating: true },
+    });
+    const avgSatisfaction = reviews.length > 0
+      ? reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length
+      : 0;
+
+    return {
+      totalAppointments,
+      onlineAppointments,
+      onlineRate: totalAppointments > 0 ? (onlineAppointments / totalAppointments) * 100 : 0,
+      newOnlineClients,
+      newSalonClients,
+      attendanceRate,
+      avgDuration,
+      avgSatisfaction,
+      loyaltyRate,
+      cancellationRate,
+      advanceBookingRate,
+      avgBasket,
+      loyalClientsCount,
+    };
+  }
+
+  /**
+   * Delta for a delta badge. kind 'pct' = % change, 'points' = percentage-point
+   * change (for rate metrics), 'diff' = raw difference. Returns null when there
+   * is no previous-period data to compare against (badge hidden on the page).
+   */
+  private computeDelta(
+    current: number,
+    previous: number,
+    kind: 'pct' | 'points' | 'diff',
+    hasPrevData: boolean
+  ): number | null {
+    if (kind === 'pct') {
+      return previous > 0 ? Math.round(((current - previous) / previous) * 1000) / 10 : null;
+    }
+    // For points/diff: only meaningful when the previous period actually had
+    // appointments — otherwise a "+0"/"−30.3" badge against an empty period is noise.
+    if (!hasPrevData) return null;
+    return Math.round((current - previous) * 10) / 10;
+  }
+
   async getDashboardStats(tenantId: string, period?: string, startDate?: string, endDate?: string, month?: string, year?: string) {
     const { start, end } = this.parseDateRange({ period, startDate, endDate, month, year });
+
+    // Previous equivalent period for real delta computation.
+    let prevStart: Date;
+    let prevEnd: Date;
+    if (month !== undefined && year !== undefined) {
+      const m = parseInt(month);
+      const y = parseInt(year);
+      const prevM = m === 0 ? 11 : m - 1;
+      const prevY = m === 0 ? y - 1 : y;
+      prevStart = new Date(prevY, prevM, 1);
+      prevEnd = new Date(prevY, prevM + 1, 0, 23, 59, 59);
+    } else {
+      const durationMs = end.getTime() - start.getTime();
+      prevStart = new Date(start.getTime() - durationMs);
+      prevEnd = new Date(start.getTime() - 1);
+    }
+    const prev = await this.computeScalarMetrics(tenantId, prevStart, prevEnd);
 
     const tenantWhere = { tenantId };
     const appointmentWhere = {
@@ -152,14 +309,14 @@ export class StatsService {
       where: appointmentWhere,
       include: {
         service: true,
-        client: true,
         employee: true,
-        invoice: true
+        invoice: true,
+        services: { include: { service: true, employee: true } }
       }
     });
 
     const totalAppointments = appointments.length;
-    const onlineAppointments = appointments.filter(a => !a.createdById || a.client.createdAt >= start).length;
+    const onlineAppointments = appointments.filter(a => a.source === 'ONLINE').length;
     const salonAppointments = totalAppointments - onlineAppointments;
     const onlineRate = totalAppointments > 0 ? (onlineAppointments / totalAppointments) * 100 : 0;
 
@@ -170,9 +327,12 @@ export class StatsService {
       }
     });
 
-    const clientsWithAppointments = new Set(appointments.map(a => a.clientId));
-    const newOnlineClients = newClients.filter(c => clientsWithAppointments.has(c.id)).length;
-    const newSalonClients = newClients.length - newOnlineClients;
+    // New-client origin follows the same source-based classification as the rest
+    // of the stats section (Appointment.source is the only tracked origin).
+    const onlineClientIds = new Set(appointments.filter(a => a.source === 'ONLINE').map(a => a.clientId));
+    const salonClientIds = new Set(appointments.filter(a => a.source !== 'ONLINE').map(a => a.clientId));
+    const newOnlineClients = newClients.filter(c => onlineClientIds.has(c.id)).length;
+    const newSalonClients = newClients.filter(c => salonClientIds.has(c.id) && !onlineClientIds.has(c.id)).length;
 
     const appointmentsTrend: any[] = [];
     if (period === 'week') {
@@ -185,7 +345,7 @@ export class StatsService {
           const aptDate = new Date(a.startTime);
           return aptDate >= dayStart && aptDate <= dayEnd;
         });
-        const online = dayAppts.filter(a => !a.createdById || a.client.createdAt >= dayStart).length;
+        const online = dayAppts.filter(a => a.source === 'ONLINE').length;
         const salon = dayAppts.length - online;
         appointmentsTrend.push({ day: String(dayStart.getDate()).padStart(2, '0'), salon, online });
       }
@@ -198,7 +358,7 @@ export class StatsService {
           const aptDate = new Date(a.startTime);
           return aptDate >= dayStart && aptDate <= dayEnd;
         });
-        const online = dayAppts.filter(a => !a.createdById || a.client.createdAt >= dayStart).length;
+        const online = dayAppts.filter(a => a.source === 'ONLINE').length;
         const salon = dayAppts.length - online;
         appointmentsTrend.push({ day: String(i).padStart(2, '0'), salon, online });
       }
@@ -211,15 +371,20 @@ export class StatsService {
           const aptDate = new Date(a.startTime);
           return aptDate >= monthStart && aptDate <= monthEnd;
         });
-        const online = monthAppts.filter(a => !a.createdById || a.client.createdAt >= monthStart).length;
+        const online = monthAppts.filter(a => a.source === 'ONLINE').length;
         const salon = monthAppts.length - online;
         appointmentsTrend.push({ day: monthNames[i], salon, online });
       }
     }
 
-    const invoices = await prisma.invoice.findMany({
-      where: { ...tenantWhere, status: 'PAID', paidAt: { gte: start, lte: end } }
-    });
+    // Revenue = sum of per-service item prices (AppointmentServiceItem.price,
+    // falling back to service.price) for non-cancelled appointments in the
+    // window — never Invoice data, so the platform SUBSCRIPTION invoice can
+    // never leak into a salon revenue chart.
+    const revenueAppointments = appointments.filter(a => a.status !== 'CANCELLED');
+    const revenueByAppt = new Map<string, number>();
+    revenueAppointments.forEach(a => { revenueByAppt.set(a.id, this.appointmentRevenue(a)); });
+    const totalRevenue = revenueAppointments.reduce((sum, a) => sum + (revenueByAppt.get(a.id) || 0), 0);
 
     let revenueData: any[] = [];
     if (period === 'week') {
@@ -229,20 +394,19 @@ export class StatsService {
         date.setDate(start.getDate() + i);
         const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-        const dayRevenue = invoices.filter(inv => {
-          const pd = inv.paidAt ? new Date(inv.paidAt) : null;
-          return pd && pd >= dayStart && pd <= dayEnd;
-        }).reduce((sum, inv) => sum + (inv.total || 0), 0);
+        const dayRevenue = revenueAppointments
+          .filter(a => {
+            const aptDate = new Date(a.startTime);
+            return aptDate >= dayStart && aptDate <= dayEnd;
+          })
+          .reduce((sum, a) => sum + (revenueByAppt.get(a.id) || 0), 0);
         revenueData.push({ name: weekDays[i], value: Math.round(dayRevenue) });
       }
     } else if (period === 'month') {
       const weeks: { [key: number]: number } = {};
-      invoices.forEach(inv => {
-        if (inv.paidAt) {
-          const pd = new Date(inv.paidAt);
-          const weekNum = Math.ceil(pd.getDate() / 7);
-          weeks[weekNum] = (weeks[weekNum] || 0) + (inv.total || 0);
-        }
+      revenueAppointments.forEach(a => {
+        const weekNum = Math.ceil(new Date(a.startTime).getDate() / 7);
+        weeks[weekNum] = (weeks[weekNum] || 0) + (revenueByAppt.get(a.id) || 0);
       });
       for (let i = 1; i <= 4; i++) {
         revenueData.push({ name: `S${i}`, value: Math.round(weeks[i] || 0) });
@@ -250,15 +414,13 @@ export class StatsService {
     } else {
       const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
       for (let i = 0; i < 12; i++) {
-        const monthRevenue = invoices.filter(inv => {
-          if (!inv.paidAt) return false;
-          return new Date(inv.paidAt).getMonth() === i;
-        }).reduce((sum, inv) => sum + (inv.total || 0), 0);
+        const monthRevenue = revenueAppointments
+          .filter(a => new Date(a.startTime).getMonth() === i)
+          .reduce((sum, a) => sum + (revenueByAppt.get(a.id) || 0), 0);
         revenueData.push({ name: monthNames[i], value: Math.round(monthRevenue) });
       }
     }
 
-    const totalRevenue = invoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
     const avgRevenue = revenueData.length > 0 ? totalRevenue / revenueData.length : 0;
 
     let peakDay = 'N/A';
@@ -277,17 +439,35 @@ export class StatsService {
       .map(([name, value]) => ({ name, value, color: '#002366' }))
       .sort((a, b) => b.value - a.value).slice(0, 5);
 
-    const employeeStatsMap: { [key: string]: { appointments: number; revenue: number; ratings: number[] } } = {};
+    const employeeStatsMap: { [key: string]: { appointments: number; revenue: number; ratings: number[]; avatar: string | null } } = {};
     appointments.forEach(apt => {
-      if (apt.employeeId && apt.employee) {
+      if (apt.status === 'CANCELLED') return;
+      const items = apt.services && apt.services.length > 0 ? apt.services : null;
+      if (items) {
+        items.forEach((item: any) => {
+          if (item.employeeId && item.employee) {
+            const empName = `${item.employee.firstName} ${item.employee.lastName}`;
+            if (!employeeStatsMap[empName]) {
+              employeeStatsMap[empName] = { appointments: 0, revenue: 0, ratings: [], avatar: null };
+            }
+            if (!employeeStatsMap[empName].avatar && item.employee.avatar) {
+              employeeStatsMap[empName].avatar = item.employee.avatar;
+            }
+            employeeStatsMap[empName].appointments++;
+            // Per-service item price (the app-wide revenue convention)
+            employeeStatsMap[empName].revenue += item.price || 0;
+          }
+        });
+      } else if (apt.employeeId && apt.employee) {
         const empName = `${apt.employee.firstName} ${apt.employee.lastName}`;
         if (!employeeStatsMap[empName]) {
-          employeeStatsMap[empName] = { appointments: 0, revenue: 0, ratings: [] };
+          employeeStatsMap[empName] = { appointments: 0, revenue: 0, ratings: [], avatar: null };
+        }
+        if (!employeeStatsMap[empName].avatar && apt.employee.avatar) {
+          employeeStatsMap[empName].avatar = apt.employee.avatar;
         }
         employeeStatsMap[empName].appointments++;
-        if (apt.invoice) {
-          employeeStatsMap[empName].revenue += apt.invoice.total || 0;
-        }
+        employeeStatsMap[empName].revenue += this.appointmentRevenue(apt);
       }
     });
 
@@ -323,12 +503,12 @@ export class StatsService {
         : 4.5;
       return {
         name,
+        avatar: stats.avatar,
         appointments: stats.appointments,
         revenue: Math.round(stats.revenue),
-        rating: Math.round(avgRating * 10) / 10,
-        growth: '+12%'
+        rating: Math.round(avgRating * 10) / 10
       };
-    }).sort((a, b) => b.appointments - a.appointments).slice(0, 4);
+    }).sort((a, b) => b.appointments - a.appointments);
 
     const timeSlotCounts: { [key: string]: number } = {};
     appointments.forEach(apt => {
@@ -376,8 +556,8 @@ export class StatsService {
     }).length;
     const advanceBookingRate = totalAppointments > 0 ? (advanceBookings / totalAppointments) * 100 : 0;
 
-    const appointmentsWithInvoices = appointments.filter(apt => apt.invoice).length;
-    const avgBasket = appointmentsWithInvoices > 0 ? totalRevenue / appointmentsWithInvoices : 0;
+    const revenueAppointmentsCount = revenueAppointments.filter(a => (revenueByAppt.get(a.id) || 0) > 0).length;
+    const avgBasket = revenueAppointmentsCount > 0 ? totalRevenue / revenueAppointmentsCount : 0;
 
     const loyalClientsCount = loyalClients;
 
@@ -399,13 +579,13 @@ export class StatsService {
       peakHours.push({ time: group.label, rate: Math.round(rate) });
     });
 
+    // Only two booking origins are tracked in the data model: ONLINE (public booking)
+    // and STAFF (salon-created). A finer per-channel breakdown (Instagram, WhatsApp…)
+    // is never recorded, so we expose the real 2-category split instead of fake estimates.
     const totalChannelCount = onlineAppointments + salonAppointments;
     const channelEstimates = [
-      { channel: 'Site web', count: Math.round(onlineAppointments * 0.6), percentage: totalChannelCount > 0 ? Math.round((Math.round(onlineAppointments * 0.6) / totalChannelCount) * 100) : 0, icon: 'globe' },
-      { channel: 'Instagram', count: Math.round(onlineAppointments * 0.2), percentage: totalChannelCount > 0 ? Math.round((Math.round(onlineAppointments * 0.2) / totalChannelCount) * 100) : 0, icon: 'instagram' },
-      { channel: 'WhatsApp', count: Math.round(onlineAppointments * 0.15), percentage: totalChannelCount > 0 ? Math.round((Math.round(onlineAppointments * 0.15) / totalChannelCount) * 100) : 0, icon: 'whatsapp' },
-      { channel: 'Téléphone', count: Math.round(salonAppointments * 0.5), percentage: totalChannelCount > 0 ? Math.round((Math.round(salonAppointments * 0.5) / totalChannelCount) * 100) : 0, icon: 'phone' },
-      { channel: 'En personne', count: Math.round(salonAppointments * 0.5), percentage: totalChannelCount > 0 ? Math.round((Math.round(salonAppointments * 0.5) / totalChannelCount) * 100) : 0, icon: 'store' },
+      { channel: 'Site web', count: onlineAppointments, percentage: totalChannelCount > 0 ? Math.round((onlineAppointments / totalChannelCount) * 100) : 0, icon: 'globe' },
+      { channel: 'En salon', count: salonAppointments, percentage: totalChannelCount > 0 ? Math.round((salonAppointments / totalChannelCount) * 100) : 0, icon: 'store' },
     ].filter(c => c.count > 0);
 
     const clientsWithBirthDate = await prisma.client.findMany({
@@ -460,6 +640,9 @@ export class StatsService {
       }
     }
 
+    // Real period-over-period deltas for the KPI delta badges (null = no previous data → badge hidden).
+    const hasPrevData = prev.totalAppointments > 0;
+
     return {
       onlineAppointments,
       totalAppointments,
@@ -486,7 +669,23 @@ export class StatsService {
       bookingChannels: channelEstimates,
       ageDistribution: ageData,
       visitFrequency: frequencyData,
-      timePreferences
+      timePreferences,
+      // Real period-over-period deltas for the KPI delta badges (null = no previous data → badge hidden).
+      deltas: {
+        totalAppointments: this.computeDelta(totalAppointments, prev.totalAppointments, 'pct', hasPrevData),
+        onlineAppointments: this.computeDelta(onlineAppointments, prev.onlineAppointments, 'pct', hasPrevData),
+        onlineRate: this.computeDelta(onlineRate, prev.onlineRate, 'points', hasPrevData),
+        newOnlineClients: this.computeDelta(newOnlineClients, prev.newOnlineClients, 'pct', hasPrevData),
+        newSalonClients: this.computeDelta(newSalonClients, prev.newSalonClients, 'pct', hasPrevData),
+        attendanceRate: this.computeDelta(attendanceRate, prev.attendanceRate, 'points', hasPrevData),
+        avgDuration: this.computeDelta(avgDuration, prev.avgDuration, 'diff', hasPrevData),
+        avgSatisfaction: this.computeDelta(avgSatisfaction, prev.avgSatisfaction, 'diff', hasPrevData),
+        loyaltyRate: this.computeDelta(loyaltyRate, prev.loyaltyRate, 'points', hasPrevData),
+        cancellationRate: this.computeDelta(cancellationRate, prev.cancellationRate, 'points', hasPrevData),
+        advanceBookingRate: this.computeDelta(advanceBookingRate, prev.advanceBookingRate, 'points', hasPrevData),
+        avgBasket: this.computeDelta(avgBasket, prev.avgBasket, 'pct', hasPrevData),
+        loyalClientsCount: this.computeDelta(loyalClientsCount, prev.loyalClientsCount, 'pct', hasPrevData),
+      },
     };
   }
 
@@ -498,11 +697,15 @@ export class StatsService {
 
     const appointments = await prisma.appointment.findMany({
       where: appointmentWhere,
-      include: { service: true, client: true, employee: true, invoice: true }
+      include: { service: true, employee: true, invoice: true }
     });
 
     const allServices = await prisma.service.findMany({ where: tenantWhere });
-    const allEmployees = await prisma.employee.findMany({ where: { ...tenantWhere, isActive: true } });
+    // Service items + legacy appointment.employeeId reference User records (role STAFF),
+    // so employee buckets MUST be keyed by User.id — Employee records live in a separate id space.
+    const allEmployees = await prisma.user.findMany({
+      where: { ...tenantWhere, role: 'STAFF', isActive: true }
+    });
 
     const totalRDV = appointments.length;
     const activeCollaborateurs = allEmployees.length;
@@ -510,7 +713,7 @@ export class StatsService {
     const totalDuration = appointments.reduce((sum, apt) => sum + (apt.duration || 0), 0);
     const avgDuration = totalRDV > 0 ? Math.round(totalDuration / totalRDV) : 0;
 
-    const salonAppointments = appointments.filter(a => a.createdById || new Date(a.client.createdAt) < start).length;
+    const salonAppointments = appointments.filter(a => a.source !== 'ONLINE').length;
     const onlineAppointments = totalRDV - salonAppointments;
     const salonPercentage = totalRDV > 0 ? Math.round((salonAppointments / totalRDV) * 100) : 0;
     const onlinePercentage = 100 - salonPercentage;
@@ -519,16 +722,19 @@ export class StatsService {
     allEmployees.forEach(emp => {
       employeeStats[emp.id] = {
         name: `${emp.firstName} ${emp.lastName}`,
+        avatar: emp.avatar || null,
         salonAppointments: 0, onlineAppointments: 0, totalAppointments: 0,
         salonServices: 0, onlineServices: 0, totalServices: 0, onlineRate: 0
       };
     });
 
     appointments.forEach(apt => {
+      // "Services performed" counts exclude cancelled appointments (app-wide rule)
+      if (apt.status === 'CANCELLED') return;
       if (apt.employeeId && employeeStats[apt.employeeId]) {
         employeeStats[apt.employeeId].totalAppointments++;
         employeeStats[apt.employeeId].totalServices++;
-        const isSalon = apt.createdById || new Date(apt.client.createdAt) < start;
+        const isSalon = apt.source !== 'ONLINE';
         if (isSalon) {
           employeeStats[apt.employeeId].salonAppointments++;
           employeeStats[apt.employeeId].salonServices++;
@@ -549,9 +755,11 @@ export class StatsService {
     });
 
     appointments.forEach(apt => {
+      // "Services performed" counts exclude cancelled appointments (app-wide rule)
+      if (apt.status === 'CANCELLED') return;
       if (apt.serviceId && serviceStats[apt.serviceId]) {
         serviceStats[apt.serviceId].totalAppointments++;
-        const isSalon = apt.createdById || new Date(apt.client.createdAt) < start;
+        const isSalon = apt.source !== 'ONLINE';
         if (isSalon) serviceStats[apt.serviceId].salonAppointments++;
         else serviceStats[apt.serviceId].onlineAppointments++;
       }
@@ -569,16 +777,20 @@ export class StatsService {
     const totalOnlineServices = employeeList.reduce((sum: number, e: any) => sum + e.onlineServices, 0);
     const totalAllServices = employeeList.reduce((sum: number, e: any) => sum + e.totalServices, 0);
 
+    const salonPct = this.roundTo100(employeeList.map((emp: any) => emp.salonServices), totalSalonServices);
+    const lignePct = this.roundTo100(employeeList.map((emp: any) => emp.onlineServices), totalOnlineServices);
+    const allPct = this.roundTo100(employeeList.map((emp: any) => emp.totalServices), totalAllServices);
+
     const prestationsSalonData = employeeList
-      .map((emp: any, idx: number) => ({ name: emp.name, value: totalSalonServices > 0 ? Math.round((emp.salonServices / totalSalonServices) * 100) : 0, color: colors[idx % colors.length] }))
+      .map((emp: any, idx: number) => ({ name: emp.name, value: salonPct[idx], color: colors[idx % colors.length] }))
       .sort((a: any, b: any) => b.value - a.value);
 
     const prestationsLigneData = employeeList
-      .map((emp: any, idx: number) => ({ name: emp.name, value: totalOnlineServices > 0 ? Math.round((emp.onlineServices / totalOnlineServices) * 100) : 0, color: colors[idx % colors.length] }))
+      .map((emp: any, idx: number) => ({ name: emp.name, value: lignePct[idx], color: colors[idx % colors.length] }))
       .sort((a: any, b: any) => b.value - a.value);
 
     const totalPrestationsData = employeeList
-      .map((emp: any, idx: number) => ({ name: emp.name, value: totalAllServices > 0 ? Math.round((emp.totalServices / totalAllServices) * 100) : 0, color: colors[idx % colors.length] }))
+      .map((emp: any, idx: number) => ({ name: emp.name, value: allPct[idx], color: colors[idx % colors.length] }))
       .sort((a: any, b: any) => b.value - a.value);
 
     const serviceList = Object.values(serviceStats).filter((s: any) => s.totalAppointments > 0) as any[];
@@ -586,20 +798,31 @@ export class StatsService {
     const totalOnlineAppointments = serviceList.reduce((sum: number, s: any) => sum + s.onlineAppointments, 0);
     const totalAllAppointments = serviceList.reduce((sum: number, s: any) => sum + s.totalAppointments, 0);
 
+    const rdvSalonPct = this.roundTo100(serviceList.map((svc: any) => svc.salonAppointments), totalSalonAppointments);
+    const rdvLignePct = this.roundTo100(serviceList.map((svc: any) => svc.onlineAppointments), totalOnlineAppointments);
+    const rdvAllPct = this.roundTo100(serviceList.map((svc: any) => svc.totalAppointments), totalAllAppointments);
+
     const rdvSalonParPrestationData = serviceList
-      .map((svc: any, idx: number) => ({ name: svc.name, value: totalSalonAppointments > 0 ? Math.round((svc.salonAppointments / totalSalonAppointments) * 100) : 0, color: colors[idx % colors.length] }))
+      .map((svc: any, idx: number) => ({ name: svc.name, value: rdvSalonPct[idx], color: colors[idx % colors.length] }))
       .sort((a: any, b: any) => b.value - a.value).slice(0, 6);
 
     const rdvLigneParPrestationData = serviceList
-      .map((svc: any, idx: number) => ({ name: svc.name, value: totalOnlineAppointments > 0 ? Math.round((svc.onlineAppointments / totalOnlineAppointments) * 100) : 0, color: colors[idx % colors.length] }))
+      .map((svc: any, idx: number) => ({ name: svc.name, value: rdvLignePct[idx], color: colors[idx % colors.length] }))
       .sort((a: any, b: any) => b.value - a.value).slice(0, 6);
 
     const totalRdvParPrestationData = serviceList
-      .map((svc: any, idx: number) => ({ name: svc.name, value: totalAllAppointments > 0 ? Math.round((svc.totalAppointments / totalAllAppointments) * 100) : 0, color: colors[idx % colors.length] }))
+      .map((svc: any, idx: number) => ({ name: svc.name, value: rdvAllPct[idx], color: colors[idx % colors.length] }))
       .sort((a: any, b: any) => b.value - a.value).slice(0, 6);
 
     const performanceData = employeeList
-      .map((emp: any) => ({ name: emp.name, rdv: emp.totalAppointments, prestations: emp.totalServices, taux: emp.onlineRate, avatar: emp.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) }))
+      .map((emp: any) => ({
+        name: emp.name,
+        avatar: emp.avatar || null,
+        initials: emp.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2),
+        rdv: emp.totalAppointments,
+        prestations: emp.totalServices,
+        taux: emp.onlineRate
+      }))
       .sort((a: any, b: any) => b.rdv - a.rdv).slice(0, 10);
 
     return {
@@ -618,7 +841,7 @@ export class StatsService {
 
     const appointments = await prisma.appointment.findMany({
       where: appointmentWhere,
-      include: { service: true, client: true, invoice: true }
+      include: { service: true, client: true, invoice: true, services: { include: { service: true } } }
     });
 
     const allServices = await prisma.service.findMany({ where: tenantWhere });
@@ -629,13 +852,15 @@ export class StatsService {
     });
 
     appointments.forEach(apt => {
+      // "Services performed" counts exclude cancelled appointments (app-wide rule)
+      if (apt.status === 'CANCELLED') return;
       if (apt.serviceId && serviceStats[apt.serviceId]) {
         serviceStats[apt.serviceId].total++;
-        const isSalon = apt.createdById || new Date(apt.client.createdAt) < start;
+        const isSalon = apt.source !== 'ONLINE';
         if (isSalon) serviceStats[apt.serviceId].salon++;
         else serviceStats[apt.serviceId].ligne++;
-        if (apt.invoice) serviceStats[apt.serviceId].revenue += apt.invoice.total || 0;
-        else if (apt.service?.price) serviceStats[apt.serviceId].revenue += apt.service.price;
+        // Per-service item price convention (never Invoice totals)
+        serviceStats[apt.serviceId].revenue += this.appointmentRevenue(apt);
       }
     });
 
@@ -674,7 +899,12 @@ export class StatsService {
     const { start, end } = this.parseDateRange({ period, startDate, endDate, month, year });
 
     const tenantWhere = { tenantId: tenantIdFilter(tenantIds) };
-    const appointmentWhere: any = { ...tenantWhere, startTime: { gte: start, lte: end } };
+    const appointmentWhere: any = {
+      ...tenantWhere,
+      startTime: { gte: start, lte: end },
+      // CANCELLED excluded from revenue/"services performed" counts (app-wide rule)
+      status: { not: 'CANCELLED' }
+    };
 
     // Optional per-service filters (category string / service id) — match on the appointment's service items
     const serviceFilters: any[] = [];
@@ -688,8 +918,10 @@ export class StatsService {
       include: { employee: true, client: true, invoice: true, services: { include: { service: true } } }
     });
 
-    const allEmployees = await prisma.employee.findMany({
-      where: { ...tenantWhere, isActive: true }
+    // Service items + legacy appointment.employeeId reference User records (role STAFF),
+    // so employee buckets MUST be keyed by User.id — Employee records live in a separate id space.
+    const allEmployees = await prisma.user.findMany({
+      where: { ...tenantWhere, role: 'STAFF', isActive: true }
     });
 
     const employeeStats: any = {};
@@ -698,7 +930,7 @@ export class StatsService {
     });
 
     appointments.forEach((apt: any) => {
-      const isSalon = apt.createdById || new Date(apt.client.createdAt) < start;
+      const isSalon = apt.source !== 'ONLINE';
       const items = apt.services && apt.services.length > 0 ? apt.services : null;
       if (items) {
         items.forEach((item: any) => {
@@ -706,10 +938,8 @@ export class StatsService {
             employeeStats[item.employeeId].totalServices++;
             if (isSalon) employeeStats[item.employeeId].inSalon++;
             else employeeStats[item.employeeId].online++;
-            // Prefer the per-service price; fall back to the invoice total for single-service items
-            employeeStats[item.employeeId].revenue += item.price > 0
-              ? item.price
-              : (items.length === 1 && apt.invoice ? (apt.invoice.total || 0) : 0);
+            // Per-service item price (the app-wide revenue convention)
+            employeeStats[item.employeeId].revenue += item.price || 0;
           }
         });
       } else if (apt.employeeId && employeeStats[apt.employeeId]) {
@@ -758,10 +988,12 @@ export class StatsService {
     const selectedMonth = month !== undefined ? parseInt(month) : new Date().getMonth();
     const selectedYear = year !== undefined ? parseInt(year) : new Date().getFullYear();
 
-    const dailyStats: { [key: string]: { total: number; salon: number; online: number } } = {};
+    // Each day also tracks absences (NO_SHOW + CANCELLED) — the "taux d'absence"
+    // merged into this page (previously a separate rdv-pas-venus page).
+    const dailyStats: { [key: string]: { total: number; salon: number; online: number; absents: number } } = {};
     for (let day = 1; day <= daysInMonth; day++) {
       const dateKey = `${selectedYear}-${(selectedMonth + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      dailyStats[dateKey] = { total: 0, salon: 0, online: 0 };
+      dailyStats[dateKey] = { total: 0, salon: 0, online: 0, absents: 0 };
     }
 
     appointments.forEach(apt => {
@@ -769,9 +1001,10 @@ export class StatsService {
       const dateKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
       if (dailyStats[dateKey]) {
         dailyStats[dateKey].total++;
-        const isSalon = apt.createdById || new Date(apt.client.createdAt) < start;
+        const isSalon = apt.source !== 'ONLINE';
         if (isSalon) dailyStats[dateKey].salon++;
         else dailyStats[dateKey].online++;
+        if (apt.status === 'NO_SHOW' || apt.status === 'CANCELLED') dailyStats[dateKey].absents++;
       }
     });
 
@@ -782,7 +1015,9 @@ export class StatsService {
         totalPrestations: stats.total,
         inSalon: stats.salon,
         online: stats.online,
-        onlineRate: stats.total > 0 ? ((stats.online / stats.total) * 100).toFixed(2) + '%' : '0%'
+        onlineRate: stats.total > 0 ? ((stats.online / stats.total) * 100).toFixed(2) + '%' : '0%',
+        absents: stats.absents,
+        tauxAbsence: stats.total > 0 ? ((stats.absents / stats.total) * 100).toFixed(1) + '%' : '0%',
       };
     }).sort((a, b) => {
       const [aDay, aMonth] = a.date.split('/');
@@ -793,72 +1028,69 @@ export class StatsService {
     const totals = dailyData.reduce((acc, day) => ({
       totalPrestations: acc.totalPrestations + day.totalPrestations,
       inSalon: acc.inSalon + day.inSalon,
-      online: acc.online + day.online
-    }), { totalPrestations: 0, inSalon: 0, online: 0 });
+      online: acc.online + day.online,
+      absents: acc.absents + day.absents
+    }), { totalPrestations: 0, inSalon: 0, online: 0, absents: 0 });
 
     const totalOnlineRate = totals.totalPrestations > 0 ? ((totals.online / totals.totalPrestations) * 100).toFixed(1) : '0';
+    const totalTauxAbsence = totals.totalPrestations > 0 ? ((totals.absents / totals.totalPrestations) * 100).toFixed(1) : '0';
 
-    return { dailyData, totals: { ...totals, totalOnlineRate: totalOnlineRate + '%' } };
+    // Equivalent previous period for real delta badges (same semantics as getDashboardStats)
+    let prevStart: Date;
+    let prevEnd: Date;
+    if (month !== undefined && year !== undefined) {
+      const m = parseInt(month);
+      const y = parseInt(year);
+      const prevM = m === 0 ? 11 : m - 1;
+      const prevY = m === 0 ? y - 1 : y;
+      prevStart = new Date(prevY, prevM, 1);
+      prevEnd = new Date(prevY, prevM + 1, 0, 23, 59, 59);
+    } else {
+      const durationMs = end.getTime() - start.getTime();
+      prevStart = new Date(start.getTime() - durationMs);
+      prevEnd = new Date(start.getTime() - 1);
+    }
+    const prev = await this.computeDailyTotals(tenantId, prevStart, prevEnd);
+    const hasPrevData = prev.totalPrestations > 0;
+    const currentOnlineRate = totals.totalPrestations > 0 ? (totals.online / totals.totalPrestations) * 100 : 0;
+    const currentAbsenceRate = totals.totalPrestations > 0 ? (totals.absents / totals.totalPrestations) * 100 : 0;
+
+    return {
+      dailyData,
+      totals: { ...totals, totalOnlineRate: totalOnlineRate + '%', totalTauxAbsence: totalTauxAbsence + '%' },
+      // Real period-over-period deltas (null = no previous-period data → badge hidden)
+      deltas: {
+        totalPrestations: this.computeDelta(totals.totalPrestations, prev.totalPrestations, 'pct', hasPrevData),
+        inSalon: this.computeDelta(totals.inSalon, prev.inSalon, 'pct', hasPrevData),
+        online: this.computeDelta(totals.online, prev.online, 'pct', hasPrevData),
+        totalOnlineRate: this.computeDelta(currentOnlineRate, prev.onlineRate, 'points', hasPrevData),
+        absents: this.computeDelta(totals.absents, prev.absents, 'pct', hasPrevData),
+        totalTauxAbsence: this.computeDelta(currentAbsenceRate, prev.absenceRate, 'points', hasPrevData),
+      },
+    };
   }
 
-  async getNoShowStats(tenantId: string, period?: string, startDate?: string, endDate?: string, month?: string, year?: string) {
-    const { start, end } = this.parseDateRange({ period, startDate, endDate, month, year });
-
-    const tenantWhere = { tenantId };
-    const appointmentWhere = { ...tenantWhere, startTime: { gte: start, lte: end } };
-
-    const [allAppointments, noShowAppointments, cancelledAppointments] = await Promise.all([
-      prisma.appointment.findMany({ where: appointmentWhere }),
-      prisma.appointment.findMany({ where: { ...appointmentWhere, status: 'NO_SHOW' } }),
-      prisma.appointment.findMany({ where: { ...appointmentWhere, status: 'CANCELLED' } })
-    ]);
-
-    const noShowIds = new Set(noShowAppointments.map(apt => apt.id));
-    const cancelledIds = new Set(cancelledAppointments.map(apt => apt.id));
-
-    const daysInMonth = month ? new Date(parseInt(year || String(new Date().getFullYear())), parseInt(month) + 1, 0).getDate() : 31;
-    const selectedMonth = month !== undefined ? parseInt(month) : new Date().getMonth();
-    const selectedYear = year !== undefined ? parseInt(year) : new Date().getFullYear();
-
-    const dailyStats: { [key: string]: { total: number; pasVenus: number } } = {};
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateKey = `${selectedYear}-${(selectedMonth + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      dailyStats[dateKey] = { total: 0, pasVenus: 0 };
-    }
-
-    allAppointments.forEach(apt => {
-      const date = new Date(apt.startTime);
-      const dateKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
-      if (dailyStats[dateKey]) {
-        dailyStats[dateKey].total++;
-        if (noShowIds.has(apt.id) || cancelledIds.has(apt.id)) {
-          dailyStats[dateKey].pasVenus++;
-        }
-      }
+  /**
+   * Channel totals (salon vs online) + absences for an arbitrary window — used
+   * for the rdv page's real period-over-period delta badges.
+   */
+  private async computeDailyTotals(tenantId: string, start: Date, end: Date) {
+    const appointments = await prisma.appointment.findMany({
+      where: { tenantId, startTime: { gte: start, lte: end } },
+      select: { source: true, status: true }
     });
-
-    const dailyData = Object.entries(dailyStats).map(([dateKey, stats]) => {
-      const [, monthStr, dayStr] = dateKey.split('-');
-      return {
-        date: `${dayStr}/${monthStr}`,
-        totalRdv: stats.total,
-        pasVenus: stats.pasVenus,
-        tauxPasVenus: stats.total > 0 ? ((stats.pasVenus / stats.total) * 100).toFixed(1) + '%' : '0%'
-      };
-    }).sort((a, b) => {
-      const [aDay, aMonth] = a.date.split('/');
-      const [bDay, bMonth] = b.date.split('/');
-      return parseInt(aDay) - parseInt(bDay);
-    });
-
-    const totals = dailyData.reduce((acc, day) => ({
-      totalRdv: acc.totalRdv + day.totalRdv,
-      pasVenus: acc.pasVenus + day.pasVenus
-    }), { totalRdv: 0, pasVenus: 0 });
-
-    const totalTauxPasVenus = totals.totalRdv > 0 ? ((totals.pasVenus / totals.totalRdv) * 100).toFixed(1) : '0';
-
-    return { dailyData, totals: { ...totals, totalTauxPasVenus: totalTauxPasVenus + '%' } };
+    const totalPrestations = appointments.length;
+    const online = appointments.filter((a) => a.source === 'ONLINE').length;
+    const inSalon = totalPrestations - online;
+    const absents = appointments.filter((a) => a.status === 'NO_SHOW' || a.status === 'CANCELLED').length;
+    return {
+      totalPrestations,
+      inSalon,
+      online,
+      absents,
+      onlineRate: totalPrestations > 0 ? (online / totalPrestations) * 100 : 0,
+      absenceRate: totalPrestations > 0 ? (absents / totalPrestations) * 100 : 0,
+    };
   }
 
   async getOccupancyOverview(tenantId: string, month?: string, year?: string, employeeId?: string) {
@@ -933,7 +1165,12 @@ export class StatsService {
           tempDate.setDate(tempDate.getDate() + 1);
         }
         const totalAvailableMinutes = dayOccurrences * availableMinutesPerSlot;
-        occupancyRates[day][time] = totalAvailableMinutes > 0 ? Math.round((data.totalMinutes / totalAvailableMinutes) * 100) : 0;
+        // Occupancy is capped at 100%: a slot's booked minutes can exceed its
+        // 60-minute capacity when several employees work in parallel or a
+        // service lasts longer than the slot — that's overbooking, not >100%.
+        occupancyRates[day][time] = totalAvailableMinutes > 0
+          ? Math.round(Math.min(100, (data.totalMinutes / totalAvailableMinutes) * 100))
+          : 0;
       });
     });
 
@@ -969,8 +1206,10 @@ export class StatsService {
     if (serviceFilters.length === 1) appointmentWhere.services = { some: serviceFilters[0] };
     else if (serviceFilters.length > 1) appointmentWhere.services = { some: { AND: serviceFilters } };
 
-    const allEmployees = await prisma.employee.findMany({
-      where: { ...tenantWhere, isActive: true }
+    // Service items + legacy appointment.employeeId reference User records (role STAFF),
+    // so employee buckets MUST be keyed by User.id — Employee records live in a separate id space.
+    const allEmployees = await prisma.user.findMany({
+      where: { ...tenantWhere, role: 'STAFF', isActive: true }
     });
 
     const appointments = await prisma.appointment.findMany({
@@ -990,10 +1229,8 @@ export class StatsService {
           if (item.employeeId && employeeStats[item.employeeId]) {
             employeeStats[item.employeeId].totalMinutes += item.duration || 0;
             employeeStats[item.employeeId].appointmentCount++;
-            // Prefer the per-service price; fall back to the invoice total for single-service items
-            employeeStats[item.employeeId].revenue += item.price > 0
-              ? item.price
-              : (items.length === 1 && apt.invoice ? (apt.invoice.total || 0) : 0);
+            // Per-service item price (the app-wide revenue convention)
+            employeeStats[item.employeeId].revenue += item.price || 0;
           }
         });
       } else if (apt.employeeId && employeeStats[apt.employeeId]) {
@@ -1007,7 +1244,10 @@ export class StatsService {
     const estimatedWorkingMinutes = daysInRange * 8 * 60;
 
     const colors = ['#3B82F6', '#EC4899', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444'];
-    const collaborators = Object.values(employeeStats)
+    // Zero-activity staff (no appointments in the window) are excluded from
+    // listings, matching the personels/statistiques behaviour (app-wide rule).
+    const activeEmployees = Object.values(employeeStats).filter((emp: any) => emp.appointmentCount > 0);
+    const collaborators = activeEmployees
       .map((emp: any, idx: number) => {
         const workedHours = Math.round(emp.totalMinutes / 60);
         const occupationRate = estimatedWorkingMinutes > 0
@@ -1021,7 +1261,7 @@ export class StatsService {
       })
       .sort((a: any, b: any) => b.occupationRate - a.occupationRate);
 
-    const empArr = Object.values(employeeStats) as any[];
+    const empArr = activeEmployees as any[];
     const totalAppointmentCount = empArr.reduce((sum: number, emp: any) => sum + emp.appointmentCount, 0);
     const totalWorkedHours = empArr.reduce((sum: number, emp: any) => sum + Math.round(emp.totalMinutes / 60), 0);
     const totalRevenue = empArr.reduce((sum: number, emp: any) => sum + emp.revenue, 0);
@@ -1054,7 +1294,7 @@ export class StatsService {
 
     const appointments = await prisma.appointment.findMany({
       where: appointmentWhere,
-      include: { service: true, invoice: true }
+      include: { service: true, invoice: true, services: { include: { service: true } } }
     });
 
     const serviceStats: any = {};
@@ -1068,8 +1308,8 @@ export class StatsService {
         }
         serviceStats[apt.serviceId].totalMinutes += apt.duration || 0;
         serviceStats[apt.serviceId].count++;
-        if (apt.invoice) serviceStats[apt.serviceId].revenue += apt.invoice.total || 0;
-        else if (apt.service?.price) serviceStats[apt.serviceId].revenue += apt.service.price;
+        // Per-service item price convention (never Invoice totals)
+        serviceStats[apt.serviceId].revenue += this.appointmentRevenue(apt);
       }
     });
 
@@ -1123,13 +1363,13 @@ export class StatsService {
   }
 
   private async aggregateClientVisitStats(
-    tenantId: string,
+    tenantIds: string | string[],
     start: Date,
     end: Date
   ) {
     const appointments = await prisma.appointment.findMany({
       where: {
-        tenantId,
+        tenantId: tenantIdFilter(tenantIds),
         startTime: { gte: start, lte: end },
         status: { notIn: ['CANCELLED'] },
       },
@@ -1145,6 +1385,8 @@ export class StatsService {
             status: true,
           },
         },
+        service: { select: { price: true } },
+        services: { select: { price: true } },
         invoice: { select: { total: true, status: true } },
       },
     });
@@ -1166,7 +1408,16 @@ export class StatsService {
         byClient[id] = { client: apt.client, visits: 0, revenue: 0, lastVisit: null };
       }
       byClient[id].visits += 1;
-      if (apt.invoice?.status === 'PAID') {
+      // CA follows the app-wide convention: the sum of the prices shown in the
+      // agenda (per-service item prices) — the same definition the personnels
+      // stats use. This is not the accounting revenue: completing an appointment
+      // via "Terminé" never creates an Invoice, so invoice-only sums were always 0.
+      const items = (apt as any).services as { price: number }[] | undefined;
+      if (items && items.length > 0) {
+        byClient[id].revenue += items.reduce((sum, item) => sum + (item.price || 0), 0);
+      } else if ((apt as any).service?.price) {
+        byClient[id].revenue += (apt as any).service.price;
+      } else if (apt.invoice?.status === 'PAID') {
         byClient[id].revenue += apt.invoice.total;
       }
       const aptStart = new Date(apt.startTime);
@@ -1179,7 +1430,7 @@ export class StatsService {
   }
 
   async getTopClients(
-    tenantId: string,
+    tenantIds: string | string[],
     limit: number = 100,
     period?: string,
     startDate?: string,
@@ -1195,7 +1446,7 @@ export class StatsService {
       year,
     });
 
-    const byClient = await this.aggregateClientVisitStats(tenantId, start, end);
+    const byClient = await this.aggregateClientVisitStats(tenantIds, start, end);
 
     const clients = Object.values(byClient)
       .map((entry) => ({
@@ -1220,7 +1471,7 @@ export class StatsService {
   }
 
   async getNewClientsStats(
-    tenantId: string,
+    tenantIds: string | string[],
     period?: string,
     startDate?: string,
     endDate?: string,
@@ -1231,7 +1482,7 @@ export class StatsService {
 
     const clients = await prisma.client.findMany({
       where: {
-        tenantId,
+        tenantId: tenantIdFilter(tenantIds),
         createdAt: { gte: start, lte: end },
       },
       include: {
@@ -1267,7 +1518,7 @@ export class StatsService {
   }
 
   async getClientFrequencyStats(
-    tenantId: string,
+    tenantIds: string | string[],
     period?: string,
     startDate?: string,
     endDate?: string,
@@ -1275,27 +1526,46 @@ export class StatsService {
     year?: string
   ) {
     const { start, end } = this.parseDateRange({ period, startDate, endDate, month, year });
-    const byClient = await this.aggregateClientVisitStats(tenantId, start, end);
+    const byClient = await this.aggregateClientVisitStats(tenantIds, start, end);
 
     const visitCounts = Object.values(byClient).map((c) => c.visits);
     const clientsWithVisits = visitCounts.length;
-    const clientsWithoutVisits = await prisma.client.count({
+    const noVisitClients = await prisma.client.findMany({
       where: {
-        tenantId,
+        tenantId: tenantIdFilter(tenantIds),
         createdAt: { lte: end },
         appointments: { none: { startTime: { gte: start, lte: end }, status: { notIn: ['CANCELLED'] } } },
       },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+      orderBy: { createdAt: 'desc' },
     });
+    const clientsWithoutVisits = noVisitClients.length;
 
     const regular = visitCounts.filter((c) => c >= 4).length;
     const frequent = visitCounts.filter((c) => c === 2 || c === 3).length;
     const occasional = visitCounts.filter((c) => c === 1).length;
 
+    // Drill-down lists: which clients fall into each bucket (name, contact, visits).
+    const clientsFor = (pred: (v: number) => boolean) =>
+      Object.values(byClient)
+        .filter((e) => pred(e.visits))
+        .map((e) => ({
+          id: e.client!.id,
+          firstName: e.client!.firstName,
+          lastName: e.client!.lastName,
+          email: e.client!.email,
+          phone: e.client!.phone,
+          visits: e.visits,
+        }));
+
     const frequencyBuckets = [
-      { type: 'Réguliers', desc: '4+ visites', count: regular, color: '#002366' },
-      { type: 'Fréquents', desc: '2-3 visites', count: frequent, color: '#3B82F6' },
-      { type: 'Occasionnels', desc: '1 visite', count: occasional, color: '#60A5FA' },
-      { type: 'Sans visite', desc: 'Aucun RDV sur la période', count: clientsWithoutVisits, color: '#93C5FD' },
+      { type: 'Réguliers', desc: '4+ visites', count: regular, color: '#002366', clients: clientsFor((v) => v >= 4) },
+      { type: 'Fréquents', desc: '2-3 visites', count: frequent, color: '#3B82F6', clients: clientsFor((v) => v === 2 || v === 3) },
+      { type: 'Occasionnels', desc: '1 visite', count: occasional, color: '#60A5FA', clients: clientsFor((v) => v === 1) },
+      {
+        type: 'Sans visite', desc: 'Aucun RDV sur la période', count: clientsWithoutVisits, color: '#93C5FD',
+        clients: noVisitClients.map((c) => ({ id: c.id, firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone, visits: 0 })),
+      },
     ];
 
     const avgVisits =

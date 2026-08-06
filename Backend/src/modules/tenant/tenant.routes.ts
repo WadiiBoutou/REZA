@@ -264,36 +264,6 @@ router.put('/settings/appointment-display', requireRole('ADMIN', 'SUPER_ADMIN'),
 );
 
 /**
- * GET /api/tenant/photos
- * Get all photos for the tenant
- */
-router.get('/photos', (req, res, next) => tenantController.getPhotos(req, res, next));
-
-/**
- * POST /api/tenant/photos
- * Add photos
- */
-router.post('/photos', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) => tenantController.addPhotos(req, res, next));
-
-/**
- * PUT /api/tenant/photos/:id
- * Update a photo
- */
-router.put('/photos/:id', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) => tenantController.updatePhoto(req, res, next));
-
-/**
- * DELETE /api/tenant/photos/:id
- * Delete a photo
- */
-router.delete('/photos/:id', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) => tenantController.deletePhoto(req, res, next));
-
-/**
- * DELETE /api/tenant/photos
- * Delete multiple photos
- */
-router.delete('/photos', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) => tenantController.deleteMultiplePhotos(req, res, next));
-
-/**
  * GET /api/tenant/notifications/appointment-emails
  * Get appointment notification emails
  */
@@ -322,31 +292,11 @@ router.put('/settings/business-hours', requireRole('ADMIN', 'SUPER_ADMIN'), (req
 );
 
 /**
- * GET /api/tenant/settings/message
- * Get message settings
+ * GET /api/tenant/subscription-invoices
+ * List SUBSCRIPTION invoices for the account owning the current tenant.
  */
-router.get('/settings/message', (req, res, next) => tenantController.getMessageSettings(req, res, next));
-
-/**
- * PUT /api/tenant/settings/message
- * Update message settings
- */
-router.put('/settings/message', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) =>
-  tenantController.updateMessageSettings(req, res, next)
-);
-
-/**
- * GET /api/tenant/settings/waiting-list
- * Get waiting list activation status
- */
-router.get('/settings/waiting-list', (req, res, next) => tenantController.getWaitingListSettings(req, res, next));
-
-/**
- * PUT /api/tenant/settings/waiting-list
- * Update waiting list activation
- */
-router.put('/settings/waiting-list', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) =>
-  tenantController.updateWaitingListSettings(req, res, next)
+router.get('/subscription-invoices', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) =>
+  tenantController.getSubscriptionInvoices(req, res, next)
 );
 
 /**
@@ -443,30 +393,6 @@ router.post('/upload-header-image', requireRole('ADMIN', 'SUPER_ADMIN', 'STAFF',
  */
 router.post('/upload-cover-image', requireRole('ADMIN', 'SUPER_ADMIN'), upload.single('coverImage'), (req, res, next) =>
   tenantController.uploadCoverImage(req, res, next)
-);
-
-/**
- * GET /api/tenant/subscription-invoices
- * List SUBSCRIPTION-type invoices for this tenant's account
- */
-router.get('/subscription-invoices', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) =>
-  tenantController.getSubscriptionInvoices(req, res, next)
-);
-
-/**
- * GET /api/tenant/billing-payment-method
- * Get the platform-billing payment method
- */
-router.get('/billing-payment-method', (req, res, next) =>
-  tenantController.getBillingPaymentMethod(req, res, next)
-);
-
-/**
- * PUT /api/tenant/billing-payment-method
- * Set the platform-billing payment method
- */
-router.put('/billing-payment-method', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) =>
-  tenantController.setBillingPaymentMethod(req, res, next)
 );
 
 export default router;

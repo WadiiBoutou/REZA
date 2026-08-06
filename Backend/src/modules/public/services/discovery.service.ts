@@ -180,7 +180,7 @@ export class DiscoveryService {
           })(),
           businessHours: formattedBusinessHours,
           photos: transformedPhotos,
-          coverImages: (tenant.settings as any)?.coverImages || [],
+          coverImages: ((tenant.settings as any)?.coverImages || []).map((img: string) => transformImageUrl(img)),
           socialMedia: tenant.settings?.socialMedia || {},
           amenities: tenant.settings?.amenities || [],
         onlineReservationEnabled: tenant.settings?.onlineReservationEnabled !== false,
@@ -206,7 +206,9 @@ export class DiscoveryService {
 
     const where: any = {
       isActive: true,
-      // subscriptionActive filter removed — show all active tenants regardless of subscription
+      // Only paid/covered salons appear in public search — unpaid salons stay
+      // hidden until the owner's virement payment is approved.
+      subscriptionActive: true,
     };
 
     if (search) {

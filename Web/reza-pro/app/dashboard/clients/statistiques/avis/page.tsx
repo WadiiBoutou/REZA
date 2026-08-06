@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TrendingUp, Star, MessageSquare, Eye, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, Star, MessageSquare, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
@@ -14,7 +14,6 @@ interface ReviewStats {
   approvedReviews: number;
   rejectedReviews: number;
   averageRating: number;
-  totalViews: number;
   ratingDistribution: { rating: number; count: number }[];
   trendsLastMonth: {
     total: number;
@@ -45,7 +44,6 @@ export default function StatistiquesAvisPage() {
     approvedReviews: 0,
     rejectedReviews: 0,
     averageRating: 0,
-    totalViews: 0,
     ratingDistribution: [],
     trendsLastMonth: {
       total: 0,
@@ -57,6 +55,12 @@ export default function StatistiquesAvisPage() {
   const [timeFilter, setTimeFilter] = useState<'week' | 'month' | 'year'>('month');
   const [loading, setLoading] = useState(true);
   const [allReviews, setAllReviews] = useState<ApiReview[]>([]);
+  const [deltas, setDeltas] = useState<{
+    totalPct: number | null;
+    rating: number | null;
+    approvalPp: number | null;
+    positivePct: number | null;
+  }>({ totalPct: null, rating: null, approvalPp: null, positivePct: null });
 
   useEffect(() => {
     fetchReviewStatistics();
@@ -84,7 +88,6 @@ export default function StatistiquesAvisPage() {
           approvedReviews: statsResponse.stats.approvedReviews || 0,
           rejectedReviews: statsResponse.stats.rejectedReviews || 0,
           averageRating: statsResponse.stats.averageRating || 0,
-          totalViews: statsResponse.stats.totalViews || 0,
           ratingDistribution: statsResponse.stats.ratingDistribution || [],
           trendsLastMonth: statsResponse.stats.trendsLastMonth || {
             total: 0,
@@ -151,9 +154,6 @@ export default function StatistiquesAvisPage() {
     const ratingsSum = filteredReviews.reduce((sum: number, r: ApiReview) => sum + (r.rating || 0), 0);
     const averageRating = totalReviews > 0 ? ratingsSum / totalReviews : 0;
 
-    // Note: views are not stored in the Review model, so we'll use 0 or a placeholder
-    const totalViews = 0; // TODO: Add views field to Review model if needed
-
     const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     filteredReviews.forEach((r: ApiReview) => {
       if (r.rating) distribution[r.rating]++;
@@ -162,6 +162,31 @@ export default function StatistiquesAvisPage() {
       rating: Number(rating),
       count,
     }));
+
+    // Compare with the previous window of the same length (real deltas, not hardcoded)
+    const windowLength = now.getTime() - startDate.getTime();
+    const prevStart = new Date(startDate.getTime() - windowLength);
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevReviews = allReviews.filter((r: ApiReview) => {
+      const reviewDate = new Date(r.createdAt);
+      return reviewDate >= prevStart && reviewDate <= prevEnd;
+    });
+    const prevTotal = prevReviews.length;
+    const prevRatingsSum = prevReviews.reduce((sum: number, r: ApiReview) => sum + (r.rating || 0), 0);
+    const prevAvgRating = prevTotal > 0 ? prevRatingsSum / prevTotal : 0;
+    const prevApproved = prevReviews.filter((r: ApiReview) => r.status === 'APPROVED').length;
+    const prevPositive = prevReviews.filter((r: ApiReview) => (r.rating || 0) >= 4).length;
+    const positiveCount = filteredReviews.filter((r: ApiReview) => (r.rating || 0) >= 4).length;
+
+    setDeltas({
+      totalPct: prevTotal > 0 ? Math.round(((totalReviews - prevTotal) / prevTotal) * 100) : null,
+      rating: prevTotal > 0 ? Math.round((averageRating - prevAvgRating) * 10) / 10 : null,
+      approvalPp:
+        prevTotal > 0 && totalReviews > 0
+          ? Math.round(((approved.length / totalReviews) - (prevApproved / prevTotal)) * 100)
+          : null,
+      positivePct: prevPositive > 0 ? Math.round(((positiveCount - prevPositive) / prevPositive) * 100) : null,
+    });
 
     // Calculate trends for last month (30 days ago to now)
     const lastMonthStart = subDays(now, 30);
@@ -180,7 +205,6 @@ export default function StatistiquesAvisPage() {
       approvedReviews: approved.length,
       rejectedReviews: rejected.length,
       averageRating,
-      totalViews,
       ratingDistribution,
       trendsLastMonth: {
         total: lastMonthReviews.length,
@@ -238,7 +262,6 @@ export default function StatistiquesAvisPage() {
       return {
         name: formatLabel(periodStart),
         avis: periodReviews.length,
-        vues: 0, // Views not available in current model
       };
     });
 
@@ -276,13 +299,12 @@ export default function StatistiquesAvisPage() {
 
   const trendData = calculateTrendData();
   const ratingTrendData = calculateRatingTrendData();
-  const filteredStats = stats;
-  const distributionData = filteredStats.ratingDistribution
+  const distributionData = stats.ratingDistribution
     .sort((a, b) => b.rating - a.rating)
     .map(item => ({
       rating: `${item.rating}★`,
       count: item.count,
-      percentage: filteredStats.totalReviews > 0 ? ((item.count / filteredStats.totalReviews) * 100).toFixed(0) : '0'
+      percentage: stats.totalReviews > 0 ? ((item.count / stats.totalReviews) * 100).toFixed(0) : '0'
     }));
 
   const CustomTooltip = ({ active, payload }: any) => {
@@ -349,21 +371,25 @@ export default function StatistiquesAvisPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-8 animate-fadeIn">
+      <div className="grid grid-cols-3 gap-4 mb-8 animate-fadeIn">
         {/* Total Reviews */}
         <div className="bg-white rounded-lg border border-gray-100 p-6 hover:shadow-md transition-all group">
           <div className="flex items-start justify-between mb-8">
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <MessageSquare size={18} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600">
-              <ArrowUpRight size={14} />
-              <span className="text-xs font-medium">+12%</span>
-            </div>
+            {deltas.totalPct !== null ? (
+              <div className={`flex items-center gap-1 ${deltas.totalPct >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {deltas.totalPct >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                <span className="text-xs font-medium">{deltas.totalPct >= 0 ? '+' : ''}{deltas.totalPct}%</span>
+              </div>
+            ) : (
+              <span className="text-xs text-gray-300">—</span>
+            )}
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-1">Total avis</p>
-            <p className="text-3xl font-light text-gray-900">{filteredStats.totalReviews}</p>
+            <p className="text-3xl font-light text-gray-900">{stats.totalReviews}</p>
           </div>
         </div>
 
@@ -373,14 +399,18 @@ export default function StatistiquesAvisPage() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <Star size={18} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600">
-              <ArrowUpRight size={14} />
-              <span className="text-xs font-medium">+0.2</span>
-            </div>
+            {deltas.rating !== null ? (
+              <div className={`flex items-center gap-1 ${deltas.rating >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {deltas.rating >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                <span className="text-xs font-medium">{deltas.rating >= 0 ? '+' : ''}{deltas.rating}</span>
+              </div>
+            ) : (
+              <span className="text-xs text-gray-300">—</span>
+            )}
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-1">Note moyenne</p>
-            <p className="text-3xl font-light text-gray-900">{filteredStats.averageRating.toFixed(1)}</p>
+            <p className="text-3xl font-light text-gray-900">{stats.averageRating.toFixed(1)}</p>
           </div>
         </div>
 
@@ -390,33 +420,20 @@ export default function StatistiquesAvisPage() {
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
               <TrendingUp size={18} className="text-gray-400" />
             </div>
-            <div className="flex items-center gap-1 text-emerald-600">
-              <ArrowUpRight size={14} />
-              <span className="text-xs font-medium">+8%</span>
-            </div>
+            {deltas.approvalPp !== null ? (
+              <div className={`flex items-center gap-1 ${deltas.approvalPp >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {deltas.approvalPp >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                <span className="text-xs font-medium">{deltas.approvalPp >= 0 ? '+' : ''}{deltas.approvalPp}%</span>
+              </div>
+            ) : (
+              <span className="text-xs text-gray-300">—</span>
+            )}
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-1">Taux approbation</p>
-            <p className="text-3xl font-light text-gray-900">{filteredStats.approvedReviews > 0 
-              ? ((filteredStats.approvedReviews / filteredStats.totalReviews) * 100).toFixed(1)
+            <p className="text-3xl font-light text-gray-900">{stats.approvedReviews > 0 
+              ? ((stats.approvedReviews / stats.totalReviews) * 100).toFixed(1)
               : '0'}%</p>
-          </div>
-        </div>
-
-        {/* Total Views */}
-        <div className="bg-white rounded-lg border border-gray-100 p-6 hover:shadow-md transition-all group">
-          <div className="flex items-start justify-between mb-8">
-            <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
-              <Eye size={18} className="text-gray-400" />
-            </div>
-            <div className="flex items-center gap-1 text-emerald-600">
-              <ArrowUpRight size={14} />
-              <span className="text-xs font-medium">+156</span>
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 mb-1">Vues totales</p>
-            <p className="text-3xl font-light text-gray-900">{filteredStats.totalViews}</p>
           </div>
         </div>
       </div>
@@ -427,7 +444,7 @@ export default function StatistiquesAvisPage() {
         <div className="col-span-2 bg-white rounded-lg border border-gray-100 p-6 animate-fadeIn">
           <div className="mb-6">
             <h3 className="text-sm font-medium text-gray-900 mb-1">Tendance des avis</h3>
-            <p className="text-xs text-gray-400">Évolution sur 7 jours</p>
+            <p className="text-xs text-gray-400">Évolution sur {timeFilter === 'week' ? '7 jours' : timeFilter === 'month' ? '30 jours' : '1 an'}</p>
           </div>
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={trendData}>
@@ -471,12 +488,12 @@ export default function StatistiquesAvisPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-gray-500">Approuvés</span>
-                <span className="text-sm font-medium text-gray-900">{filteredStats.approvedReviews}</span>
+                <span className="text-sm font-medium text-gray-900">{stats.approvedReviews}</span>
               </div>
               <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-gray-900 rounded-full transition-all duration-500"
-                  style={{ width: `${(filteredStats.approvedReviews / filteredStats.totalReviews) * 100}%` }}
+                  style={{ width: `${stats.totalReviews > 0 ? (stats.approvedReviews / stats.totalReviews) * 100 : 0}%` }}
                 />
               </div>
             </div>
@@ -484,12 +501,12 @@ export default function StatistiquesAvisPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-gray-500">En attente</span>
-                <span className="text-sm font-medium text-gray-900">{filteredStats.pendingReviews}</span>
+                <span className="text-sm font-medium text-gray-900">{stats.pendingReviews}</span>
               </div>
               <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-gray-400 rounded-full transition-all duration-500"
-                  style={{ width: `${(filteredStats.pendingReviews / filteredStats.totalReviews) * 100}%` }}
+                  style={{ width: `${stats.totalReviews > 0 ? (stats.pendingReviews / stats.totalReviews) * 100 : 0}%` }}
                 />
               </div>
             </div>
@@ -497,21 +514,14 @@ export default function StatistiquesAvisPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-gray-500">Refusés</span>
-                <span className="text-sm font-medium text-gray-900">{filteredStats.rejectedReviews}</span>
+                <span className="text-sm font-medium text-gray-900">{stats.rejectedReviews}</span>
               </div>
               <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-gray-300 rounded-full transition-all duration-500"
-                  style={{ width: `${(filteredStats.rejectedReviews / filteredStats.totalReviews) * 100}%` }}
+                  style={{ width: `${stats.totalReviews > 0 ? (stats.rejectedReviews / stats.totalReviews) * 100 : 0}%` }}
                 />
               </div>
-            </div>
-          </div>
-
-          <div className="mt-8 pt-6 border-t border-gray-100">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-400">Temps moyen</span>
-              <span className="text-lg font-light text-gray-900">2.5h</span>
             </div>
           </div>
         </div>
@@ -583,47 +593,23 @@ export default function StatistiquesAvisPage() {
       </div>
 
       {/* Insights Cards */}
-      <div className="grid grid-cols-3 gap-4 mt-6 animate-fadeIn">
+      <div className="grid grid-cols-1 gap-4 mt-6 animate-fadeIn">
         <div className="bg-white rounded-lg border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs text-gray-400">Avis positifs</p>
-            <div className="flex items-center gap-1 text-emerald-600">
-              <ArrowUpRight size={12} />
-              <span className="text-[10px] font-medium">+15%</span>
-            </div>
+            {deltas.positivePct !== null ? (
+              <div className={`flex items-center gap-1 ${deltas.positivePct >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {deltas.positivePct >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                <span className="text-[10px] font-medium">{deltas.positivePct >= 0 ? '+' : ''}{deltas.positivePct}%</span>
+              </div>
+            ) : (
+              <span className="text-[10px] text-gray-300">—</span>
+            )}
           </div>
           <p className="text-2xl font-light text-gray-900 mb-1">
-            {filteredStats.ratingDistribution.filter(d => d.rating >= 4).reduce((sum, d) => sum + d.count, 0)}
+            {stats.ratingDistribution.filter(d => d.rating >= 4).reduce((sum, d) => sum + d.count, 0)}
           </p>
           <p className="text-xs text-gray-500">4-5 étoiles</p>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-100 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs text-gray-400">Taux de réponse</p>
-            <div className="flex items-center gap-1 text-emerald-600">
-              <ArrowUpRight size={12} />
-              <span className="text-[10px] font-medium">+5%</span>
-            </div>
-          </div>
-          <p className="text-2xl font-light text-gray-900 mb-1">
-            {filteredStats.approvedReviews > 0 ? ((filteredStats.approvedReviews * 0.6).toFixed(0)) : 0}%
-          </p>
-          <p className="text-xs text-gray-500">Réponses données</p>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-100 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs text-gray-400">Vues par avis</p>
-            <div className="flex items-center gap-1 text-emerald-600">
-              <ArrowUpRight size={12} />
-              <span className="text-[10px] font-medium">+8%</span>
-            </div>
-          </div>
-          <p className="text-2xl font-light text-gray-900 mb-1">
-            {filteredStats.approvedReviews > 0 ? Math.round(filteredStats.totalViews / filteredStats.approvedReviews) : 0}
-          </p>
-          <p className="text-xs text-gray-500">Moyenne</p>
         </div>
       </div>
 

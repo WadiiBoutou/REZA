@@ -1,76 +1,82 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, CreditCard, Loader2, Building, Check } from 'lucide-react';
+import { X, CreditCard, Loader2, Building, Users, ArrowRight, Hourglass } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 
 const DISMISS_KEY = 'paywall_dismissed';
 
+interface Overview {
+  bill: {
+    total: number;
+    salonFee: number;
+    employeeFee: number;
+    salonsDue: number;
+    employeesDue: number;
+    currency: string;
+    periodActive: boolean;
+  };
+  payments: { id: string; amount: number; status: string; createdAt: string }[];
+}
+
 /**
- * Post-login paywall: shown (blurred backdrop, closeable) when the account
- * has no active subscription. Dismissal lasts for the browser session.
+ * Post-login paywall: shown when the account's live bill is not fully settled
+ * (unpaid salons and/or employees). Dismissal lasts for the browser session.
+ * The CTA routes to the "Mon abonnement" page where the admin declares the
+ * virement payment.
  */
 export default function PaywallModal() {
-  const { user, loading, isAuthenticated, subscription, subscriptionActive, refreshUser } = useAuth();
+  const { user, loading, isAuthenticated } = useAuth();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [loadingBill, setLoadingBill] = useState(false);
 
   useEffect(() => {
     if (loading || !isAuthenticated || !user) return;
-
-    // Returning from Stripe checkout: refresh subscription state
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('checkout') === 'success') {
-      refreshUser();
-      sessionStorage.removeItem(DISMISS_KEY);
-      return;
-    }
-
-    // Paywall targets account owners (admins), not staff or superadmin
     if (user.role !== 'ADMIN') return;
-    if (subscriptionActive) return;
     if (sessionStorage.getItem(DISMISS_KEY) === '1') return;
 
-    setOpen(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, isAuthenticated, user?.id, subscriptionActive]);
+    let cancelled = false;
+    setLoadingBill(true);
+    api
+      .getBillingOverview()
+      .then((data) => {
+        if (cancelled) return;
+        setOverview(data as Overview);
+        const due = data?.bill?.total ?? 0;
+        if (due > 0) setOpen(true);
+      })
+      .catch(() => {
+        /* ignore — the mon-abonnement page surfaces errors */
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBill(false);
+      });
 
-  // Close automatically if the subscription becomes active
-  useEffect(() => {
-    if (subscriptionActive) setOpen(false);
-  }, [subscriptionActive]);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, isAuthenticated, user?.id]);
 
   const dismiss = () => {
     sessionStorage.setItem(DISMISS_KEY, '1');
     setOpen(false);
   };
 
-  const handleSubscribe = async () => {
-    setCheckoutLoading(true);
-    setError(null);
-    try {
-      const { url } = await api.startCheckout();
-      if (url) window.location.href = url;
-    } catch (e: any) {
-      setError(e.message || 'Impossible de démarrer le paiement');
-      setCheckoutLoading(false);
-    }
-  };
-
   if (!open) return null;
 
-  const planName = subscription?.plan?.name ?? 'Standard';
-  const maxSalons = subscription?.plan?.maxSalons ?? 3;
+  const bill = overview?.bill;
+  const hasPending = (overview?.payments ?? []).some((p) => p.status === 'PENDING');
+  const due = bill?.total ?? 0;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Blurred backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-md"
-        onClick={dismiss}
-      />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-md" onClick={dismiss} />
 
       <div className="relative bg-white rounded-3xl shadow-2xl max-w-md w-full p-8">
         <button
@@ -82,45 +88,73 @@ export default function PaywallModal() {
         </button>
 
         <div className="w-14 h-14 rounded-2xl bg-[#002366]/10 flex items-center justify-center mb-5">
-          <CreditCard className="text-[#002366]" size={26} />
+          {hasPending ? (
+            <Hourglass className="text-amber-600" size={26} />
+          ) : (
+            <CreditCard className="text-[#002366]" size={26} />
+          )}
         </div>
 
-        <h2 className="text-xl font-bold text-gray-900">Activez votre abonnement</h2>
-        <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-          Sans abonnement actif, vos salons ne sont pas visibles par les clients.
-          Abonnez-vous pour être référencé et recevoir des réservations en ligne.
-        </p>
+        <h2 className="text-xl font-bold text-gray-900">
+          {hasPending ? 'Paiement en attente de validation' : 'Votre facture n’est pas entièrement réglée'}
+        </h2>
 
-        <div className="rounded-2xl border border-gray-200 p-5 mt-6">
-          <div className="flex items-baseline justify-between">
-            <p className="text-sm font-semibold text-gray-900">Plan {planName}</p>
-            <p className="text-lg font-bold text-[#002366]">
-              800 DH<span className="text-xs font-medium text-gray-500">/an</span>
-            </p>
+        {hasPending ? (
+          <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+            Votre déclaration de virement est en cours de vérification par la plateforme.
+            Vos salons et employés non couverts restent masqués pour les clients jusqu’à
+            l’approbation.
+          </p>
+        ) : (
+          <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+            Pour que vos salons et employés soient visibles par les clients, réglez le
+            montant dû par virement bancaire. Votre facture est calculée automatiquement.
+          </p>
+        )}
+
+        {loadingBill ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="animate-spin text-[#002366]" size={22} />
           </div>
-          <ul className="mt-3 space-y-2">
-            <li className="flex items-center gap-2 text-xs text-gray-600">
-              <Check size={14} className="text-green-600 shrink-0" />
-              Jusqu&apos;à {maxSalons} salons sur votre compte
-            </li>
-            <li className="flex items-center gap-2 text-xs text-gray-600">
-              <Building size={14} className="text-[#002366] shrink-0" />
-              Salons visibles par les clients (recherche + réservation)
-            </li>
-          </ul>
-        </div>
-
-        {error && (
-          <p className="text-xs text-red-600 mt-3">{error}</p>
+        ) : (
+          <div className="rounded-2xl border border-gray-200 p-5 mt-6 space-y-3">
+            <div className="flex items-baseline justify-between">
+              <p className="text-sm font-semibold text-gray-900">Montant dû</p>
+              <p className="text-2xl font-bold text-[#002366]">
+                {due.toLocaleString('fr-FR')} {bill?.currency ?? 'MAD'}
+              </p>
+            </div>
+            <ul className="space-y-2">
+              {!!bill?.salonsDue && (
+                <li className="flex items-center gap-2 text-xs text-gray-600">
+                  <Building size={14} className="text-[#002366] shrink-0" />
+                  {bill.salonsDue} salon{bill.salonsDue > 1 ? 's' : ''} à couvrir —{' '}
+                  {bill.salonFee.toLocaleString('fr-FR')} {bill?.currency ?? 'MAD'}
+                </li>
+              )}
+              {!!bill?.employeesDue && (
+                <li className="flex items-center gap-2 text-xs text-gray-600">
+                  <Users size={14} className="text-[#002366] shrink-0" />
+                  {bill.employeesDue} employé{bill.employeesDue > 1 ? 's' : ''} au-delà du seuil —{' '}
+                  {bill.employeeFee.toLocaleString('fr-FR')} {bill?.currency ?? 'MAD'}
+                </li>
+              )}
+              {!bill?.salonsDue && !bill?.employeesDue && (
+                <li className="text-xs text-gray-500">Facture en cours de calcul…</li>
+              )}
+            </ul>
+          </div>
         )}
 
         <button
-          onClick={handleSubscribe}
-          disabled={checkoutLoading}
+          onClick={() => {
+            setOpen(false);
+            router.push('/dashboard/admin/mon-abonnement');
+          }}
           className="w-full mt-6 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-[#002366] text-white text-sm font-semibold hover:bg-[#001a4d] transition-all"
         >
-          {checkoutLoading ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
-          S&apos;abonner maintenant
+          {hasPending ? 'Suivre mon paiement' : 'Voir ma facture'}
+          <ArrowRight size={16} />
         </button>
 
         <button

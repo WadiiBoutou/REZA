@@ -2,7 +2,6 @@ import express from 'express';
 import { z } from 'zod';
 import { superAdminAuthMiddleware } from '../../middleware/authenticateRequest';
 import { superAdminService } from './superadmin.service';
-import { subscriptionInvoiceService } from '../subscription/subscription-invoice.service';
 
 const router = express.Router();
 
@@ -20,16 +19,13 @@ const handleError = (res: express.Response, error: any, next: express.NextFuncti
 // the demo superadmin is created by the seed: npm run seed)
 router.use(superAdminAuthMiddleware);
 
-/** GET /api/superadmin/accounts?page=&limit=&q=&planId=&endsAfter=&endsBefore= */
+/** GET /api/superadmin/accounts?page=&limit=&q= */
 router.get('/accounts', async (req, res, next) => {
   try {
     const querySchema = z.object({
       page: z.coerce.number().int().positive().optional(),
       limit: z.coerce.number().int().positive().max(100).optional(),
       q: z.string().optional(),
-      planId: z.string().optional(),
-      endsAfter: z.string().optional(),
-      endsBefore: z.string().optional(),
     });
     const params = querySchema.parse(req.query);
     res.json(await superAdminService.listAccounts(params));
@@ -38,23 +34,12 @@ router.get('/accounts', async (req, res, next) => {
   }
 });
 
-/** POST /api/superadmin/accounts/:id/generate-invoice — generate a SUBSCRIPTION invoice for the account's active period */
-router.post('/accounts/:id/generate-invoice', async (req, res, next) => {
-  try {
-    const result = await subscriptionInvoiceService.generateForAccount(req.params.id);
-    res.status(201).json(result);
-  } catch (error: any) {
-    handleError(res, error, next);
-  }
-});
-
-/** PATCH /api/superadmin/accounts/:id — activate/deactivate, force sub status + plan/period */
+/** PATCH /api/superadmin/accounts/:id — activate/deactivate, force sub status/period */
 router.patch('/accounts/:id', async (req, res, next) => {
   try {
     const schema = z.object({
       isActive: z.boolean().optional(),
       subscriptionStatus: z.enum(['NONE', 'ACTIVE', 'PAST_DUE', 'CANCELED']).optional(),
-      planId: z.string().min(1).optional(),
       currentPeriodEnd: z.union([z.string().min(1), z.null()]).optional(),
     });
     const data = schema.parse(req.body);
@@ -64,54 +49,66 @@ router.patch('/accounts/:id', async (req, res, next) => {
   }
 });
 
-/** GET /api/superadmin/plans */
-router.get('/plans', async (req, res, next) => {
+/** GET /api/superadmin/billing-config */
+router.get('/billing-config', async (req, res, next) => {
   try {
-    res.json(await superAdminService.listPlans());
+    res.json(await superAdminService.getBillingConfig());
   } catch (error: any) {
     handleError(res, error, next);
   }
 });
 
-/** POST /api/superadmin/plans */
-router.post('/plans', async (req, res, next) => {
+/** PUT /api/superadmin/billing-config */
+router.put('/billing-config', async (req, res, next) => {
   try {
     const schema = z.object({
-      name: z.string().min(1),
-      priceCents: z.number().int().positive(),
-      currency: z.string().optional(),
-      interval: z.enum(['month', 'year']).optional(),
-      maxSalons: z.number().int().positive(),
-      stripePriceId: z.string().optional(),
-    });
-    const data = schema.parse(req.body) as {
-      name: string;
-      priceCents: number;
-      currency?: string;
-      interval?: string;
-      maxSalons: number;
-      stripePriceId?: string;
-    };
-    res.status(201).json(await superAdminService.createPlan(data));
-  } catch (error: any) {
-    handleError(res, error, next);
-  }
-});
-
-/** PATCH /api/superadmin/plans/:id */
-router.patch('/plans/:id', async (req, res, next) => {
-  try {
-    const schema = z.object({
-      name: z.string().min(1).optional(),
-      priceCents: z.number().int().positive().optional(),
-      currency: z.string().optional(),
-      interval: z.enum(['month', 'year']).optional(),
-      maxSalons: z.number().int().positive().optional(),
-      stripePriceId: z.string().nullable().optional(),
-      isActive: z.boolean().optional(),
+      pricePerSalon: z.number().min(0).optional(),
+      freeEmployeeThreshold: z.number().int().min(0).optional(),
+      pricePerEmployee: z.number().min(0).optional(),
+      employeeTiers: z
+        .array(z.object({
+          min: z.number().int().min(1),
+          max: z.number().int().min(1).nullable(),
+          price: z.number().min(0),
+        }))
+        .nullish(),
+      currency: z.string().min(1).max(8).optional(),
     });
     const data = schema.parse(req.body);
-    res.json(await superAdminService.updatePlan(req.params.id, data));
+    res.json(await superAdminService.updateBillingConfig(data));
+  } catch (error: any) {
+    handleError(res, error, next);
+  }
+});
+
+/** GET /api/superadmin/payments?status=PENDING|APPROVED|REJECTED */
+router.get('/payments', async (req, res, next) => {
+  try {
+    const querySchema = z.object({
+      status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
+    });
+    const { status } = querySchema.parse(req.query);
+    res.json(await superAdminService.listPayments({ status }));
+  } catch (error: any) {
+    handleError(res, error, next);
+  }
+});
+
+/** POST /api/superadmin/payments/:id/approve */
+router.post('/payments/:id/approve', async (req, res, next) => {
+  try {
+    res.json(await superAdminService.approvePayment(req.params.id, req.userId!));
+  } catch (error: any) {
+    handleError(res, error, next);
+  }
+});
+
+/** POST /api/superadmin/payments/:id/reject */
+router.post('/payments/:id/reject', async (req, res, next) => {
+  try {
+    const schema = z.object({ reason: z.string().max(500).optional() });
+    const { reason } = schema.parse(req.body ?? {});
+    res.json(await superAdminService.rejectPayment(req.params.id, reason));
   } catch (error: any) {
     handleError(res, error, next);
   }

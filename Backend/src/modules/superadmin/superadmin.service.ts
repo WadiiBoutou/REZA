@@ -1,37 +1,20 @@
 import { Prisma } from '../../../prisma/generated/prisma/client';
 import { prisma } from '../../lib/prisma';
 import { accountService } from '../account/account.service';
+import { isPeriodActive } from '../subscription/subscription.service';
+import * as log from '../../utils/logger';
 
 export type ListAccountsParams = {
   page?: number;
   limit?: number;
   q?: string;
-  planId?: string;
-  endsAfter?: string;
-  endsBefore?: string;
 };
 
 export type UpdateAccountData = {
   isActive?: boolean;
   subscriptionStatus?: 'NONE' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
-  planId?: string;
   currentPeriodEnd?: string | null;
 };
-
-function parseDayStart(isoDate: string): Date {
-  // Accept YYYY-MM-DD or full ISO; treat date-only as start of that UTC day
-  if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
-    return new Date(`${isoDate}T00:00:00.000Z`);
-  }
-  return new Date(isoDate);
-}
-
-function parseDayEnd(isoDate: string): Date {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
-    return new Date(`${isoDate}T23:59:59.999Z`);
-  }
-  return new Date(isoDate);
-}
 
 function mapAccount(a: {
   id: string;
@@ -42,15 +25,9 @@ function mapAccount(a: {
   subscription: {
     id: string;
     status: string;
+    salonsPaid: number;
+    subscribedAt: Date | null;
     currentPeriodEnd: Date | null;
-    plan: {
-      id: string;
-      name: string;
-      priceCents: number;
-      currency: string;
-      interval: string;
-      maxSalons: number;
-    } | null;
   } | null;
 }) {
   return {
@@ -64,24 +41,39 @@ function mapAccount(a: {
       ? {
           id: a.subscription.id,
           status: a.subscription.status,
+          salonsPaid: a.subscription.salonsPaid,
+          subscribedAt: a.subscription.subscribedAt,
           currentPeriodEnd: a.subscription.currentPeriodEnd,
-          plan: a.subscription.plan
-            ? {
-                id: a.subscription.plan.id,
-                name: a.subscription.plan.name,
-                priceCents: a.subscription.plan.priceCents,
-                currency: a.subscription.plan.currency,
-                interval: a.subscription.plan.interval,
-                maxSalons: a.subscription.plan.maxSalons,
-              }
-            : null,
         }
       : null,
   };
 }
 
+/** Set subscriptionActive per salon based on one-time salon coverage (first N salons by creation). */
+async function applySalonVisibility(accountId: string) {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    include: {
+      subscription: true,
+      tenants: { where: { isActive: true }, orderBy: { createdAt: 'asc' }, select: { id: true } },
+    },
+  });
+  if (!account) return;
+
+  const coveredCount = Math.min(account.subscription?.salonsPaid ?? 0, account.tenants.length);
+
+  await prisma.$transaction(
+    account.tenants.map((t, i) =>
+      prisma.tenant.update({
+        where: { id: t.id },
+        data: { subscriptionActive: i < coveredCount },
+      })
+    )
+  );
+}
+
 export class SuperAdminService {
-  /** Accounts with owner, salons, subscription — searchable / filterable / paginated. */
+  /** Accounts with owner, salons, subscription — searchable / paginated. */
   async listAccounts(params: ListAccountsParams = {}) {
     const page = Math.max(1, params.page ?? 1);
     const limit = Math.min(100, Math.max(1, params.limit ?? 20));
@@ -99,23 +91,6 @@ export class SuperAdminService {
       ];
     }
 
-    if (params.planId || params.endsAfter || params.endsBefore) {
-      const subWhere: Prisma.SubscriptionWhereInput = {};
-      if (params.planId) {
-        subWhere.planId = params.planId;
-      }
-      if (params.endsAfter || params.endsBefore) {
-        subWhere.currentPeriodEnd = {};
-        if (params.endsAfter) {
-          subWhere.currentPeriodEnd.gte = parseDayStart(params.endsAfter);
-        }
-        if (params.endsBefore) {
-          subWhere.currentPeriodEnd.lte = parseDayEnd(params.endsBefore);
-        }
-      }
-      where.subscription = subWhere;
-    }
-
     const include = {
       owner: {
         select: { id: true, email: true, firstName: true, lastName: true, isActive: true },
@@ -124,7 +99,7 @@ export class SuperAdminService {
         select: { id: true, name: true, city: true, isActive: true, subscriptionActive: true },
         orderBy: { createdAt: 'asc' as const },
       },
-      subscription: { include: { plan: true } },
+      subscription: true,
     };
 
     const [accounts, total] = await Promise.all([
@@ -146,13 +121,7 @@ export class SuperAdminService {
     };
   }
 
-  /**
-   * Activate/deactivate an account. Deactivation also hides all its salons
-   * from clients; reactivation restores visibility only if the subscription
-   * is active.
-   *
-   * When forcing subscription ACTIVE, callers may pass planId + currentPeriodEnd.
-   */
+  /** Activate/deactivate an account. Deactivation hides all its salons from clients. */
   async updateAccount(accountId: string, data: UpdateAccountData) {
     const account = await prisma.account.findUnique({
       where: { id: accountId },
@@ -166,132 +135,292 @@ export class SuperAdminService {
       await prisma.account.update({ where: { id: accountId }, data: { isActive: data.isActive } });
       await prisma.tenant.updateMany({
         where: { accountId },
-        data: { isActive: data.isActive },
+        data: { isActive: data.isActive, subscriptionActive: data.isActive },
       });
+      if (data.isActive) {
+        // Re-apply per-salon coverage visibility (only paid salons public)
+        await applySalonVisibility(accountId);
+      }
     }
 
-    const touchingSub =
-      !!data.subscriptionStatus || !!data.planId || data.currentPeriodEnd !== undefined;
-
-    if (touchingSub) {
-      const status = data.subscriptionStatus;
+    if (data.subscriptionStatus || data.currentPeriodEnd !== undefined) {
       const periodEnd =
         data.currentPeriodEnd === undefined
           ? undefined
           : data.currentPeriodEnd
             ? new Date(data.currentPeriodEnd)
             : null;
-
-      if (data.planId) {
-        const plan = await prisma.subscriptionPlan.findUnique({ where: { id: data.planId } });
-        if (!plan) {
-          throw { status: 404, error: 'Plan not found', message: 'Plan introuvable' };
-        }
-      }
-
       if (account.subscription) {
         await prisma.subscription.update({
           where: { id: account.subscription.id },
           data: {
-            ...(status ? { status } : {}),
-            ...(data.planId ? { planId: data.planId } : {}),
+            ...(data.subscriptionStatus ? { status: data.subscriptionStatus } : {}),
             ...(periodEnd !== undefined ? { currentPeriodEnd: periodEnd } : {}),
           },
         });
       } else {
-        let planId = data.planId;
-        if (!planId) {
-          const basePlan = await prisma.subscriptionPlan.findFirst({
-            where: { isActive: true },
-            orderBy: { createdAt: 'asc' },
-          });
-          if (!basePlan) {
-            throw { status: 404, error: 'Plan not found', message: 'Aucun plan disponible' };
-          }
-          planId = basePlan.id;
+        const basePlan = await prisma.subscriptionPlan.findFirst({
+          orderBy: { createdAt: 'asc' },
+        });
+        if (!basePlan) {
+          throw { status: 404, error: 'Plan not found', message: 'Aucun plan de référence' };
         }
         await prisma.subscription.create({
           data: {
             accountId,
-            planId,
-            status: status ?? 'ACTIVE',
+            planId: basePlan.id,
+            status: data.subscriptionStatus ?? 'ACTIVE',
             currentPeriodEnd: periodEnd ?? null,
           },
         });
       }
+      await applySalonVisibility(accountId);
     }
-
-    // Re-sync client visibility from the (possibly updated) state
-    const updated = await prisma.account.findUnique({
-      where: { id: accountId },
-      include: { subscription: true },
-    });
-    const visible = !!updated?.isActive && updated?.subscription?.status === 'ACTIVE';
-    await accountService.syncTenantsVisibility(accountId, visible);
 
     return { success: true };
   }
 
-  async listPlans() {
-    const plans = await prisma.subscriptionPlan.findMany({
-      include: { _count: { select: { subscriptions: true } } },
-      orderBy: { createdAt: 'asc' },
+  // ── Billing configuration ──────────────────────────────────────────────
+
+  async getBillingConfig() {
+    const config = await prisma.billingConfig.findUnique({ where: { id: 'default' } });
+    if (config) return { config };
+    const created = await prisma.billingConfig.create({ data: { id: 'default' } });
+    return { config: created };
+  }
+
+  async updateBillingConfig(data: {
+    pricePerSalon?: number;
+    freeEmployeeThreshold?: number;
+    pricePerEmployee?: number;
+    // Item fields typed optional: zod's inferred output resolves them that way
+    // under this project's tsconfig (strict: false); they're validated below.
+    employeeTiers?: { min?: number; max?: number | null; price?: number }[] | null;
+    currency?: string;
+  }) {
+    const update: Prisma.BillingConfigCreateInput = {};
+    if (data.pricePerSalon !== undefined) {
+      if (data.pricePerSalon < 0) {
+        throw { status: 400, error: 'Invalid price', message: 'Prix par salon invalide' };
+      }
+      update.pricePerSalon = data.pricePerSalon;
+    }
+    if (data.freeEmployeeThreshold !== undefined) {
+      if (data.freeEmployeeThreshold < 0) {
+        throw { status: 400, error: 'Invalid threshold', message: 'Seuil invalide' };
+      }
+      update.freeEmployeeThreshold = data.freeEmployeeThreshold;
+    }
+    if (data.pricePerEmployee !== undefined) {
+      if (data.pricePerEmployee < 0) {
+        throw { status: 400, error: 'Invalid price', message: 'Prix par employé invalide' };
+      }
+      update.pricePerEmployee = data.pricePerEmployee;
+    }
+    if (data.employeeTiers !== undefined) {
+      // Normalize: sort by min, trim invalid entries, cap negative values.
+      const tiers: { min: number; max: number | null; price: number }[] = [];
+      for (const t of data.employeeTiers ?? []) {
+        if (!t || typeof t.min !== 'number' || typeof t.price !== 'number' || t.min < 1 || t.price < 0) continue;
+        tiers.push({
+          min: Math.floor(t.min),
+          max: t.max === null || t.max === undefined ? null : Math.max(t.min, Math.floor(t.max)),
+          price: t.price,
+        });
+      }
+      tiers.sort((a, b) => a.min - b.min);
+      update.employeeTiers = (tiers.length > 0 ? tiers : []) as Prisma.InputJsonValue;
+    }
+    if (data.currency !== undefined) update.currency = data.currency;
+
+    const config = await prisma.billingConfig.upsert({
+      where: { id: 'default' },
+      create: { id: 'default', ...update },
+      update,
     });
+    return { config };
+  }
+
+  // ── Payments (virement declarations) ───────────────────────────────────
+
+  async listPayments(params: { status?: 'PENDING' | 'APPROVED' | 'REJECTED' } = {}) {
+    const where: Prisma.SubscriptionPaymentWhereInput = {};
+    if (params.status) where.status = params.status;
+
+    const [payments, total] = await Promise.all([
+      prisma.subscriptionPayment.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: {
+          account: {
+            select: {
+              id: true,
+              owner: { select: { id: true, email: true, firstName: true, lastName: true } },
+              tenants: {
+                where: { isActive: true },
+                select: { id: true, name: true },
+                orderBy: { createdAt: 'asc' },
+              },
+              subscription: true,
+            },
+          },
+          declaredBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+          approvedBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+        },
+      }),
+      prisma.subscriptionPayment.count({ where }),
+    ]);
+
     return {
-      plans: plans.map((p) => ({
+      payments: payments.map((p) => ({
         id: p.id,
-        name: p.name,
-        priceCents: p.priceCents,
+        amount: p.amount,
         currency: p.currency,
-        interval: p.interval,
-        maxSalons: p.maxSalons,
-        stripePriceId: p.stripePriceId,
-        isActive: p.isActive,
-        subscriberCount: p._count.subscriptions,
+        status: p.status,
+        reference: p.reference,
+        rejectedReason: p.rejectedReason,
+        details: p.details,
+        createdAt: p.createdAt,
+        approvedAt: p.approvedAt,
+        declaredBy: p.declaredBy,
+        approvedBy: p.approvedBy,
+        account: p.account
+          ? {
+              id: p.account.id,
+              owner: p.account.owner,
+              salons: p.account.tenants,
+              subscription: p.account.subscription
+                ? {
+                    status: p.account.subscription.status,
+                    salonsPaid: p.account.subscription.salonsPaid,
+                    currentPeriodEnd: p.account.subscription.currentPeriodEnd,
+                  }
+                : null,
+            }
+          : null,
       })),
+      total,
     };
   }
 
-  async createPlan(data: {
-    name: string;
-    priceCents: number;
-    currency?: string;
-    interval?: string;
-    maxSalons: number;
-    stripePriceId?: string;
-  }) {
-    const plan = await prisma.subscriptionPlan.create({
-      data: {
-        name: data.name,
-        priceCents: data.priceCents,
-        currency: data.currency ?? 'MAD',
-        interval: data.interval ?? 'year',
-        maxSalons: data.maxSalons,
-        stripePriceId: data.stripePriceId ?? null,
-        isActive: true,
+  /**
+   * Approve a PENDING payment: apply the declared coverage snapshot —
+   * salonsPaid += declared salons, each salon's employeesPaid += its declared
+   * count, subscription becomes ACTIVE, period = now + 1 month, subscribedAt =
+   * now (approval date = subscription start). Public visibility is recomputed
+   * per salon so only covered salons appear.
+   */
+  async approvePayment(paymentId: string, approverUserId: string) {
+    const payment = await prisma.subscriptionPayment.findUnique({
+      where: { id: paymentId },
+      include: {
+        account: {
+          include: {
+            subscription: true,
+            tenants: {
+              where: { isActive: true },
+              include: { _count: { select: { employees: { where: { isActive: true } } } } },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        },
       },
     });
-    return { plan };
+    if (!payment) {
+      throw { status: 404, error: 'Payment not found', message: 'Paiement introuvable' };
+    }
+    if (payment.status !== 'PENDING') {
+      throw { status: 400, error: 'Not pending', message: 'Ce paiement a déjà été traité' };
+    }
+
+    const details = (payment.details ?? {}) as {
+      salonsDue?: number;
+      employeesDue?: number;
+      employeesBySalon?: Record<string, number>;
+    };
+    const salonsDue = Math.max(0, details.salonsDue ?? 0);
+    const employeesBySalon = details.employeesBySalon ?? {};
+    const account = payment.account;
+    const sub = account.subscription;
+
+    const now = new Date();
+    const periodEnd = new Date(now);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+    // If the previous period had lapsed, the stored per-salon employeesPaid is
+    // stale (billing treats it as 0) — SET the new period's coverage instead of
+    // incrementing, otherwise coverage would stack and over-cover the account.
+    const resetCoverage = !isPeriodActive(sub);
+
+    await prisma.$transaction([
+      prisma.subscriptionPayment.update({
+        where: { id: payment.id },
+        data: { status: 'APPROVED', approvedById: approverUserId, approvedAt: now },
+      }),
+      prisma.subscription.upsert({
+        where: { accountId: account.id },
+        create: {
+          accountId: account.id,
+          planId: sub?.planId ?? (await this.ensureReferencePlanId()),
+          status: 'ACTIVE',
+          salonsPaid: salonsDue,
+          subscribedAt: now,
+          currentPeriodEnd: periodEnd,
+        },
+        update: {
+          status: 'ACTIVE',
+          salonsPaid: { increment: salonsDue },
+          subscribedAt: sub?.subscribedAt ?? now,
+          currentPeriodEnd: periodEnd,
+        },
+      }),
+      // Per-salon employee coverage
+      ...account.tenants.map((t) =>
+        prisma.tenant.update({
+          where: { id: t.id },
+          data: resetCoverage
+            ? { employeesPaid: employeesBySalon[t.id] ?? 0 }
+            : { employeesPaid: { increment: employeesBySalon[t.id] ?? 0 } },
+        })
+      ),
+    ]);
+
+    // Salon visibility: the first `salonsPaid` salons become public
+    await applySalonVisibility(account.id);
+
+    log.log(
+      `[Billing] Payment ${payment.id} approved by ${approverUserId} for account ${account.id} (salons +${salonsDue}, employees +${Object.values(employeesBySalon).reduce((a, b) => a + b, 0)})`
+    );
+
+    return { success: true };
   }
 
-  async updatePlan(
-    planId: string,
-    data: {
-      name?: string;
-      priceCents?: number;
-      currency?: string;
-      interval?: string;
-      maxSalons?: number;
-      stripePriceId?: string | null;
-      isActive?: boolean;
+  /** Reject a PENDING payment. Nothing is applied to coverage. */
+  async rejectPayment(paymentId: string, reason?: string) {
+    const payment = await prisma.subscriptionPayment.findUnique({ where: { id: paymentId } });
+    if (!payment) {
+      throw { status: 404, error: 'Payment not found', message: 'Paiement introuvable' };
     }
-  ) {
-    const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
-    if (!plan) {
-      throw { status: 404, error: 'Plan not found', message: 'Plan introuvable' };
+    if (payment.status !== 'PENDING') {
+      throw { status: 400, error: 'Not pending', message: 'Ce paiement a déjà été traité' };
     }
-    const updated = await prisma.subscriptionPlan.update({ where: { id: planId }, data });
-    return { plan: updated };
+
+    await prisma.subscriptionPayment.update({
+      where: { id: paymentId },
+      data: { status: 'REJECTED', rejectedReason: reason?.trim() || null },
+    });
+
+    return { success: true };
+  }
+
+  private async ensureReferencePlanId(): Promise<string> {
+    const plan = await prisma.subscriptionPlan.findFirst({ orderBy: { createdAt: 'asc' } });
+    if (plan) return plan.id;
+    const created = await prisma.subscriptionPlan.create({
+      data: { name: 'Standard', priceCents: 0, maxSalons: 999, isActive: true },
+    });
+    return created.id;
   }
 }
 

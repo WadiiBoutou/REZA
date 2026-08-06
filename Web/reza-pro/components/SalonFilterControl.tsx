@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { Building, ChevronDown, Check, ExternalLink } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -37,40 +37,17 @@ export function SalonFilterControl({
   } = useAuth();
   const [open, setOpen] = useState(false);
 
-  const selectedSet = useMemo(() => new Set(effectiveSalonIds), [effectiveSalonIds]);
-
   if (salons.length <= 1) return null;
 
-  const allSelected =
-    salonFilter === 'all' || effectiveSalonIds.length === salons.length;
+  const allSelected = salonFilter === 'all' || effectiveSalonIds.length === salons.length;
 
-  const toggleAll = () => {
+  const selectAll = () => {
     setSalonFilter('all');
   };
 
-  const toggleSalon = (id: string) => {
-    if (allSelected) {
-      // Deselect all except this one? Or remove this from all?
-      const next = salons.map((s) => s.id).filter((sid) => sid !== id);
-      setSalonFilter(next.length === 0 ? [id] : next);
-      return;
-    }
-
-    const next = new Set(effectiveSalonIds);
-    if (next.has(id)) {
-      next.delete(id);
-      if (next.size === 0) {
-        // Keep at least one
-        setSalonFilter([id]);
-        return;
-      }
-      const arr = Array.from(next);
-      setSalonFilter(arr.length === salons.length ? 'all' : arr);
-    } else {
-      next.add(id);
-      const arr = Array.from(next);
-      setSalonFilter(arr.length === salons.length ? 'all' : arr);
-    }
+  const selectSalon = (id: string) => {
+    // Radio semantics: choosing one salon replaces any other selection.
+    setSalonFilter([id]);
   };
 
   const label = filterLabel(salonFilter, salons, effectiveSalonIds);
@@ -98,7 +75,7 @@ export function SalonFilterControl({
         </p>
         <button
           type="button"
-          onClick={toggleAll}
+          onClick={selectAll}
           className={cn(
             'w-full flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-gray-50',
             allSelected && 'bg-[#002366]/5 text-[#002366] font-medium'
@@ -106,11 +83,11 @@ export function SalonFilterControl({
         >
           <span
             className={cn(
-              'size-3 shrink-0 rounded-full border grid place-content-center',
-              allSelected ? 'bg-black border-0 text-white' : 'border-gray-300'
+              'size-4 shrink-0 rounded-full border grid place-content-center',
+              allSelected ? 'border-[#002366]' : 'border-gray-300'
             )}
           >
-            {allSelected && <Check size={8} className="text-white" />}
+            {allSelected && <span className="size-2 rounded-full bg-[#002366]" />}
           </span>
           <span>Tous les salons</span>
           {allSelected && <Check size={14} className="ml-auto text-[#002366]" />}
@@ -118,21 +95,21 @@ export function SalonFilterControl({
         <div className="my-1 h-px bg-gray-100" />
         <div className="max-h-56 overflow-y-auto">
           {salons.map((salon) => {
-            const checked = allSelected || selectedSet.has(salon.id);
+            const checked = !allSelected && effectiveSalonIds[0] === salon.id;
             return (
               <button
                 key={salon.id}
                 type="button"
-                onClick={() => toggleSalon(salon.id)}
+                onClick={() => selectSalon(salon.id)}
                 className="w-full flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-gray-50 text-left"
               >
                 <span
                   className={cn(
-                    'size-3 shrink-0 rounded-full border grid place-content-center',
-                    checked ? 'bg-black border-0 text-white' : 'border-gray-300'
+                    'size-4 shrink-0 rounded-full border grid place-content-center',
+                    checked ? 'border-[#002366]' : 'border-gray-300'
                   )}
                 >
-                  {checked && <Check size={8} className="text-white" />}
+                  {checked && <span className="size-2 rounded-full bg-[#002366]" />}
                 </span>
                 <span className="truncate">{salon.name}</span>
                 {salon.city && (

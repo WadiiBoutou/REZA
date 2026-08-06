@@ -4,6 +4,7 @@ import type {
 } from '../prisma/generated/prisma/client';
 import {
   avatarUrlFor,
+  birthDateFor,
   EMPLOYEE_WORKING_HOURS,
   PASSWORDS,
   REZA_ADMIN,
@@ -277,6 +278,8 @@ async function seedOneSalon(
         email: c.email,
         phone: c.phone,
         status: 'ACTIVE',
+        // Deterministic birth date → the "Répartition par âge" stat has data
+        dateOfBirth: birthDateFor(c.email),
       },
     });
     clients.set(c.email, row.id);
@@ -347,17 +350,35 @@ export async function seedRezaAccount(prisma: PrismaClient, plan: SubscriptionPl
   const periodEnd = new Date();
   periodEnd.setFullYear(periodEnd.getFullYear() + 1);
 
+  // Fully settled demo account: both salons covered (one-time fee paid) and
+  // all employees covered for the paid period.
   await prisma.subscription.create({
     data: {
       accountId: account.id,
       planId: plan.id,
       status: 'ACTIVE',
+      salonsPaid: 2,
+      subscribedAt: new Date(),
       currentPeriodEnd: periodEnd,
     },
   });
 
   const salon1 = await seedOneSalon(prisma, REZA_SALON_1, account.id);
   await seedOneSalon(prisma, REZA_SALON_2, account.id);
+
+  // Cover all current employees for the demo period
+  const rezaTenants = await prisma.tenant.findMany({
+    where: { accountId: account.id },
+    include: { _count: { select: { employees: { where: { isActive: true } } } } },
+  });
+  await Promise.all(
+    rezaTenants.map((t) =>
+      prisma.tenant.update({
+        where: { id: t.id },
+        data: { employeesPaid: Math.max(0, t._count.employees - 2) },
+      })
+    )
+  );
 
   // Admin JWT tenant = primary salon
   await prisma.user.update({

@@ -73,62 +73,6 @@ export class TenantController {
     }
   }
 
-  async getPhotos(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await tenantService.getPhotos(req.tenantId!);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async addPhotos(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await tenantService.addPhotos(req.tenantId!, req.body);
-      res.json(result);
-    } catch (error: any) {
-      if (error.status) {
-        return res.status(error.status).json({ error: error.error, message: error.message });
-      }
-      next(error);
-    }
-  }
-
-  async updatePhoto(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await tenantService.updatePhoto(req.tenantId!, req.params.id, req.body);
-      res.json(result);
-    } catch (error: any) {
-      if (error.status) {
-        return res.status(error.status).json({ error: error.error });
-      }
-      next(error);
-    }
-  }
-
-  async deletePhoto(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await tenantService.deletePhoto(req.tenantId!, req.params.id);
-      res.json(result);
-    } catch (error: any) {
-      if (error.status) {
-        return res.status(error.status).json({ error: error.error });
-      }
-      next(error);
-    }
-  }
-
-  async deleteMultiplePhotos(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await tenantService.deleteMultiplePhotos(req.tenantId!, req.body.ids);
-      res.json(result);
-    } catch (error: any) {
-      if (error.status) {
-        return res.status(error.status).json({ error: error.error, message: error.message });
-      }
-      next(error);
-    }
-  }
 
   async getAppointmentNotificationEmails(req: Request, res: Response, next: NextFunction) {
     try {
@@ -222,36 +166,9 @@ export class TenantController {
     }
   }
 
-  async getMessageSettings(req: Request, res: Response, next: NextFunction) {
+  async getSubscriptionInvoices(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await tenantService.getMessageSettings(req.tenantId!);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async updateMessageSettings(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await tenantService.updateMessageSettings(req.tenantId!, req.body);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getWaitingListSettings(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await tenantService.getWaitingListSettings(req.tenantId!);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async updateWaitingListSettings(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await tenantService.updateWaitingListSettings(req.tenantId!, req.body);
+      const result = await subscriptionInvoiceService.listForTenant(req.tenantId!);
       res.json(result);
     } catch (error) {
       next(error);
@@ -378,33 +295,6 @@ export class TenantController {
     }
   }
 
-  async getSubscriptionInvoices(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await subscriptionInvoiceService.listForTenant(req.tenantId!);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getBillingPaymentMethod(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await subscriptionInvoiceService.getBillingPaymentMethod(req.tenantId!);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async setBillingPaymentMethod(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await subscriptionInvoiceService.setBillingPaymentMethod(req.tenantId!, req.body);
-      res.json(result);
-    } catch (error: any) {
-      if (error.status) return res.status(error.status).json({ error: error.error, message: error.message });
-      next(error);
-    }
-  }
 }
 
 export const tenantController = new TenantController();

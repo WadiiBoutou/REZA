@@ -215,7 +215,12 @@ export class ClientService {
     });
   }
 
-  async mergeClients(tenantIds: string | string[], primaryClientId: string, duplicateClientIds: string[]) {
+  async mergeClients(
+    tenantIds: string | string[],
+    primaryClientId: string,
+    duplicateClientIds: string[],
+    fieldValues?: Record<string, any>
+  ) {
     const filter = tenantIdFilter(tenantIds);
     const primaryClient = await prisma.client.findFirst({
       where: { id: primaryClientId, tenantId: filter }
@@ -236,21 +241,6 @@ export class ClientService {
     }
 
     await prisma.$transaction(async (tx) => {
-      await tx.appointment.updateMany({
-        where: { clientId: { in: duplicateClientIds }, tenantId },
-        data: { clientId: primaryClientId }
-      });
-
-      await tx.invoice.updateMany({
-        where: { clientId: { in: duplicateClientIds }, tenantId },
-        data: { clientId: primaryClientId }
-      });
-
-      await tx.review.updateMany({
-        where: { clientId: { in: duplicateClientIds }, tenantId },
-        data: { clientId: primaryClientId }
-      });
-
       const allNotes = [
         primaryClient.notes || '',
         ...duplicateClients.map(c => c.notes || '').filter(n => n)
@@ -278,12 +268,68 @@ export class ClientService {
         if (hasActive) mergedData.status = 'ACTIVE';
       }
 
+      // Admin field-by-field selections win over everything — but only for
+      // real client profile fields. Never allow id/tenantId/timestamps to be
+      // overwritten from a request body.
+      const MERGE_FIELD_WHITELIST = [
+        'firstName', 'lastName', 'email', 'phone', 'address', 'avatar',
+        'dateOfBirth', 'notes', 'status', 'password'
+      ];
+      if (fieldValues && typeof fieldValues === 'object') {
+        for (const key of MERGE_FIELD_WHITELIST) {
+          const value = (fieldValues as any)[key];
+          if (value !== undefined && value !== null && value !== '') {
+            mergedData[key] = value;
+          }
+        }
+      }
+
       if (Object.keys(mergedData).length > 0) {
         await tx.client.update({
           where: { id: primaryClientId },
           data: mergedData
         });
       }
+
+      // Repoint EVERY clientId foreign key to the surviving record before deleting,
+      // otherwise these children get cascade-deleted (familyMembers, favorites) or
+      // orphaned to NULL (bookingParticipants, bookingGroups booker) with the duplicate.
+      await tx.appointment.updateMany({
+        where: { clientId: { in: duplicateClientIds }, tenantId },
+        data: { clientId: primaryClientId }
+      });
+
+      await tx.invoice.updateMany({
+        where: { clientId: { in: duplicateClientIds }, tenantId },
+        data: { clientId: primaryClientId }
+      });
+
+      await tx.review.updateMany({
+        where: { clientId: { in: duplicateClientIds }, tenantId },
+        data: { clientId: primaryClientId }
+      });
+
+      // BookingParticipant has no tenantId column; duplicates were validated to the same tenant.
+      await tx.bookingParticipant.updateMany({
+        where: { clientId: { in: duplicateClientIds } },
+        data: { clientId: primaryClientId }
+      });
+
+      await tx.bookingGroup.updateMany({
+        where: { bookerClientId: { in: duplicateClientIds }, tenantId },
+        data: { bookerClientId: primaryClientId }
+      });
+
+      // FamilyMember has no tenantId column; duplicates were validated to the same tenant.
+      await tx.familyMember.updateMany({
+        where: { clientId: { in: duplicateClientIds } },
+        data: { clientId: primaryClientId }
+      });
+
+      await tx.favorite.updateMany({
+        where: { clientId: { in: duplicateClientIds }, tenantId },
+        data: { clientId: primaryClientId }
+      });
 
       await tx.client.deleteMany({
         where: { id: { in: duplicateClientIds }, tenantId }

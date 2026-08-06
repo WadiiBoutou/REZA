@@ -971,6 +971,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
       id: savedPeople.length === 0 ? 'booker-saved' : `person-${Date.now()}`,
       name: `${bookingData.firstName || 'Vous'} ${bookingData.lastName || ''}`.trim() || 'Vous',
       phone: bookingData.phone || undefined,
+      email: bookingData.email || undefined,
       familyMemberId: currentFamilyMemberId,
       sameServicesAsBooker: false,
       serviceIds: mainServiceIds,
@@ -1007,8 +1008,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
       totalPrice: 0,
       firstName: prefilledFirstName,
       lastName: prefilledLastName,
-      email: opts.email || bookingData.email || '',
-      phone: opts.phone || bookingData.phone || '',
+      // The NEW person's contact comes from opts only — never inherit the
+      // previous person's phone/email (that would attribute the wrong number
+      // to the guest's Client record).
+      email: opts.email || '',
+      phone: opts.phone || '',
       notes: bookingData.notes || '',
     });
     setBookingStep(1);
@@ -1298,6 +1302,10 @@ const BookingModal: React.FC<BookingModalProps> = ({
               employeeId: null,
               serviceEmployees: svcEmployees.length > 0 ? svcEmployees : undefined,
               startTime: pStart.toISOString(),
+              // Carry the participant's real contact info so the backend can
+              // reuse/create their Client with the actual phone (not guest_<ts>).
+              ...(p.phone ? { phone: p.phone } : {}),
+              ...(p.email ? { email: p.email } : {}),
             };
           }),
           {
@@ -1315,6 +1323,10 @@ const BookingModal: React.FC<BookingModalProps> = ({
               });
             })(),
             startTime: startDateTime.toISOString(),
+            // Same contact-info fix: this participant's phone/email must reach
+            // the backend instead of falling back to guest_<timestamp>.
+            phone: finalPhone,
+            ...(finalEmail ? { email: finalEmail } : {}),
           },
         ];
 
