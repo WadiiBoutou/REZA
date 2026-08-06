@@ -432,7 +432,6 @@ export default function SalonDetail() {
       {/* Shared Header */}
       <RezaNavbar />
 
-<<<<<<< HEAD
       {/* Page-specific header (breadcrumbs, title, rating, buttons on top) */}
       <header className="mt-16 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2">
@@ -451,21 +450,6 @@ export default function SalonDetail() {
             <span>·</span>
             <span className="text-gray-900 font-medium truncate max-w-[200px]">{salonData.name}</span>
           </div>
-=======
-      {/* Page-specific header (back, like) */}
-      <header className="mt-16 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 flex items-center justify-between">
-          <button className="w-10 h-10 hover:bg-gray-50 rounded-full transition-all flex items-center justify-center" onClick={() => window.history.back()}>
-            <ArrowLeft className="w-5 h-5 text-gray-500" />
-          </button>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={async () => {
-                if (!isAuthenticated || !user?.email) {
-                  router.push('/login?redirect=' + encodeURIComponent(window.location.pathname));
-                  return;
-                }
->>>>>>> b010572f117e359420834e5df209b3ac1436b9d4
 
           {/* Title Row */}
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">

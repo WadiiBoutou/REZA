@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { prisma } from './lib/prisma';
 import * as log from './utils/logger';
 
@@ -195,6 +196,19 @@ const server = app.listen(Number(PORT), '0.0.0.0', () => {
 });
 
 function updateMobileIp() {
+  // Resolve the LAN IP from network interfaces
+  const nets = os.networkInterfaces();
+  let localIp = '127.0.0.1';
+  for (const ifaces of Object.values(nets)) {
+    for (const iface of (ifaces ?? [])) {
+      if (!iface.internal && iface.family === 'IPv4') {
+        localIp = iface.address;
+        break;
+      }
+    }
+    if (localIp !== '127.0.0.1') break;
+  }
+
   // Set up adb reverse port forwarding so physical phones can reach
   // the backend via 127.0.0.1:5000 over USB — no LAN IP needed.
   const { exec } = require('child_process');
