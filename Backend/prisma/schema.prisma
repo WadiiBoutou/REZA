@@ -70,17 +70,20 @@ model Subscription {
   @@map("subscriptions")
 }
 
-// Platform-wide billing configuration (virement model) — a single config row
-// editable by the superadmin. Pricing is per salon (one-time) + per employee
-// beyond a free threshold (per billing period).
+// Platform-wide billing configuration (virement model) — a single config row.
+// Pricing is FIXED (not editable via UI):
+//   - Salon: 1000 MAD one-time fee per salon
+//   - Employees (monthly, per period):
+//       1 employee       → 100 MAD/employee
+//       2–5 employees    →  90 MAD/employee
+//       6+ employees     →  80 MAD/employee
+//   - freeEmployeeThreshold: 0 (every employee is billed)
 model BillingConfig {
   id                    String   @id @default("default")
-  pricePerSalon         Float    @default(1000) // one-time per salon (MAD)
-  freeEmployeeThreshold Int      @default(2)    // employees included free per salon
-  pricePerEmployee      Float    @default(100)  // fallback rate per employee per period (MAD) when no tiers
-  // Progressive per-employee price tiers on the billable count per salon:
-  // [{ "min": 1, "max": 5, "price": 100 }, { "min": 6, "max": null, "price": 80 }]
-  // max = null means "unbounded". Empty/null → flat pricePerEmployee.
+  pricePerSalon         Float    @default(1000)  // one-time per salon (MAD)
+  freeEmployeeThreshold Int      @default(0)     // no free employees
+  pricePerEmployee      Float    @default(100)   // fallback flat rate (MAD)
+  // Hardcoded tiers: [{ min:1, max:1, price:100 }, { min:2, max:5, price:90 }, { min:6, max:null, price:80 }]
   employeeTiers         Json?
   currency              String   @default("MAD")
   updatedAt             DateTime @updatedAt
@@ -113,6 +116,7 @@ model SubscriptionPayment {
   currency    String        @default("MAD")
   status      PaymentStatus @default(PENDING)
   reference   String?       // admin-provided transfer reference
+  payerName   String?       // name of the person who made the payment (user-provided)
   // Snapshot of what this payment covers at declaration time:
   // { salonsDue, employeesDue, employeesBySalon: { [tenantId]: count } }
   details     Json?

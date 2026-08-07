@@ -1,10 +1,164 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { Users, Calendar, Clock, BarChart3, Download, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
+
+// Defined OUTSIDE the page component so its identity is stable across renders.
+// When chartViews state changes, React compares this component by reference and
+// sees the same function — so it patches the existing DOM node instead of
+// unmounting/remounting, which prevents the pie animation from replaying on
+// charts whose data hasn't changed.
+const DonutChart = memo(function DonutChart({
+  data,
+  title,
+  subtitle,
+  chartId,
+  currentView,
+  onToggle,
+}: {
+  data: any[];
+  title: string;
+  subtitle?: string;
+  chartId: string;
+  currentView: 'graphe' | 'tableau';
+  onToggle: (chartId: string) => void;
+}) {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-100 p-6 hover:shadow-md transition-all">
+      <div className="mb-4">
+        <h3 className="text-sm font-medium text-gray-900 mb-1">{title}</h3>
+        {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+      </div>
+
+      {currentView === 'graphe' ? (
+        <>
+          <div className="relative">
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={data}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={70}
+                  outerRadius={90}
+                  paddingAngle={2}
+                  dataKey="value"
+                  startAngle={90}
+                  endAngle={450}
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="bg-white px-3 py-2 rounded-lg shadow-lg border border-gray-100">
+                          <p className="text-xs font-medium text-gray-900">{payload[0].name}</p>
+                          <p className="text-xs text-gray-500">{payload[0].value}%</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+
+            {/* Center text */}
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+              <p className="text-3xl font-light text-gray-900">{total.toFixed(0)}%</p>
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div className="mt-6 space-y-2">
+            {data.map((item, index) => (
+              <div key={index} className="flex items-center justify-between">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <div
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <span className="text-xs text-gray-600 truncate">{item.name}</span>
+                </div>
+                <span className="text-xs font-medium text-gray-900 ml-2">{item.value}%</span>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="mt-4">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Nom
+                </th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Valeur
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.map((item, index) => (
+                <tr key={index} className="hover:bg-gray-50">
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: item.color }}
+                      />
+                      <span className="text-xs text-gray-900">{item.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <span className="text-sm font-medium text-gray-900">{item.value}%</span>
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-gray-50 font-medium">
+                <td className="px-3 py-3">
+                  <span className="text-xs text-gray-900">Total</span>
+                </td>
+                <td className="px-3 py-3 text-right">
+                  <span className="text-sm font-medium text-gray-900">{total.toFixed(1)}%</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* View Toggle */}
+      <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-center gap-6">
+        <button
+          onClick={() => onToggle(chartId)}
+          className={`text-xs font-medium transition-colors ${
+            currentView === 'graphe' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          Graphe
+        </button>
+        <span className="text-gray-300">|</span>
+        <button
+          onClick={() => onToggle(chartId)}
+          className={`text-xs font-medium transition-colors ${
+            currentView === 'tableau' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          Tableau
+        </button>
+      </div>
+    </div>
+  );
+});
 
 export default function IndicateursPage() {
   const [mounted, setMounted] = useState(false);
@@ -79,145 +233,8 @@ export default function IndicateursPage() {
     }));
   };
 
-  const getView = (chartId: string) => {
+  const getView = (chartId: string): 'graphe' | 'tableau' => {
     return chartViews[chartId] || 'graphe';
-  };
-
-
-  const DonutChart = ({ data, title, subtitle, chartId }: { data: any[], title: string, subtitle?: string, chartId: string }) => {
-    const total = data.reduce((sum, item) => sum + item.value, 0);
-    const currentView = getView(chartId);
-    
-    return (
-      <div className="bg-white rounded-lg border border-gray-100 p-6 hover:shadow-md transition-all">
-        <div className="mb-4">
-          <h3 className="text-sm font-medium text-gray-900 mb-1">{title}</h3>
-          {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
-        </div>
-        
-        {currentView === 'graphe' ? (
-          <>
-            <div className="relative">
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie
-                    data={data}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={70}
-                    outerRadius={90}
-                    paddingAngle={2}
-                    dataKey="value"
-                    startAngle={90}
-                    endAngle={450}
-                  >
-                    {data.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    content={({ active, payload }) => {
-                      if (active && payload && payload.length) {
-                        return (
-                          <div className="bg-white px-3 py-2 rounded-lg shadow-lg border border-gray-100">
-                            <p className="text-xs font-medium text-gray-900">{payload[0].name}</p>
-                            <p className="text-xs text-gray-500">{payload[0].value}%</p>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-              
-              {/* Center text */}
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
-                <p className="text-3xl font-light text-gray-900">{total.toFixed(0)}%</p>
-              </div>
-            </div>
-
-            {/* Legend */}
-            <div className="mt-6 space-y-2">
-              {data.map((item, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <div 
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="text-xs text-gray-600 truncate">{item.name}</span>
-                  </div>
-                  <span className="text-xs font-medium text-gray-900 ml-2">{item.value}%</span>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="mt-4">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Nom
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Valeur
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data.map((item, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        <div 
-                          className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: item.color }}
-                        />
-                        <span className="text-xs text-gray-900">{item.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <span className="text-sm font-medium text-gray-900">{item.value}%</span>
-                    </td>
-                  </tr>
-                ))}
-                <tr className="bg-gray-50 font-medium">
-                  <td className="px-3 py-3">
-                    <span className="text-xs text-gray-900">Total</span>
-                  </td>
-                  <td className="px-3 py-3 text-right">
-                    <span className="text-sm font-medium text-gray-900">{total.toFixed(1)}%</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* View Toggle */}
-        <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-center gap-6">
-          <button 
-            onClick={() => toggleView(chartId)}
-            className={`text-xs font-medium transition-colors ${
-              currentView === 'graphe' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            Graphe
-          </button>
-          <span className="text-gray-300">|</span>
-          <button 
-            onClick={() => toggleView(chartId)}
-            className={`text-xs font-medium transition-colors ${
-              currentView === 'tableau' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            Tableau
-          </button>
-        </div>
-      </div>
-    );
   };
 
   if (!mounted || (loading && !initialLoaded)) {
@@ -366,18 +383,24 @@ export default function IndicateursPage() {
           title="RDV pris"
           subtitle="Répartition par canal"
           chartId="rdv-pris"
+          currentView={getView('rdv-pris')}
+          onToggle={toggleView}
         />
         <DonutChart 
           data={statsData.prestationsSalonData.length > 0 ? statsData.prestationsSalonData : []}
           title="Nombre de prestations en salon par employé"
           subtitle="Distribution par praticien"
           chartId="prestations-salon"
+          currentView={getView('prestations-salon')}
+          onToggle={toggleView}
         />
         <DonutChart 
           data={statsData.prestationsLigneData.length > 0 ? statsData.prestationsLigneData : []}
           title="Nombre de prestations en ligne par employé"
           subtitle="Réservations en ligne"
           chartId="prestations-ligne"
+          currentView={getView('prestations-ligne')}
+          onToggle={toggleView}
         />
       </div>
 
@@ -388,12 +411,16 @@ export default function IndicateursPage() {
           title="Nombre de RDV pris en salon par prestation"
           subtitle="Services en salon"
           chartId="rdv-salon-prestation"
+          currentView={getView('rdv-salon-prestation')}
+          onToggle={toggleView}
         />
         <DonutChart 
           data={statsData.rdvLigneParPrestationData.length > 0 ? statsData.rdvLigneParPrestationData : []}
           title="Nombre de RDV pris en ligne par prestation"
           subtitle="Services en ligne"
           chartId="rdv-ligne-prestation"
+          currentView={getView('rdv-ligne-prestation')}
+          onToggle={toggleView}
         />
       </div>
 

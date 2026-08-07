@@ -279,6 +279,7 @@ export class SuperAdminService {
         currency: p.currency,
         status: p.status,
         reference: p.reference,
+        payerName: p.payerName,
         rejectedReason: p.rejectedReason,
         details: p.details,
         createdAt: p.createdAt,

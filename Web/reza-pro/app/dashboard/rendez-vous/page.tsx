@@ -2784,14 +2784,14 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
       <div key={refreshKey} className="overflow-hidden animate-fadeIn">
         {view === 'week' && (
           <div className="overflow-x-auto bg-white rounded-lg border border-gray-100 shadow-sm">
-            <div className="min-w-[1000px]">
+            <div style={{ minWidth: `${56 + 7 * 220}px` }}>
               {/* Header */}
               <div className="flex border-b border-gray-100">
                 <div className="w-14 shrink-0 border-r border-gray-100"></div>
                 {getWeekDays().map((date, i) => {
                   const isToday = date.toDateString() === new Date().toDateString();
                   return (
-                    <div key={i} className="flex-1 p-4 text-center border-r border-gray-100 last:border-r-0">
+                    <div key={i} className="border-r border-gray-100 last:border-r-0 p-4 text-center" style={{ flex: '1 0 220px' }}>
                       <div className={`text-xs font-medium uppercase tracking-wider mb-2 ${isToday ? 'text-gray-900' : 'text-gray-400'}`}>
                         {date.toLocaleDateString('fr-FR', { weekday: 'short' })}
                       </div>
@@ -2835,8 +2835,8 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                   return (
                     <div
                       key={i}
-                      className="flex-1 relative border-r border-gray-100 last:border-r-0 overflow-hidden"
-                      style={{ height: `${agendaHeightRem}rem` }}
+                      className="relative border-r border-gray-100 last:border-r-0 overflow-hidden"
+                      style={{ flex: '1 0 220px', height: `${agendaHeightRem}rem` }}
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleGridDrop(e, date)}
                     >

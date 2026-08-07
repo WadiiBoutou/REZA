@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { TrendingUp, Users, Calendar, Globe, XCircle, DollarSign, Download, ChevronLeft, ChevronRight, ArrowDownRight, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Users, Calendar, Globe, XCircle, UserX, MousePointerClick, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -158,14 +158,16 @@ function DailyStatisticsPageContent() {
   const totals = statsData.totals;
 
   // Real period-over-period delta badge (value null → hidden: no previous-period data).
-  const DeltaBadge = ({ value, suffix = '%' }: { value: number | null | undefined; suffix?: string }) => {
+  // inverted=true: lower is better (Absents, Taux d'absence) — decrease shown green, increase shown red.
+  const DeltaBadge = ({ value, suffix = '%', inverted = false }: { value: number | null | undefined; suffix?: string; inverted?: boolean }) => {
     if (value === null || value === undefined || isNaN(value)) return null;
-    const positive = value >= 0;
-    const Icon = positive ? TrendingUp : ArrowDownRight;
+    const isIncrease = value >= 0;
+    const isGood = inverted ? !isIncrease : isIncrease;
+    const Icon = isIncrease ? TrendingUp : TrendingDown;
     return (
-      <div className={`flex items-center gap-1 px-2 py-1 rounded-lg ${positive ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
+      <div className={`flex items-center gap-1 px-2 py-1 rounded-lg ${isGood ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
         <Icon size={12} />
-        <span className="text-[10px] font-medium">{positive ? '+' : ''}{value}{suffix}</span>
+        <span className="text-[10px] font-medium">{value > 0 ? '+' : ''}{value}{suffix}</span>
       </div>
     );
   };
@@ -297,7 +299,7 @@ function DailyStatisticsPageContent() {
         <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all group">
           <div className="flex items-start justify-between mb-6">
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
-              <TrendingUp size={20} className="text-gray-400" />
+              <MousePointerClick size={20} className="text-gray-400" />
             </div>
             <DeltaBadge value={statsData.deltas.online} />
           </div>
@@ -325,7 +327,7 @@ function DailyStatisticsPageContent() {
             <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center transition-colors">
               <XCircle size={20} className="text-red-400" />
             </div>
-            <DeltaBadge value={statsData.deltas.absents} />
+            <DeltaBadge value={statsData.deltas.absents} inverted />
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1 font-medium">Absents</p>
@@ -336,9 +338,9 @@ function DailyStatisticsPageContent() {
         <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all group">
           <div className="flex items-start justify-between mb-6">
             <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center transition-colors">
-              <DollarSign size={20} className="text-red-400" />
+              <UserX size={20} className="text-red-400" />
             </div>
-            <DeltaBadge value={statsData.deltas.totalTauxAbsence} />
+            <DeltaBadge value={statsData.deltas.totalTauxAbsence} inverted />
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1 font-medium">Taux d'absence</p>

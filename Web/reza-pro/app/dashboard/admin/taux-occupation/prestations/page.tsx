@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Download, Printer, ChevronLeft, ChevronRight, Users, TrendingUp, Activity, BarChart3, Filter, Clock, DollarSign, Percent, Search, Loader2 } from 'lucide-react';
+import { Calendar, Download, Printer, ChevronLeft, ChevronRight, Users, TrendingUp, BarChart3, Filter, Clock, DollarSign, Percent, Search, Loader2 } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -213,10 +213,6 @@ const StatistiquesPage = () => {
               <h1 className="text-5xl font-light text-gray-900 tracking-tight">
                 Performance des services
               </h1>
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                <Activity size={16} />
-       
-              </div>
             </div>
           </div>
 

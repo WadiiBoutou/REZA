@@ -7,13 +7,13 @@ import {
   Users,
   CheckCircle2,
   Hourglass,
-  XCircle,
   Landmark,
   ArrowRight,
   RefreshCw,
 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface Overview {
   subscription: {
@@ -59,7 +59,8 @@ export default function MonAbonnementPage() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [declaring, setDeclaring] = useState(false);
   const [declareAmount, setDeclareAmount] = useState('');
-  const [declareReference, setDeclareReference] = useState('');
+  const [declareDate, setDeclareDate] = useState<Date | undefined>(undefined);
+  const [declarePayerName, setDeclarePayerName] = useState('');
   const [showDeclareForm, setShowDeclareForm] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -88,17 +89,23 @@ export default function MonAbonnementPage() {
       setError('Montant invalide');
       return;
     }
+    if (!declarePayerName.trim()) {
+      setError('Veuillez indiquer qui a effectué le virement');
+      return;
+    }
     setDeclaring(true);
     setError(null);
     setSuccessMsg(null);
     try {
       await api.declarePayment({
         amount,
-        reference: declareReference.trim() || undefined,
+        reference: declareDate ? declareDate.toLocaleDateString('fr-FR') : undefined,
+        payerName: declarePayerName.trim(),
       });
-      setSuccessMsg('Virement déclaré — en attente de validation par la plateforme.');
+      setSuccessMsg('Virement déclaré — en attente de validation par la plateforme dans 24h maximum.');
       setShowDeclareForm(false);
-      setDeclareReference('');
+      setDeclareDate(undefined);
+      setDeclarePayerName('');
       await load();
     } catch (e: any) {
       setError(e.message || "Impossible de déclarer le paiement");
@@ -161,7 +168,7 @@ export default function MonAbonnementPage() {
       {hasPending && (
         <div className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 mb-6 flex items-center gap-2">
           <Hourglass size={16} className="shrink-0" />
-          Une déclaration de virement est en attente de validation par la plateforme.
+          Une déclaration de virement est en attente de validation par la plateforme — délai maximal de 24h.
         </div>
       )}
 
@@ -177,42 +184,19 @@ export default function MonAbonnementPage() {
                   <Building size={16} />
                   <span className="text-xs font-semibold uppercase tracking-wide">Salon</span>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {bill.config.pricePerSalon.toLocaleString('fr-FR')} {currency}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Frais unique par salon (une seule fois)</p>
+                <p className="text-2xl font-bold text-gray-900">1 000 {currency}</p>
+                <p className="text-xs text-gray-500 mt-1">Frais unique par salon — payé une seule fois</p>
               </div>
               <div className="rounded-xl bg-[#002366]/5 border border-[#002366]/10 p-4">
                 <div className="flex items-center gap-2 text-[#002366] mb-2">
                   <Users size={16} />
-                  <span className="text-xs font-semibold uppercase tracking-wide">Employés</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide">Employés — mensuel</span>
                 </div>
-                {bill.config.employeeTiers && bill.config.employeeTiers.length > 0 ? (
-                  <>
-                    <div className="space-y-1 mb-2">
-                      {bill.config.employeeTiers.map((tier, i) => (
-                        <p key={i} className="text-sm text-gray-700">
-                          <span className="font-semibold text-gray-900">
-                            {tier.min}–{tier.max === null ? '+' : tier.max} employés
-                          </span>{' '}
-                          : {tier.price.toLocaleString('fr-FR')} {currency}/employé
-                        </p>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      Au-delà de {bill.config.freeEmployeeThreshold} gratuits / salon / période — tarif progressif
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {bill.config.pricePerEmployee.toLocaleString('fr-FR')} {currency}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Par employé au-delà de {bill.config.freeEmployeeThreshold} gratuits / salon / période
-                    </p>
-                  </>
-                )}
+                <div className="space-y-1">
+                  <p className="text-xs text-gray-700"><span className="font-semibold text-gray-900">1 employé</span> : 100 {currency}/mois</p>
+                  <p className="text-xs text-gray-700"><span className="font-semibold text-gray-900">2–5 employés</span> : 90 {currency}/employé/mois</p>
+                  <p className="text-xs text-gray-700"><span className="font-semibold text-gray-900">6+ employés</span> : 80 {currency}/employé/mois</p>
+                </div>
               </div>
             </div>
           </div>
@@ -232,20 +216,22 @@ export default function MonAbonnementPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">
-                  Salons — {bill.salonsPaid}/{bill.salonCount} couverts
-                  {bill.salonsDue > 0 && ` (${bill.salonsDue} à payer : ${bill.salonFee.toLocaleString('fr-FR')} ${currency})`}
+                  {bill.salonsDue > 0
+                    ? `${bill.salonsDue} salon${bill.salonsDue > 1 ? 's' : ''} non couverts — frais unique`
+                    : `Salons — ${bill.salonsPaid}/${bill.salonCount} couverts`}
                 </span>
-                <span className="font-semibold text-gray-900">
-                  {bill.salonFee.toLocaleString('fr-FR')} {currency}
+                <span className={`font-semibold ${bill.salonFee > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                  {bill.salonFee > 0 ? `${bill.salonFee.toLocaleString('fr-FR')} ${currency}` : '—'}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">
-                  Employés — {bill.employeesDue} au-delà du seuil
-                  {bill.employeesDue > 0 && ` (${bill.employeeFee.toLocaleString('fr-FR')} ${currency})`}
+                  {bill.employeesDue > 0
+                    ? `${bill.employeesDue} employé${bill.employeesDue > 1 ? 's' : ''} — mensuel`
+                    : 'Employés — couverts'}
                 </span>
-                <span className="font-semibold text-gray-900">
-                  {bill.employeeFee.toLocaleString('fr-FR')} {currency}
+                <span className={`font-semibold ${bill.employeeFee > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                  {bill.employeeFee > 0 ? `${bill.employeeFee.toLocaleString('fr-FR')} ${currency}` : '—'}
                 </span>
               </div>
               <div className="h-px bg-gray-100" />
@@ -277,9 +263,20 @@ export default function MonAbonnementPage() {
             {showDeclareForm && (
               <form onSubmit={declare} className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
                 <p className="text-xs text-gray-600">
-                  Effectuez votre virement vers les coordonnées bancaires de la plateforme, puis déclarez le montant ci-dessous. Un administrateur validera votre paiement.
+                  Effectuez votre virement vers les coordonnées bancaires de la plateforme, puis déclarez-le ci-dessous avec vos informations. Un administrateur validera votre paiement dans 24h.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-500 mb-1">
+                      Nom du payeur *
+                    </label>
+                    <input
+                      type="text"
+                      value={declarePayerName}
+                      onChange={(e) => setDeclarePayerName(e.target.value)}
+                      className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/30"
+                    />
+                  </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-gray-500 mb-1">
                       Montant ({currency}) *
@@ -293,17 +290,17 @@ export default function MonAbonnementPage() {
                       className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/30"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-gray-500 mb-1">
-                      Référence du virement (optionnel)
-                    </label>
-                    <input
-                      value={declareReference}
-                      onChange={(e) => setDeclareReference(e.target.value)}
-                      placeholder="Ex. 3e référence ou date"
-                      className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/30"
-                    />
-                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-500 mb-1">
+                    Date de virement
+                  </label>
+                  <DatePicker
+                    value={declareDate}
+                    onChange={setDeclareDate}
+                    placeholder="Choisir la date du virement"
+                    disabled={(d) => d > new Date()}
+                  />
                 </div>
                 <div className="flex items-center gap-3">
                   <button
@@ -382,44 +379,6 @@ export default function MonAbonnementPage() {
                 </span>
               </div>
             </div>
-          </div>
-
-          {/* Historique des paiements */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">Historique des paiements</h2>
-            {payments.length === 0 ? (
-              <p className="text-sm text-gray-400">Aucun paiement déclaré.</p>
-            ) : (
-              <div className="space-y-3">
-                {payments.map((p) => {
-                  const st = PAYMENT_STATUS[p.status] ?? { label: p.status, className: 'bg-gray-100 text-gray-600' };
-                  return (
-                    <div key={p.id} className="rounded-xl border border-gray-100 p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-gray-900">
-                          {p.amount.toLocaleString('fr-FR')} {p.currency}
-                        </span>
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${st.className}`}>
-                          {p.status === 'PENDING' && <Hourglass size={11} />}
-                          {p.status === 'APPROVED' && <CheckCircle2 size={11} />}
-                          {p.status === 'REJECTED' && <XCircle size={11} />}
-                          {st.label}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-gray-500 mt-1">
-                        {new Date(p.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                        {p.reference && ` — réf. ${p.reference}`}
-                      </p>
-                      {p.status === 'REJECTED' && p.rejectedReason && (
-                        <p className="text-[11px] text-red-600 mt-1">
-                          Raison : {p.rejectedReason}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </div>
       </div>

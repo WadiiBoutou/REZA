@@ -30,9 +30,10 @@ router.post('/declare-payment', authMiddleware, async (req, res, next) => {
     const schema = z.object({
       amount: z.number().positive().optional(),
       reference: z.string().max(200).optional(),
+      payerName: z.string().max(200).optional(),
     });
-    const { amount, reference } = schema.parse(req.body ?? {});
-    const result = await subscriptionService.declarePayment(req.userId!, { amount, reference });
+    const { amount, reference, payerName } = schema.parse(req.body ?? {});
+    const result = await subscriptionService.declarePayment(req.userId!, { amount, reference, payerName });
     res.status(201).json(result);
   } catch (error: any) {
     if (error instanceof z.ZodError) {

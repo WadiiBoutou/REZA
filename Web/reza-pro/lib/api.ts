@@ -496,7 +496,7 @@ class ApiClient {
   }
 
   /** Declare a virement payment for the current bill. */
-  async declarePayment(input: { amount?: number; reference?: string } = {}) {
+  async declarePayment(input: { amount?: number; reference?: string; payerName?: string } = {}) {
     return this.request<{ payment: { id: string; amount: number; status: string; createdAt: string } }>(
       '/subscription/declare-payment',
       { method: 'POST', body: JSON.stringify(input) }

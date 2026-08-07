@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Users,
-  CreditCard,
   Building,
   Loader2,
   Check,
@@ -40,6 +39,7 @@ interface PaymentRow {
   currency: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   reference: string | null;
+  payerName: string | null;
   rejectedReason: string | null;
   details: any;
   createdAt: string;
@@ -69,7 +69,7 @@ const PAYMENT_STATUS: Record<string, { label: string; className: string }> = {
 const PAGE_SIZE = 10;
 
 export default function SuperAdminPage() {
-  const [tab, setTab] = useState<'accounts' | 'billing' | 'payments'>('accounts');
+  const [tab, setTab] = useState<'accounts' | 'payments'>('accounts');
   const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const [accountsTotal, setAccountsTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -80,16 +80,6 @@ export default function SuperAdminPage() {
 
   const [q, setQ] = useState('');
   const [qDebounced, setQDebounced] = useState('');
-
-  // Billing config
-  const [billingConfig, setBillingConfig] = useState<{
-    pricePerSalon: number;
-    freeEmployeeThreshold: number;
-    pricePerEmployee: number;
-    employeeTiers: { min: number; max: number | null; price: number }[];
-    currency: string;
-  } | null>(null);
-  const [billingSaving, setBillingSaving] = useState(false);
 
   // Payments
   const [payments, setPayments] = useState<PaymentRow[]>([]);
@@ -106,9 +96,7 @@ export default function SuperAdminPage() {
     return () => clearTimeout(t);
   }, [q]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [qDebounced]);
+  useEffect(() => { setPage(1); }, [qDebounced]);
 
   const loadAccounts = useCallback(async () => {
     setAccountsLoading(true);
@@ -120,14 +108,6 @@ export default function SuperAdminPage() {
       setAccountsLoading(false);
     }
   }, [page, qDebounced]);
-
-  const loadBilling = useCallback(async () => {
-    const res = await api.superAdminGetBillingConfig();
-    setBillingConfig({
-      ...res.config,
-      employeeTiers: Array.isArray(res.config.employeeTiers) ? res.config.employeeTiers : [],
-    });
-  }, []);
 
   const loadPayments = useCallback(async () => {
     setPaymentsLoading(true);
@@ -143,13 +123,13 @@ export default function SuperAdminPage() {
     setLoading(true);
     setError(null);
     try {
-      await Promise.all([loadAccounts(), loadBilling(), loadPayments()]);
+      await Promise.all([loadAccounts(), loadPayments()]);
     } catch (e: any) {
       setError(e.message || 'Erreur de chargement');
     } finally {
       setLoading(false);
     }
-  }, [loadAccounts, loadBilling, loadPayments]);
+  }, [loadAccounts, loadPayments]);
 
   useEffect(() => {
     load();
@@ -172,30 +152,6 @@ export default function SuperAdminPage() {
       setError(e.message || 'Erreur');
     } finally {
       setBusyId(null);
-    }
-  };
-
-  const saveBilling = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!billingConfig) return;
-    setBillingSaving(true);
-    setError(null);
-    try {
-      const res = await api.superAdminUpdateBillingConfig({
-        pricePerSalon: billingConfig.pricePerSalon,
-        freeEmployeeThreshold: billingConfig.freeEmployeeThreshold,
-        pricePerEmployee: billingConfig.pricePerEmployee,
-        employeeTiers: billingConfig.employeeTiers,
-        currency: billingConfig.currency,
-      });
-      setBillingConfig({
-        ...res.config,
-        employeeTiers: Array.isArray(res.config.employeeTiers) ? res.config.employeeTiers : [],
-      });
-    } catch (e: any) {
-      setError(e.message || 'Erreur');
-    } finally {
-      setBillingSaving(false);
     }
   };
 
@@ -236,8 +192,7 @@ export default function SuperAdminPage() {
     );
   }
 
-  const filteredPayments =
-    paymentFilter === 'ALL' ? payments : payments.filter((p) => p.status === paymentFilter);
+  const filteredPayments = paymentFilter === 'ALL' ? payments : payments.filter((p) => p.status === paymentFilter);
 
   return (
     <div>
@@ -251,15 +206,6 @@ export default function SuperAdminPage() {
         >
           <Users size={16} />
           Comptes ({accountsTotal})
-        </button>
-        <button
-          onClick={() => setTab('billing')}
-          className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-all ${
-            tab === 'billing' ? 'bg-[#002366] text-white' : 'text-gray-600 hover:bg-gray-100'
-          }`}
-        >
-          <CreditCard size={16} />
-          Tarification
         </button>
         <button
           onClick={() => setTab('payments')}
@@ -286,7 +232,7 @@ export default function SuperAdminPage() {
         </div>
       )}
 
-      {/* Comptes */}
+      {/* ── Comptes ─────────────────────────────────────────────────────── */}
       {tab === 'accounts' && (
         <div className="space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-white p-4">
@@ -307,79 +253,69 @@ export default function SuperAdminPage() {
             </div>
           )}
 
-          {!accountsLoading &&
-            accounts.map((account) => {
-              const status = account.subscription?.status ?? 'NONE';
-              const statusInfo = STATUS_LABELS[status] ?? STATUS_LABELS.NONE;
-              return (
-                <div key={account.id} className="rounded-2xl border border-gray-200 bg-white p-5">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
-                        {account.owner
-                          ? `${account.owner.firstName} ${account.owner.lastName}`.trim() ||
-                            account.owner.email
-                          : 'Compte sans propriétaire'}
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${statusInfo.className}`}>
-                          Abonnement : {statusInfo.label}
+          {!accountsLoading && accounts.map((account) => {
+            const status = account.subscription?.status ?? 'NONE';
+            const statusInfo = STATUS_LABELS[status] ?? STATUS_LABELS.NONE;
+            return (
+              <div key={account.id} className="rounded-2xl border border-gray-200 bg-white p-5">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
+                      {account.owner
+                        ? `${account.owner.firstName} ${account.owner.lastName}`.trim() || account.owner.email
+                        : 'Compte sans propriétaire'}
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${statusInfo.className}`}>
+                        Abonnement : {statusInfo.label}
+                      </span>
+                      {!account.isActive && (
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                          Compte désactivé
                         </span>
-                        {!account.isActive && (
-                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
-                            Compte désactivé
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {account.owner?.email}
-                        {account.subscription &&
-                          ` — ${account.subscription.salonsPaid}/${account.salonCount} salons couverts`}
-                        {account.subscription?.currentPeriodEnd &&
-                          ` — période jusqu'au ${new Date(account.subscription.currentPeriodEnd).toLocaleDateString('fr-FR')}`}
-                      </p>
-                      <div className="flex items-center gap-2 mt-3 flex-wrap">
-                        {account.salons.map((salon) => (
-                          <span
-                            key={salon.id}
-                            className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ${
-                              salon.subscriptionActive
-                                ? 'border-green-200 bg-green-50 text-green-700'
-                                : 'border-amber-200 bg-amber-50 text-amber-700'
-                            }`}
-                            title={salon.subscriptionActive ? 'Visible clients' : 'Non visible clients'}
-                          >
-                            <Building size={11} />
-                            {salon.name}
-                          </span>
-                        ))}
-                        {account.salonCount === 0 && (
-                          <span className="text-[11px] text-gray-400">Aucun salon</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => toggleAccountActive(account)}
-                        disabled={busyId === account.id}
-                        className={`px-3.5 py-2 rounded-full text-xs font-semibold border transition-all ${
-                          account.isActive
-                            ? 'border-red-300 text-red-600 hover:bg-red-50'
-                            : 'border-green-300 text-green-700 hover:bg-green-50'
-                        }`}
-                      >
-                        {busyId === account.id ? (
-                          <Loader2 size={12} className="animate-spin" />
-                        ) : account.isActive ? (
-                          'Désactiver compte'
-                        ) : (
-                          'Réactiver compte'
-                        )}
-                      </button>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {account.owner?.email}
+                      {account.subscription && ` — ${account.subscription.salonsPaid}/${account.salonCount} salons couverts`}
+                      {account.subscription?.currentPeriodEnd &&
+                        ` — période jusqu'au ${new Date(account.subscription.currentPeriodEnd).toLocaleDateString('fr-FR')}`}
+                    </p>
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
+                      {account.salons.map((salon) => (
+                        <span
+                          key={salon.id}
+                          className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ${
+                            salon.subscriptionActive
+                              ? 'border-green-200 bg-green-50 text-green-700'
+                              : 'border-amber-200 bg-amber-50 text-amber-700'
+                          }`}
+                          title={salon.subscriptionActive ? 'Visible clients' : 'Non visible clients'}
+                        >
+                          <Building size={11} />
+                          {salon.name}
+                        </span>
+                      ))}
+                      {account.salonCount === 0 && <span className="text-[11px] text-gray-400">Aucun salon</span>}
                     </div>
                   </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => toggleAccountActive(account)}
+                      disabled={busyId === account.id}
+                      className={`px-3.5 py-2 rounded-full text-xs font-semibold border transition-all ${
+                        account.isActive
+                          ? 'border-red-300 text-red-600 hover:bg-red-50'
+                          : 'border-green-300 text-green-700 hover:bg-green-50'
+                      }`}
+                    >
+                      {busyId === account.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : account.isActive ? 'Désactiver compte' : 'Réactiver compte'}
+                    </button>
+                  </div>
                 </div>
-              );
-            })}
+              </div>
+            );
+          })}
 
           {!accountsLoading && accounts.length === 0 && (
             <div className="rounded-2xl border border-dashed border-gray-300 p-10 text-center text-sm text-gray-500">
@@ -399,8 +335,7 @@ export default function SuperAdminPage() {
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   className="inline-flex items-center gap-1 px-3.5 py-2 rounded-full text-xs font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-all"
                 >
-                  <ChevronLeft size={14} />
-                  Préc.
+                  <ChevronLeft size={14} /> Préc.
                 </button>
                 <button
                   type="button"
@@ -408,8 +343,7 @@ export default function SuperAdminPage() {
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   className="inline-flex items-center gap-1 px-3.5 py-2 rounded-full text-xs font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-all"
                 >
-                  Suiv.
-                  <ChevronRight size={14} />
+                  Suiv. <ChevronRight size={14} />
                 </button>
               </div>
             </div>
@@ -417,166 +351,7 @@ export default function SuperAdminPage() {
         </div>
       )}
 
-      {/* Tarification */}
-      {tab === 'billing' && billingConfig && (
-        <form onSubmit={saveBilling} className="max-w-xl rounded-2xl border border-gray-200 bg-white p-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-1">Tarification de la plateforme</h2>
-          <p className="text-xs text-gray-500 mb-6">
-            Ces prix s&apos;appliquent à tous les salons. Frais unique par salon + frais par employé au-delà du seuil gratuit, par période.
-          </p>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                Prix par salon ({billingConfig.currency}) — frais unique
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/30"
-                value={billingConfig.pricePerSalon}
-                onChange={(e) =>
-                  setBillingConfig({ ...billingConfig, pricePerSalon: parseFloat(e.target.value) || 0 })
-                }
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                Employés gratuits par salon
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/30"
-                value={billingConfig.freeEmployeeThreshold}
-                onChange={(e) =>
-                  setBillingConfig({
-                    ...billingConfig,
-                    freeEmployeeThreshold: parseInt(e.target.value, 10) || 0,
-                  })
-                }
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-                Prix par employé par défaut ({billingConfig.currency}) — utilisé quand aucune tranche n'est définie
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/30"
-                value={billingConfig.pricePerEmployee}
-                onChange={(e) =>
-                  setBillingConfig({ ...billingConfig, pricePerEmployee: parseFloat(e.target.value) || 0 })
-                }
-              />
-            </div>
-
-            {/* Per-employee price tiers (progressive: chaque employé facturable est facturé au tarif de sa tranche) */}
-            <div className="pt-2 border-t border-gray-100">
-              <label className="block text-xs font-semibold text-gray-600 mb-1">
-                Tranches de prix par employé ({billingConfig.currency}) — tarification progressive
-              </label>
-              <p className="text-[11px] text-gray-400 mb-3">
-                Ex. « 1-5 employés à 100 » puis « 6+ à 80 » : un salon avec 7 employés facturables paie 5×100 + 2×80 = 660.
-                Laissez vide « jusqu'à » pour une tranche sans limite. Le seuil gratuit s'applique avant les tranches.
-              </p>
-              {billingConfig.employeeTiers.length > 0 ? (
-                <div className="space-y-2">
-                  {billingConfig.employeeTiers.map((tier, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">De</span>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        className="w-16 rounded-lg border border-gray-200 px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#002366]/30"
-                        value={tier.min}
-                        onChange={(e) => {
-                          const tiers = [...billingConfig.employeeTiers];
-                          tiers[i] = { ...tiers[i], min: parseInt(e.target.value, 10) || 1 };
-                          setBillingConfig({ ...billingConfig, employeeTiers: tiers });
-                        }}
-                      />
-                      <span className="text-xs text-gray-500">à</span>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        placeholder="∞"
-                        className="w-16 rounded-lg border border-gray-200 px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#002366]/30"
-                        value={tier.max ?? ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          const tiers = [...billingConfig.employeeTiers];
-                          tiers[i] = { ...tiers[i], max: val === '' ? null : parseInt(val, 10) || null };
-                          setBillingConfig({ ...billingConfig, employeeTiers: tiers });
-                        }}
-                      />
-                      <span className="text-xs text-gray-500">employés :</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="w-24 rounded-lg border border-gray-200 px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#002366]/30"
-                        value={tier.price}
-                        onChange={(e) => {
-                          const tiers = [...billingConfig.employeeTiers];
-                          tiers[i] = { ...tiers[i], price: parseFloat(e.target.value) || 0 };
-                          setBillingConfig({ ...billingConfig, employeeTiers: tiers });
-                        }}
-                      />
-                      <span className="text-xs text-gray-500">{billingConfig.currency}/employé</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setBillingConfig({
-                            ...billingConfig,
-                            employeeTiers: billingConfig.employeeTiers.filter((_, idx) => idx !== i),
-                          })
-                        }
-                        className="ml-1 text-gray-400 hover:text-red-600 transition-colors"
-                        title="Supprimer la tranche"
-                      >
-                        <X size={15} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-gray-400">Aucune tranche définie — le tarif par défaut s'applique à tous les employés facturables.</p>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  const tiers = [...billingConfig.employeeTiers];
-                  const last = tiers[tiers.length - 1];
-                  const nextMin = last ? (last.max === null ? last.min + 1 : last.max + 1) : 1;
-                  tiers.push({ min: nextMin, max: null, price: billingConfig.pricePerEmployee });
-                  setBillingConfig({ ...billingConfig, employeeTiers: tiers });
-                }}
-                className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold border border-gray-300 text-gray-600 hover:bg-gray-50 transition-all"
-              >
-                + Ajouter une tranche
-              </button>
-            </div>
-          </div>
-          <div className="flex justify-end mt-6">
-            <button
-              type="submit"
-              disabled={billingSaving}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#002366] text-white text-sm font-semibold hover:bg-[#001a4d] transition-all disabled:opacity-50"
-            >
-              {billingSaving && <Loader2 size={16} className="animate-spin" />}
-              Enregistrer la tarification
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* Paiements */}
+      {/* ── Paiements ───────────────────────────────────────────────────── */}
       {tab === 'payments' && (
         <div>
           <div className="flex items-center gap-2 mb-5 flex-wrap">
@@ -590,7 +365,7 @@ export default function SuperAdminPage() {
                     : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                 }`}
               >
-                {s === 'PENDING' ? 'En attente' : s === 'APPROVED' ? 'Approuvés' : s === 'REJECTED' ? 'Refusés' : 'Tous'}
+                {s === 'PENDING' ? `En attente${pendingCount > 0 ? ` (${pendingCount})` : ''}` : s === 'APPROVED' ? 'Approuvés' : s === 'REJECTED' ? 'Refusés' : 'Tous'}
               </button>
             ))}
           </div>
@@ -601,67 +376,68 @@ export default function SuperAdminPage() {
             </div>
           )}
 
-          {!paymentsLoading &&
-            filteredPayments.map((p) => {
-              const st = PAYMENT_STATUS[p.status] ?? { label: p.status, className: 'bg-gray-100 text-gray-600' };
-              return (
-                <div key={p.id} className="rounded-2xl border border-gray-200 bg-white p-5 mb-4">
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
-                        {p.amount.toLocaleString('fr-FR')} {p.currency}
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${st.className}`}>
-                          {p.status === 'PENDING' && <Hourglass size={11} />}
-                          {p.status === 'APPROVED' && <CheckCircle2 size={11} />}
-                          {p.status === 'REJECTED' && <XCircle size={11} />}
-                          {st.label}
-                        </span>
+          {!paymentsLoading && filteredPayments.map((p) => {
+            const st = PAYMENT_STATUS[p.status] ?? { label: p.status, className: 'bg-gray-100 text-gray-600' };
+            return (
+              <div key={p.id} className="rounded-2xl border border-gray-200 bg-white p-5 mb-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
+                      {p.amount.toLocaleString('fr-FR')} {p.currency}
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${st.className}`}>
+                        {p.status === 'PENDING' && <Hourglass size={11} />}
+                        {p.status === 'APPROVED' && <CheckCircle2 size={11} />}
+                        {p.status === 'REJECTED' && <XCircle size={11} />}
+                        {st.label}
+                      </span>
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {p.account?.owner
+                        ? `${p.account.owner.firstName} ${p.account.owner.lastName}`.trim() || p.account.owner.email
+                        : p.account?.id}
+                      {' — '}
+                      {p.account?.salons.map((s) => s.name).join(', ') || 'aucun salon'}
+                    </p>
+                    {p.payerName && (
+                      <p className="text-[11px] text-gray-600 mt-1">
+                        Payeur : <span className="font-medium">{p.payerName}</span>
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {p.account?.owner
-                          ? `${p.account.owner.firstName} ${p.account.owner.lastName}`.trim() || p.account.owner.email
-                          : p.account?.id}
-                        {' — '}
-                        {p.account?.salons.map((s) => s.name).join(', ') || 'aucun salon'}
-                      </p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
-                        Déclaré le {new Date(p.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                        {p.declaredBy && ` par ${p.declaredBy.firstName} ${p.declaredBy.lastName}`}
-                        {p.reference && ` — réf. ${p.reference}`}
-                        {p.approvedAt && ` — validé le ${new Date(p.approvedAt).toLocaleDateString('fr-FR')}`}
-                      </p>
-                      {p.status === 'REJECTED' && p.rejectedReason && (
-                        <p className="text-[11px] text-red-600 mt-1">Raison : {p.rejectedReason}</p>
-                      )}
-                    </div>
-
-                    {p.status === 'PENDING' && (
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => approvePayment(p)}
-                          disabled={busyId === p.id}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-all disabled:opacity-50"
-                        >
-                          {busyId === p.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                          Approuver
-                        </button>
-                        <button
-                          onClick={() => {
-                            setRejectTarget(p);
-                            setRejectReason('');
-                          }}
-                          disabled={busyId === p.id}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold border border-red-300 text-red-600 hover:bg-red-50 transition-all disabled:opacity-50"
-                        >
-                          <X size={12} />
-                          Refuser
-                        </button>
-                      </div>
+                    )}
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      Déclaré le {new Date(p.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      {p.declaredBy && ` par ${p.declaredBy.firstName} ${p.declaredBy.lastName}`}
+                      {p.reference && ` — réf. ${p.reference}`}
+                      {p.approvedAt && ` — validé le ${new Date(p.approvedAt).toLocaleDateString('fr-FR')}`}
+                    </p>
+                    {p.status === 'REJECTED' && p.rejectedReason && (
+                      <p className="text-[11px] text-red-600 mt-1">Raison : {p.rejectedReason}</p>
                     )}
                   </div>
+
+                  {p.status === 'PENDING' && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => approvePayment(p)}
+                        disabled={busyId === p.id}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-all disabled:opacity-50"
+                      >
+                        {busyId === p.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                        Approuver
+                      </button>
+                      <button
+                        onClick={() => { setRejectTarget(p); setRejectReason(''); }}
+                        disabled={busyId === p.id}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold border border-red-300 text-red-600 hover:bg-red-50 transition-all disabled:opacity-50"
+                      >
+                        <X size={12} />
+                        Refuser
+                      </button>
+                    </div>
+                  )}
                 </div>
-              );
-            })}
+              </div>
+            );
+          })}
 
           {!paymentsLoading && filteredPayments.length === 0 && (
             <div className="rounded-2xl border border-dashed border-gray-300 p-10 text-center text-sm text-gray-500">
@@ -671,7 +447,7 @@ export default function SuperAdminPage() {
         </div>
       )}
 
-      {/* Reject modal */}
+      {/* ── Reject modal ────────────────────────────────────────────────── */}
       {rejectTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-gray-200 p-6">

@@ -42,11 +42,29 @@ export function isPeriodActive(sub: { status: string; currentPeriodEnd: Date | n
 
 export class SubscriptionService {
   private async getConfig() {
-    // Auto-create with defaults on first use (platform-wide config)
+    // Auto-create with hardcoded pricing on first use:
+    //   Salon: 1000 MAD one-time
+    //   Employees (monthly): 1→100, 2-5→90, 6+→80 MAD/employee, no free threshold
+    const HARDCODED_TIERS = [
+      { min: 1, max: 1, price: 100 },
+      { min: 2, max: 5, price: 90 },
+      { min: 6, max: null, price: 80 },
+    ];
     const config = await prisma.billingConfig.upsert({
       where: { id: 'default' },
-      create: { id: 'default' },
-      update: {},
+      create: {
+        id: 'default',
+        pricePerSalon: 1000,
+        freeEmployeeThreshold: 0,
+        pricePerEmployee: 100,
+        employeeTiers: HARDCODED_TIERS,
+        currency: 'MAD',
+      },
+      update: {
+        // Keep salon price as-is but enforce correct threshold and tiers
+        freeEmployeeThreshold: 0,
+        employeeTiers: HARDCODED_TIERS,
+      },
     });
     return config;
   }
@@ -228,7 +246,7 @@ export class SubscriptionService {
    * records a coverage snapshot — the superadmin's approval applies exactly
    * this snapshot, so the declared amount always matches what gets covered.
    */
-  async declarePayment(userId: string, input: { amount?: number; reference?: string }) {
+  async declarePayment(userId: string, input: { amount?: number; reference?: string; payerName?: string }) {
     const ctx = await accountService.getContextForUser(userId);
     if (!ctx.account) {
       throw { status: 404, error: 'No account', message: 'Aucun compte associé' };
@@ -272,6 +290,7 @@ export class SubscriptionService {
         amount: Math.round(amount * 100) / 100,
         currency: bill.config.currency,
         reference: input.reference?.trim() || null,
+        payerName: input.payerName?.trim() || null,
         declaredById: userId,
         details: {
           salonsDue: bill.salonsDue,
