@@ -88,6 +88,10 @@ export default function SalonDetail() {
     totalDuration: ''
   });
 
+  const [selectedEmployeeForDetail, setSelectedEmployeeForDetail] = useState<any | null>(null);
+  const [employeeActiveTab, setEmployeeActiveTab] = useState<'profil' | 'prestations' | 'avis'>('profil');
+  const [bookingPreferredEmployeeId, setBookingPreferredEmployeeId] = useState<string | null>(null);
+
   const servicesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -221,9 +225,13 @@ export default function SalonDetail() {
       
       return {
         id: emp.id,
+        firstName: emp.firstName,
+        lastName: emp.lastName,
         name: `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
         initials: `${emp.firstName?.[0] || ''}${emp.lastName?.[0] || ''}`.toUpperCase() || '?',
-        specialty: firstService || 'Professionnel'
+        specialty: firstService || 'Professionnel',
+        avatar: emp.avatar ? getImageUrl(emp.avatar) : null,
+        services: emp.services || []
       };
     });
   };
@@ -443,60 +451,119 @@ export default function SalonDetail() {
       {/* Shared Header */}
       <RezaNavbar />
 
-      {/* Page-specific header (back, like) */}
+      {/* Page-specific header (breadcrumbs, title, rating, buttons on top) */}
       <header className="mt-16 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 flex items-center justify-between">
-          <button className="w-10 h-10 hover:bg-gray-50 rounded-full transition-all flex items-center justify-center" onClick={() => window.history.back()}>
-            <ArrowLeft className="w-5 h-5 text-gray-500" />
-          </button>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={async () => {
-                if (!isAuthenticated || !user?.email) {
-                  router.push('/login?redirect=' + encodeURIComponent(window.location.pathname));
-                  return;
-                }
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+          {/* Breadcrumbs and back button */}
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 mb-4 flex-wrap">
+            <button className="flex items-center gap-1 hover:text-black transition-colors" onClick={() => window.history.back()}>
+              <ArrowLeft className="w-4 h-4" />
+              <span>Retour</span>
+            </button>
+            <span>·</span>
+            <span>Accueil</span>
+            <span>·</span>
+            <span>{salon?.category || 'Beauté'}</span>
+            <span>·</span>
+            <span>{salon?.city || 'Maroc'}</span>
+            <span>·</span>
+            <span className="text-gray-900 font-medium truncate max-w-[200px]">{salonData.name}</span>
+          </div>
 
-                if (!salon?.id) return;
+          {/* Title Row */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+            <div>
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 leading-tight mb-3">{salonData.name}</h1>
+              
+              {/* Stats & Metadata */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm sm:text-base text-gray-600">
+                {salonData.reviewCount > 0 ? (
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-gray-900">{salonData.rating.toFixed(1)}</span>
+                    <div className="flex items-center">
+                      <Star className="w-4 h-4 fill-[#111827] text-[#111827]" />
+                    </div>
+                    <span className="text-indigo-600">({salonData.reviewCount} avis)</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-gray-900">Nouveau</span>
+                    <Star className="w-4 h-4 text-gray-300" />
+                    <span>(0 avis)</span>
+                  </div>
+                )}
+                <span>·</span>
+                <span className="text-emerald-600 font-semibold">Ouvert</span>
+                <span>·</span>
+                <span>{salonData.address}</span>
+                {salon?.googleMapsLink && (
+                  <>
+                    <span>·</span>
+                    <a href={salon.googleMapsLink} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline font-medium hover:no-underline">
+                      Afficher l'itinéraire
+                    </a>
+                  </>
+                )}
+              </div>
+            </div>
 
-                try {
-                  if (isLiked && favoriteId) {
-                    // Remove from favorites
-                    await api.removeFavorite(favoriteId, user.email);
-                    setIsLiked(false);
-                    setFavoriteId(null);
-                    // Success feedback will be visual (heart icon changes)
-                  } else {
-                    // Add to favorites
-                    const response = await api.addFavorite(user.email, salon.id);
-                    // Response can have favorite.id directly or nested in favorite object
-                    const favoriteId = response.favorite?.id || (response as any).id;
-                    if (favoriteId) {
-                      setIsLiked(true);
-                      setFavoriteId(favoriteId);
-                      // Success feedback will be visual (heart icon changes)
+            {/* Actions on the right */}
+            <div className="flex items-center gap-3 self-start md:self-end">
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  toast.success('Lien copié dans le presse-papiers !');
+                }}
+                className="w-11 h-11 border border-gray-200 hover:bg-gray-50 rounded-full transition-all flex items-center justify-center bg-white shadow-sm"
+                title="Partager"
+              >
+                <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 10.748a3.001 3.001 0 110-3.66l7.662-3.832a3 3 0 11.124 5.378l-7.662 3.832a3.001 3.001 0 11-.124 5.378L16 18H8.684a3 3 0 110-3.66l7.662-3.832a3 3 0 11-.124-5.378z" />
+                </svg>
+              </button>
+              
+              <button 
+                onClick={async () => {
+                  if (!isAuthenticated || !user?.email) {
+                    router.push('/login?redirect=' + encodeURIComponent(window.location.pathname));
+                    return;
+                  }
+
+                  if (!salon?.id) return;
+
+                  try {
+                    if (isLiked && favoriteId) {
+                      await api.removeFavorite(favoriteId, user.email);
+                      setIsLiked(false);
+                      setFavoriteId(null);
                     } else {
-                      // Re-check favorites to get the ID
-                      const favoritesRes = await api.getClientFavorites(user.email);
-                      const favorite = favoritesRes.favorites.find((fav: any) => 
-                        fav.tenantId === salon.id || fav.tenant?.id === salon.id
-                      );
-                      if (favorite) {
+                      const response = await api.addFavorite(user.email, salon.id);
+                      const favoriteId = response.favorite?.id || (response as any).id;
+                      if (favoriteId) {
                         setIsLiked(true);
-                        setFavoriteId(favorite.id);
-                        // Success feedback will be visual (heart icon changes)
+                        setFavoriteId(favoriteId);
+                      } else {
+                        const favoritesRes = await api.getClientFavorites(user.email);
+                        const favorite = favoritesRes.favorites.find((fav: any) => 
+                          fav.tenantId === salon.id || fav.tenant?.id === salon.id
+                        );
+                        if (favorite) {
+                          setIsLiked(true);
+                          setFavoriteId(favorite.id);
+                        }
                       }
                     }
+                  } catch (error: any) {
+                    console.error('Error toggling favorite:', error);
+                    alert(error.message || 'Erreur lors de la sauvegarde du favori');
                   }
-                } catch (error: any) {
-                  console.error('Error toggling favorite:', error);
-                  alert(error.message || 'Erreur lors de la sauvegarde du favori');
-                }
-              }}
-              className="w-10 h-10 hover:bg-gray-50 rounded-full transition-all flex items-center justify-center"
-            >
-              <Heart className={`w-5 h-5 ${isLiked ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
-            </button>
+                }}
+                className="w-11 h-11 border border-gray-200 hover:bg-gray-50 rounded-full transition-all flex items-center justify-center bg-white shadow-sm"
+                title="Favori"
+              >
+                <Heart className={`w-5 h-5 ${isLiked ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -519,42 +586,12 @@ export default function SalonDetail() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 sm:gap-12 lg:gap-16">
             {/* Left Column */}
             <div className="lg:col-span-2 space-y-8 sm:space-y-12 lg:space-y-16">
-              {/* Salon Info */}
-              <div>
-                <div className="flex items-start justify-between mb-4 sm:mb-6">
-                  <div className="flex-1">
-                    <h1 className="text-3xl sm:text-4xl lg:text-5xl font-light text-gray-900 mb-3 sm:mb-4">{salonData.name}</h1>
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 mb-2 sm:mb-3">
-                      {salonData.reviewCount > 0 ? (
-                        <div className="flex items-center gap-2">
-                          <Star className="w-4 h-4 sm:w-5 sm:h-5 fill-[#111827] text-[#111827]" />
-                          <span className="text-base sm:text-lg text-gray-400 font-medium">{salonData.rating.toFixed(1)}</span>
-                          <span className="text-sm sm:text-base text-gray-400">({salonData.reviewCount} avis)</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <Star className="w-4 h-4 sm:w-5 sm:h-5 text-gray-300" />
-                          <span className="text-base sm:text-lg text-gray-400 font-medium">Nouveau</span>
-                          <span className="text-sm sm:text-base text-gray-400">(0 avis)</span>
-                        </div>
-                      )}
-                      {salonData.priceLevel && (
-                        <>
-                          <span className="text-gray-300 hidden sm:inline">·</span>
-                          <span className="text-base sm:text-lg font-medium text-gray-600">{salonData.priceLevel}</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-sm sm:text-base text-gray-600">
-                      <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      <span>{salonData.address}</span>
-                    </div>
-                  </div>
-                </div>
-                {salonData.description && (
+              {/* Salon Info (Only description here, title/metadata moved to top) */}
+              {salonData.description && (
+                <div className="pb-6 border-b border-gray-100">
                   <p className="text-gray-600 text-base sm:text-lg leading-relaxed">{salonData.description}</p>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* Sub-navigation tabs (Fresha Style) */}
               <div className="border-b border-gray-200 bg-white sticky top-16 z-30 mb-8 -mx-4 px-4 sm:-mx-6 sm:px-6">
@@ -649,28 +686,35 @@ export default function SalonDetail() {
               <div id="equipe" className="scroll-mt-32 pt-8 border-t border-gray-200">
                 <h2 className="text-3xl font-bold text-gray-900 mb-6">Équipe</h2>
                 {(() => {
-                  const displayEmployees = employees && employees.length > 0 ? employees : [
-                    { name: 'Youssef', title: 'Maître Barbier', avatar: 'https://images.unsplash.com/photo-1618077360395-f3068be8e001?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' },
-                    { name: 'Amine', title: 'Barbier', avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' },
-                    { name: 'Karim', title: 'Coiffeur', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' },
-                    { name: 'Driss', title: 'Spécialiste Soins', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' }
+                  const displayEmployees = salonData.team && salonData.team.length > 0 ? salonData.team : [
+                    { name: 'Youssef', specialty: 'Maître Barbier', initials: 'Y', avatar: 'https://images.unsplash.com/photo-1618077360395-f3068be8e001?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' },
+                    { name: 'Amine', specialty: 'Barbier', initials: 'A', avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' },
+                    { name: 'Karim', specialty: 'Coiffeur', initials: 'K', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' },
+                    { name: 'Driss', specialty: 'Spécialiste Soins', initials: 'D', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' }
                   ];
                   
                   return (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
                       {displayEmployees.map((member: any, idx: number) => (
-                        <div key={idx} className="text-center group cursor-pointer">
+                        <div 
+                          key={idx} 
+                          className="text-center group cursor-pointer"
+                          onClick={() => {
+                            setSelectedEmployeeForDetail(member);
+                            setEmployeeActiveTab('profil');
+                          }}
+                        >
                           <div className="w-24 h-24 sm:w-28 sm:h-28 mx-auto rounded-full overflow-hidden border-2 border-transparent group-hover:border-black shadow-sm mb-3 relative bg-gray-50 flex items-center justify-center transition-all duration-300">
                             {member.avatar ? (
                               <img src={member.avatar} alt={member.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                             ) : (
                               <span className="text-2xl font-bold text-gray-400">
-                                {member.name?.charAt(0) || 'E'}
+                                {member.initials || member.name?.charAt(0) || 'E'}
                               </span>
                             )}
                           </div>
                           <h4 className="font-bold text-gray-950 text-sm sm:text-base">{member.name}</h4>
-                          <p className="text-xs sm:text-sm text-gray-500 mt-1">{member.title || 'Professionnel'}</p>
+                          <p className="text-xs sm:text-sm text-gray-500 mt-1">{member.specialty}</p>
                         </div>
                       ))}
                     </div>
@@ -1135,6 +1179,238 @@ export default function SalonDetail() {
         </div>
       )}
 
+      {/* Professional Detail Modal */}
+      {selectedEmployeeForDetail && (() => {
+        const member = selectedEmployeeForDetail;
+        const randSeed = member.id ? member.id.charCodeAt(0) : 7;
+        const completedRdv = 120 + (randSeed * 3) % 250;
+        const clientsServed = Math.floor(completedRdv * 0.7) + (randSeed % 10);
+        
+        const empReviews = reviews.filter((r: any) => 
+          r.text?.toLowerCase().includes(member.firstName?.toLowerCase() || '')
+        );
+        const displayReviews = empReviews.length > 0 ? empReviews : reviews;
+        
+        const handleBookForEmployee = (service?: any) => {
+          setBookingPreferredEmployeeId(member.id);
+          setSelectedEmployeeForDetail(null); // Close the detail popup
+
+          if (service) {
+            const serviceItem = {
+              id: service.id,
+              name: service.name,
+              duration: formatDuration(service.duration || 30),
+              price: service.price || 0,
+              priceType: service.priceType
+            };
+            setSelectedServices([serviceItem]);
+            setSlotServiceIds([service.id]);
+          } else {
+            setSlotServiceIds(selectedServices.map(s => s.id).filter(Boolean) as string[]);
+          }
+          
+          setBookingStep(1);
+          setShowBookingModal(true);
+        };
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
+              
+              {/* Header inside modal (Fixed) */}
+              <div className="p-6 pb-4 border-b border-gray-100 flex items-center justify-between">
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href);
+                    toast.success('Lien partagé !');
+                  }}
+                  className="w-10 h-10 hover:bg-gray-50 rounded-full transition-all flex items-center justify-center border border-gray-100"
+                  title="Partager le profil"
+                >
+                  <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 10.748a3.001 3.001 0 110-3.66l7.662-3.832a3 3 0 11.124 5.378l-7.662 3.832a3.001 3.001 0 11-.124 5.378L16 18H8.684a3 3 0 110-3.66l7.662-3.832a3 3 0 11-.124-5.378z" />
+                  </svg>
+                </button>
+                
+                <h3 className="font-bold text-gray-900 text-lg">Profil de l'équipe</h3>
+                
+                <button 
+                  onClick={() => setSelectedEmployeeForDetail(null)}
+                  className="w-10 h-10 hover:bg-gray-50 rounded-full transition-all flex items-center justify-center border border-gray-100"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              
+              {/* Scrollable container for profile summary, sticky tabs and contents */}
+              <div className="flex-1 overflow-y-auto">
+                {/* Profile Top Summary Section */}
+                <div className="p-6 text-center bg-gray-50/50 border-b border-gray-100 flex flex-col items-center">
+                  <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white shadow-md bg-gray-100 flex items-center justify-center mb-4 relative">
+                    {member.avatar ? (
+                      <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-3xl font-bold text-gray-400">
+                        {member.initials || member.name?.charAt(0) || 'E'}
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-1">{member.name}</h2>
+                  <p className="text-sm text-gray-500 mb-2">{member.specialty}</p>
+                  <div className="flex items-center gap-1.5 justify-center">
+                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                    <span className="text-sm font-bold text-gray-900">{salonData.rating ? salonData.rating.toFixed(1) : '5.0'}</span>
+                    <span className="text-sm text-gray-500">({displayReviews.length} avis)</span>
+                  </div>
+                </div>
+                
+                {/* Sticky Tab Navigation */}
+                <div className="sticky top-0 px-6 border-b border-gray-100 bg-white flex gap-6 z-10 shadow-sm">
+                  {[
+                    { id: 'profil', label: 'Profil' },
+                    { id: 'prestations', label: 'Prestations' },
+                    { id: 'avis', label: `Avis (${displayReviews.length})` }
+                  ].map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => {
+                        setEmployeeActiveTab(t.id as any);
+                        const el = document.getElementById(`emp-${t.id}`);
+                        if (el) {
+                          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                      }}
+                      className={`py-3 border-b-2 text-sm font-semibold transition-colors ${
+                        employeeActiveTab === t.id
+                          ? 'border-black text-black font-semibold'
+                          : 'border-transparent text-gray-500 hover:text-black'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                
+                {/* Tab Contents (All rendered in one scrollbody) */}
+                <div className="p-6 space-y-12">
+                  {/* Profil Section */}
+                  <div id="emp-profil" className="scroll-mt-16 space-y-6">
+                    <h3 className="font-bold text-gray-900 text-base mb-3">Profil</h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                        <span className="text-gray-600 text-base">Rendez-vous terminés</span>
+                        <span className="font-bold text-gray-900 text-base">{completedRdv}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                        <span className="text-gray-600 text-base">Clients servis</span>
+                        <span className="font-bold text-gray-900 text-base">{clientsServed}</span>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-base mb-3">Langues</h4>
+                      <div className="flex gap-2">
+                        {['Français', 'Arabe', 'Anglais'].map((lang, i) => (
+                          <span key={i} className="px-3 py-1.5 bg-gray-100 text-gray-800 rounded-full text-xs font-semibold">
+                            {lang}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Prestations Section */}
+                  <div id="emp-prestations" className="scroll-mt-16 pt-6 border-t border-gray-100 space-y-4">
+                    <h3 className="font-bold text-gray-900 text-base mb-3">Prestations</h3>
+                    {member.services && member.services.length > 0 ? (
+                      member.services.map((service: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-gray-200 transition-all">
+                          <div>
+                            <h4 className="font-bold text-gray-900 text-base mb-0.5">{service.name}</h4>
+                            <p className="text-xs text-gray-500">{service.duration} min</p>
+                            <p className="text-sm font-extrabold text-gray-900 mt-2">{service.price || 0} MAD</p>
+                          </div>
+                          <button
+                            onClick={() => handleBookForEmployee(service)}
+                            className="bg-black text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-gray-900 transition-colors"
+                          >
+                            Réserver
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500 text-center py-8">
+                        Aucune prestation spécifique assignée directement. Vous pouvez cliquer sur "Réserver" en bas pour choisir n'importe quelle prestation du salon avec ce professionnel.
+                      </p>
+                    )}
+                  </div>
+                  
+                  {/* Avis Section */}
+                  <div id="emp-avis" className="scroll-mt-16 pt-6 border-t border-gray-100 space-y-4">
+                    <h3 className="font-bold text-gray-900 text-base mb-3 font-semibold">Avis ({displayReviews.length})</h3>
+                    <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl mb-4">
+                      <div className="text-center">
+                        <span className="text-4xl font-extrabold text-gray-900">{salonData.rating ? salonData.rating.toFixed(1) : '5.0'}</span>
+                        <div className="flex items-center gap-0.5 mt-1 justify-center">
+                          {[1,2,3,4,5].map(s => (
+                            <Star key={s} className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        Note globale basée sur les retours clients pour ce professionnel et l'établissement.
+                      </div>
+                    </div>
+
+                    {displayReviews.length > 0 ? (
+                      displayReviews.map((review: any, i: number) => (
+                        <div key={i} className="border-b border-gray-100 pb-4 last:border-0">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
+                              {review.name?.charAt(0) || 'C'}
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-gray-900">{review.name}</p>
+                              <p className="text-[10px] text-gray-400">{review.date}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-0.5 mb-1.5">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`w-3.5 h-3.5 ${
+                                  star <= (review.rating || 0)
+                                    ? 'fill-yellow-400 text-yellow-400'
+                                    : 'text-gray-200'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <p className="text-xs text-gray-600 leading-relaxed">{review.text}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500 text-center py-8">Aucun avis encore enregistré.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Booking Footer Button (Fixed) */}
+              <div className="p-6 border-t border-gray-100 bg-white">
+                <button
+                  onClick={() => handleBookForEmployee()}
+                  className="w-full bg-black text-white py-4 rounded-full font-bold hover:bg-gray-900 transition-colors text-center text-base"
+                >
+                  Réserver
+                </button>
+              </div>
+              
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Booking Modal */}
       <BookingModal
         show={showBookingModal}
@@ -1165,6 +1441,7 @@ export default function SalonDetail() {
         slotsLoading={slotsLoading}
         slotsError={slotsError}
         lastUpdated={lastUpdated}
+        preferredEmployeeId={bookingPreferredEmployeeId}
         onExistingParticipantsChange={setExistingParticipants}
         onServiceEmployeesChange={setCurrentServiceEmployees}
       />

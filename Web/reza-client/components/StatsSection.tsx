@@ -51,7 +51,7 @@ export default function StatsSection({ category }: StatsSectionProps) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-16">
         {[1, 2, 3, 4].map((idx) => (
-          <div key={idx} className="bg-[#f5f7f3] rounded-xl p-6 text-center border border-gray-300 animate-pulse">
+          <div key={idx} className="bg-white rounded-xl p-6 text-center border border-gray-300 animate-pulse">
             <div className="h-10 w-16 bg-gray-200 rounded mx-auto mb-2" />
             <div className="h-4 w-24 bg-gray-200 rounded mx-auto" />
           </div>
@@ -62,21 +62,21 @@ export default function StatsSection({ category }: StatsSectionProps) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-16">
-      <div className="bg-[#f5f7f3] rounded-xl p-6 text-center border border-gray-300">
+      <div className="bg-white rounded-xl p-6 text-center border border-gray-300">
         <div className="text-4xl font-light text-black mb-2">{stats.partners}+</div>
         <div className="text-sm text-gray-600">Partenaires</div>
       </div>
-      <div className="bg-[#f5f7f3] rounded-xl p-6 text-center border border-gray-300">
+      <div className="bg-white rounded-xl p-6 text-center border border-gray-300">
         <div className="text-4xl font-light text-black mb-2">24/7</div>
         <div className="text-sm text-gray-600">Réservation en ligne</div>
       </div>
-      <div className="bg-[#f5f7f3] rounded-xl p-6 text-center border border-gray-300">
+      <div className="bg-white rounded-xl p-6 text-center border border-gray-300">
         <div className="text-4xl font-light text-black mb-2">
           {stats.averageRating > 0 ? `${stats.averageRating.toFixed(1)}/5` : '4.8/5'}
         </div>
         <div className="text-sm text-gray-600">Note moyenne</div>
       </div>
-      <div className="bg-[#f5f7f3] rounded-xl p-6 text-center border border-gray-300">
+      <div className="bg-white rounded-xl p-6 text-center border border-gray-300">
         <div className="text-4xl font-light text-black mb-2">100%</div>
         <div className="text-sm text-gray-600">Gratuit</div>
       </div>

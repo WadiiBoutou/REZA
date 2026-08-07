@@ -1,7 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { resolveEmployeeUserId } from '../../utils/resolveEmployeeUserId';
 import * as log from '../../utils/logger';
-import type { AppointmentStatus } from '@prisma/client';
+import type { AppointmentStatus } from '../../../prisma/generated/prisma/client';
 
 type WorkingHoursDay = {
   day: string;

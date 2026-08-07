@@ -143,13 +143,16 @@ export default function SalonCarousel({
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="min-w-[280px] md:min-w-[320px] flex-shrink-0 rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 animate-pulse"
+                className="min-w-[280px] md:min-w-[320px] max-w-[320px] flex-shrink-0 animate-pulse"
               >
-                <div className="h-48 bg-gray-100 dark:bg-gray-800" />
-                <div className="p-4 space-y-3">
-                  <div className="h-5 w-3/4 bg-gray-100 dark:bg-gray-800 rounded" />
-                  <div className="h-4 w-1/2 bg-gray-100 dark:bg-gray-800 rounded" />
-                  <div className="h-4 w-2/3 bg-gray-100 dark:bg-gray-800 rounded" />
+                <div className="aspect-[4/3] w-full bg-gray-100 dark:bg-gray-800 rounded-2xl mb-5" />
+                <div className="pr-2 space-y-4">
+                  <div className="h-5 w-2/3 bg-gray-100 dark:bg-gray-800 rounded-md" />
+                  <div className="h-4 w-1/2 bg-gray-100 dark:bg-gray-800 rounded-md" />
+                  <div className="flex gap-2">
+                    <div className="h-6 w-16 bg-gray-100 dark:bg-gray-800 rounded-full" />
+                    <div className="h-6 w-20 bg-gray-100 dark:bg-gray-800 rounded-full" />
+                  </div>
                 </div>
               </div>
             ))}
@@ -187,57 +190,51 @@ export default function SalonCarousel({
                   key={salon.id}
                   href={getSalonHref(salon)}
                   data-carousel-card
-                  className="min-w-[280px] md:min-w-[320px] max-w-[320px] flex-shrink-0 snap-start bg-white dark:bg-[#1a1a1a] rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group cursor-pointer border border-gray-100 dark:border-gray-800"
+                  className="min-w-[280px] md:min-w-[320px] max-w-[320px] flex-shrink-0 snap-start group cursor-pointer"
                 >
-                  {/* Image Container */}
-                  <div className="relative h-48 w-full overflow-hidden">
+                  {/* Image Container - Classic Landscape Aspect Ratio */}
+                  <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl mb-5 bg-gray-100">
                     <img
                       src={getImageUrl(salon.coverImage || salon.logo) || FALLBACK_IMAGE}
                       alt={salon.name}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                     />
+                    {isNew && (
+                      <div className="absolute top-4 left-4 px-3 py-1 bg-white/95 backdrop-blur-md text-black text-[10px] font-bold uppercase tracking-[0.2em] rounded-full shadow-sm">
+                        Nouveau
+                      </div>
+                    )}
                   </div>
 
-                  {/* Content */}
-                  <div className="p-4">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate mb-1">
-                      {salon.name}
-                    </h3>
-
-                    <div className="flex items-center text-sm text-gray-600 dark:text-gray-400 mb-2">
+                  {/* Content - Borderless, clean typography */}
+                  <div className="pr-2">
+                    <div className="flex justify-between items-start gap-4 mb-1.5">
+                      <h3 className="text-xl font-medium text-gray-900 dark:text-white truncate">
+                        {salon.name}
+                      </h3>
                       {salon.rating > 0 && (
-                        <>
-                          <span className="font-bold text-gray-900 dark:text-white flex items-center gap-1">
-                            {Number(salon.rating).toFixed(1)}{' '}
-                            <Star className="w-3.5 h-3.5 fill-current text-[#0a0f2c] dark:text-white" />
+                        <div className="flex items-center gap-1.5 shrink-0 mt-1">
+                          <Star className="w-3.5 h-3.5 fill-black dark:fill-white text-black dark:text-white" />
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                            {Number(salon.rating).toFixed(1)}
                           </span>
-                          {salon.reviews > 0 && (
-                            <>
-                              <span className="mx-1.5">•</span>
-                              <span>{Number(salon.reviews).toLocaleString('fr-FR')} avis</span>
-                            </>
-                          )}
-                        </>
+                        </div>
                       )}
                     </div>
 
                     {locationText && (
-                      <div className="flex items-center text-sm text-gray-500 mb-4 truncate">
-                        <MapPin className="w-4 h-4 mr-1 flex-shrink-0" />
+                      <div className="flex items-center text-sm text-gray-500 font-light mb-4 truncate">
+                        <MapPin className="w-3.5 h-3.5 mr-1.5 flex-shrink-0 opacity-70" />
                         <span className="truncate">{locationText}</span>
                       </div>
                     )}
 
+                    {/* Elegant thin-bordered tags */}
                     <div className="flex flex-wrap gap-2">
-                      {isNew && (
-                        <span className="px-2 py-1 bg-[#0a0f2c] text-white text-xs font-medium rounded-md">
-                          Nouveau
-                        </span>
-                      )}
-                      {tags.slice(0, 3).map((tag: string, idx: number) => (
+                      {tags.slice(0, 2).map((tag: string, idx: number) => (
                         <span
                           key={`${tag}-${idx}`}
-                          className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-medium rounded-md"
+                          className="px-3 py-1 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-[10px] uppercase tracking-wider font-medium rounded-full"
                         >
                           {tag}
                         </span>

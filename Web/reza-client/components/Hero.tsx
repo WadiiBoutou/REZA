@@ -46,7 +46,7 @@ const DigitRoll = ({ val }: { val: string }) => {
 export default function HeroAbout() {
   const [searchQuery, setSearchQuery] = useState('');
   const [location, setLocation] = useState('');
-  const [count, setCount] = useState(20178);
+  const [count, setCount] = useState(10766);
   
   useEffect(() => {
     const interval = setInterval(() => {
@@ -313,15 +313,15 @@ export default function HeroAbout() {
   return (
     <section
       id="about"
-      className="relative w-full min-h-screen flex items-center justify-center overflow-hidden bg-white"
+      className="relative w-full min-h-screen flex items-center justify-center overflow-hidden"
     >
-      {/* Fresha-style White Background with Animated Soft Gradient Aura */}
-      <div className="absolute inset-0 w-full h-full bg-[#fdfdfd] overflow-hidden pointer-events-none">
-        {/* Deep purple/lavender glow on the left */}
-        <div className="absolute top-[5%] -left-[10%] w-[70vw] h-[70vw] md:w-[50vw] md:h-[50vw] bg-[#e1d5ff] rounded-full mix-blend-multiply filter blur-[100px] md:blur-[140px] opacity-80 animate-float-slow" />
-        {/* Soft pink glow extending towards the center */}
-        <div className="absolute -top-[10%] left-[15%] w-[70vw] h-[70vw] md:w-[50vw] md:h-[50vw] bg-[#ffebf9] rounded-full mix-blend-multiply filter blur-[100px] md:blur-[140px] opacity-70 animate-float-medium" />
-      </div>
+      {/* Real background image */}
+      <div
+        className="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: "url('/hero-bg.jpg')" }}
+      />
+      {/* Light white overlay so dark text stays readable */}
+      <div className="absolute inset-0 bg-white/30 backdrop-blur-[0.5px]" />
 
       {/* Main Content */}
       <div className="relative z-10 w-full max-w-6xl mx-auto px-6 md:px-12 py-20">
@@ -331,15 +331,14 @@ export default function HeroAbout() {
             Réservez vos soins
           </h1>
           <p className="text-base md:text-[1.125rem] text-gray-800 font-normal max-w-3xl mx-auto animate-slide-up-2">
-            Les meilleurs experts beauté et bien-être, recommandés par des millions de personnes dans le monde.
+            Vos rendez-vous beauté et bien-être en un clic, partout au Maroc.
           </p>
         </div>
 
         {/* Search Card */}
         <div className="max-w-full md:max-w-[1000px] mx-auto px-4 md:px-0 animate-slide-up-3 relative mt-10">
-          {/* Intense horizontal pink aura directly behind search bar */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#e3c7ff] via-[#ffc2f6] to-[#e3c7ff] rounded-full blur-[24px] md:blur-[32px] opacity-70 z-0 scale-y-110 scale-x-[1.02]"></div>
-          
+
+
           <div className="bg-white rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-gray-100 p-2 w-full relative z-20">
             <div className="flex flex-col md:flex-row items-center w-full">
               {/* Search Input */}
@@ -357,7 +356,7 @@ export default function HeroAbout() {
                 
                 {/* Search Dropdown */}
                 {showSearchDropdown && (
-                  <div className="absolute bottom-full left-0 right-0 mt-2 bg-[#f5f7f3] rounded-2xl shadow-sm border border-gray-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-96 overflow-y-auto">
+                  <div className="absolute bottom-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-96 overflow-y-auto">
                     <div className="p-3">
                       {searchQuery.trim().length === 0 ? (
                         <>
@@ -563,7 +562,7 @@ export default function HeroAbout() {
                     </div>
                     {/* Scrollable list of cities */}
                     <div 
-                      className="overflow-y-auto flex-1 custom-scrollbar bg-[#f5f7f3]"
+                      className="overflow-y-auto flex-1 custom-scrollbar bg-white"
                       style={{ 
                         maxHeight: '240px',
                         minHeight: '120px',

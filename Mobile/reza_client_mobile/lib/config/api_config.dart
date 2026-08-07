@@ -1,27 +1,18 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
-
 /// Backend public API base (includes `/api`).
 ///
-/// Priority:
-/// 1. `--dart-define=API_BASE=...` (highest — use [scripts/run_dev.ps1] for auto LAN IP)
-/// 2. Android default → emulator loopback `10.0.2.2` (wrong for physical unless script sets define)
-/// 3. Web / iOS / desktop → `127.0.0.1`
+/// Uses `127.0.0.1` (localhost) for ALL platforms.
+/// Physical Android/iOS devices work because the backend automatically
+/// runs `adb reverse tcp:5000 tcp:5000` on startup, which forwards
+/// the phone's localhost:5000 → PC's port 5000 over USB.
 ///
-/// Android Studio does not run the helper script. Either:
-/// - Run Config → Additional run args: `--dart-define=API_BASE=http://<LAN_IP>:5000/api`
-/// - Or run from terminal: `.\scripts\run_dev.ps1`
-import 'auto_ip.dart';
-
+/// Override: `--dart-define=API_BASE=http://<custom>:5000/api`
 class ApiConfig {
-  /// Override at build time: `--dart-define=API_BASE=http://192.168.1.10:5000/api`
+  /// Override at build time: `--dart-define=API_BASE=http://example.com:5000/api`
   static const String _envBase = String.fromEnvironment('API_BASE', defaultValue: '');
 
   static String get baseUrl {
     if (_envBase.isNotEmpty) return _envBase.replaceAll(RegExp(r'/$'), '');
-    if (kIsWeb) return 'http://127.0.0.1:5000/api';
-    // Fallback to the auto-generated IP from the backend which works for both real phones and emulator on the same network
-    if (Platform.isAndroid || Platform.isIOS) return 'http://$autoLocalIp:5000/api';
+    // Works everywhere: web, emulator (adb reverse), physical phone (adb reverse), desktop
     return 'http://127.0.0.1:5000/api';
   }
 }

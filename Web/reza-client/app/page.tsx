@@ -2,6 +2,7 @@ import Image from "next/image";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import Hero from "../components/Hero";
+import PlatformDescription from "../components/PlatformDescription";
 import RecommendedSection from "../components/RecommendedSection";
 import NewSalonsSection from "../components/NewSalonsSection";
 import About from "../components/About";
@@ -19,6 +20,7 @@ export default function Home() {
       <Hero />
       <RecommendedSection />
       <NewSalonsSection />
+      <PlatformDescription />
       <About />
       <AppDownloadSection />
       <ProCTASection />

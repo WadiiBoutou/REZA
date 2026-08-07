@@ -759,7 +759,7 @@ function LuxurySearchResultsContent() {
 	};
 
 	return (
-		<div className="min-h-screen bg-[#f5f7f3]">
+		<div className="min-h-screen bg-white">
 			<style jsx global>{`
 				* {
 					-webkit-font-smoothing: antialiased;
@@ -862,7 +862,7 @@ function LuxurySearchResultsContent() {
 			{/* Main Content — results ~55% + map ~45% fill viewport */}
 			<div className="flex w-full pt-20 relative z-10 min-h-[calc(100vh-5rem)]">
 				{/* Left Side - Results */}
-				<div className={`w-full lg:w-[55%] lg:flex-shrink-0 ${showMobileMap ? 'hidden lg:block' : 'block'} relative z-10 bg-[#f5f7f3] min-h-[calc(100vh-5rem)]`}>
+				<div className={`w-full lg:w-[55%] lg:flex-shrink-0 ${showMobileMap ? 'hidden lg:block' : 'block'} relative z-10 bg-white min-h-[calc(100vh-5rem)]`}>
 					<div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-8 relative z-10">
 						{/* Header with search pills and sort pills on the right */}
 						<div className="mb-6 sm:mb-8 lg:mb-10">

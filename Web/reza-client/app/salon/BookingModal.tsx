@@ -72,6 +72,7 @@ type BookingModalProps = {
   slotsError?: string | null;
   lastUpdated?: Date | null;
   blockedDates?: string[];
+  preferredEmployeeId?: string | null;
   closedDaysOfWeek?: number[];
   bookingDelay?: {
     value: number;
@@ -190,6 +191,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
   slotsError = null,
   lastUpdated = null,
   blockedDates = [],
+  preferredEmployeeId = null,
   closedDaysOfWeek = [0],
   bookingDelay = null,
   bookingAdvanceDays = 30,
@@ -246,6 +248,28 @@ const BookingModal: React.FC<BookingModalProps> = ({
     serviceEmployees?: Array<{serviceId: string; employeeId: string | null}>;
   }>>([]);
 
+  useEffect(() => {
+    if (show) {
+      setSelectedTeamMemberId(preferredEmployeeId || 'any');
+    }
+  }, [show, preferredEmployeeId]);
+
+  // "Même employé pour tous les services" feature
+  const [sameEmployeeForAll, setSameEmployeeForAll] = useState(true);
+  const [commonEmployeeIdsPerPerson, setCommonEmployeeIdsPerPerson] = useState<Record<string, string[]>>({});
+  const [perServiceEmployeeMap, setPerServiceEmployeeMap] = useState<Record<string, Record<string, string>>>({});
+
+  // Per-service employee availability data from backend (for "Même employé" unchecked view)
+  const [serviceEmployeeData, setServiceEmployeeData] = useState<Record<string, any[]>>({});
+
+  // Conflict resolution state
+  const [resolveLoading, setResolveLoading] = useState(false);
+  const [resolvingEmployees, setResolvingEmployees] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
+  const resolveCounterRef = useRef(0);
+  const applyingResolvedStateRef = useRef(false);
+  
   // Real employee availability map per person: key is 'booker' or participant.id
   const [employeeAvailabilityMap, setEmployeeAvailabilityMap] = useState<Record<string, EmployeeAvailabilityStatus[]>>({});
   const [availabilityLoadingMap, setAvailabilityLoadingMap] = useState<Record<string, boolean>>({});

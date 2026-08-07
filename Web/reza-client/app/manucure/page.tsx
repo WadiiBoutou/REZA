@@ -157,16 +157,16 @@ export default function ManicurePage() {
   return (
     <>
       <Header />
-      <div className="min-h-screen pt-24 bg-[#f5f7f3]">
+      <div className="min-h-screen pt-24 bg-white">
         {/* Hero Section with Search */}
-        <section className="relative bg-[#f5f7f3] py-16 px-4">
+        <section className="relative bg-white py-16 px-4">
           <div className="max-w-6xl mx-auto text-center">
             <h1 className="text-4xl md:text-5xl font-light text-gray-900 mb-8">
               Réserver en ligne un RDV pour une manucure
             </h1>
             
             {/* Search Bar */}
-            <div className="max-w-4xl mx-auto bg-[#f5f7f3] rounded-full p-2 flex flex-col md:flex-row gap-2 items-center">
+            <div className="max-w-4xl mx-auto bg-white rounded-full p-2 flex flex-col md:flex-row gap-2 items-center">
               <div className="flex-1 relative w-full">
                 <label className="text-xs text-gray-500 absolute -top-5 left-4">
                   Que cherchez-vous ?
@@ -205,7 +205,7 @@ export default function ManicurePage() {
         </section>
 
         {/* Cities Section */}
-        <section className="py-16 px-4 bg-[#f5f7f3]">
+        <section className="py-16 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-2xl font-light text-gray-900 mb-8">Manucure</h2>
             
@@ -219,7 +219,7 @@ export default function ManicurePage() {
         </section>
 
         {/* Popular Services */}
-        <section className="py-16 px-4 bg-[#f5f7f3]">
+        <section className="py-16 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-3xl font-light text-gray-900 mb-12">
               Nos prestations populaires à Casablanca et Marrakech
@@ -255,7 +255,7 @@ export default function ManicurePage() {
         </section>
 
         {/* Content Section */}
-        <section className="py-16 px-4 bg-[#f5f7f3]">
+        <section className="py-16 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <p className="text-lg text-gray-700 leading-relaxed mb-12">
               Vous recherchez une manucure impeccable pour sublimer vos mains ou une pose de 
@@ -268,7 +268,7 @@ export default function ManicurePage() {
 
             {/* Benefits Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-              <div className="bg-[#f5f7f3] border border-gray-300 rounded-xl p-6">
+              <div className="bg-white border border-gray-300 rounded-xl p-6">
                 <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mb-4">
                   {/* replaced Sparkles icon with provided SVG */}
                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-white">
@@ -281,14 +281,14 @@ export default function ManicurePage() {
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Expertise professionnelle</h3>
                 <p className="text-sm text-gray-600">Des prothésistes ongulaires qualifiées pour toutes vos envies</p>
               </div>
-              <div className="bg-[#f5f7f3] border border-gray-300 rounded-xl p-6">
+              <div className="bg-white border border-gray-300 rounded-xl p-6">
                 <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mb-4">
                   <MapPin className="w-6 h-6 text-white" />
                 </div>
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Proximité garantie</h3>
                 <p className="text-sm text-gray-600">Trouvez facilement un institut près de chez vous à Casablanca ou Marrakech</p>
               </div>
-              <div className="bg-[#f5f7f3] border border-gray-300 rounded-xl p-6">
+              <div className="bg-white border border-gray-300 rounded-xl p-6">
                 <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center mb-4">
                   <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -342,7 +342,7 @@ export default function ManicurePage() {
         </section>
 
         {/* Frequent Searches */}
-        <section className="py-0 px-4 bg-[#f5f7f3]">
+        <section className="py-0 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-2xl font-light text-gray-900 mb-8">Recherches fréquentes</h2>
             
@@ -361,28 +361,28 @@ export default function ManicurePage() {
             {/* Popular Techniques Showcase */}
             <h3 className="text-2xl font-light text-gray-900 mb-8 mt-16">Techniques tendances</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-[#f5f7f3] rounded-xl overflow-hidden transition-shadow">
+              <div className="bg-white rounded-xl overflow-hidden transition-shadow">
                 <img src="/manucure/french.avif" alt="French manicure" className="w-full h-48 object-cover" />
                 <div className="p-4">
                   <h4 className="font-medium text-gray-900 mb-1">French manucure</h4>
                   <p className="text-sm text-gray-600">Élégance classique et intemporelle</p>
                 </div>
               </div>
-              <div className="bg-[#f5f7f3] rounded-xl overflow-hidden transition-shadow">
+              <div className="bg-white rounded-xl overflow-hidden transition-shadow">
                 <img src="/manucure/gluv.jpg" alt="Gel nails" className="w-full h-48 object-cover" />
                 <div className="p-4">
                   <h4 className="font-medium text-gray-900 mb-1">Gel UV</h4>
                   <p className="text-sm text-gray-600">Brillance et tenue longue durée</p>
                 </div>
               </div>
-              <div className="bg-[#f5f7f3] rounded-xl overflow-hidden transition-shadow">
+              <div className="bg-white rounded-xl overflow-hidden transition-shadow">
                 <img src="/manucure/nailartcréatif.webp" alt="Nail art" className="w-full h-48 object-cover" />
                 <div className="p-4">
                   <h4 className="font-medium text-gray-900 mb-1">Nail art créatif</h4>
                   <p className="text-sm text-gray-600">Designs artistiques personnalisés</p>
                 </div>
               </div>
-              <div className="bg-[#f5f7f3] rounded-xl overflow-hidden transition-shadow">
+              <div className="bg-white rounded-xl overflow-hidden transition-shadow">
                 <img src="/manucure/soinnaturel.jpg" alt="Natural nails" className="w-full h-48 object-cover" />
                 <div className="p-4">
                   <h4 className="font-medium text-gray-900 mb-1">Soin naturel</h4>
@@ -394,7 +394,7 @@ export default function ManicurePage() {
         </section>
 
         {/* Special Occasions Section */}
-        <section className="py-16 px-4 bg-[#f5f7f3]">
+        <section className="py-16 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-3xl font-light text-gray-900 mb-8">
               La manucure de vos rêves à Casablanca et Marrakech
@@ -433,7 +433,7 @@ export default function ManicurePage() {
         </section>
 
         {/* Salon Owner CTA */}
-        <section className="py-0 pb-20 px-4 bg-[#f5f7f3]">
+        <section className="py-0 pb-20 px-4 bg-white">
           <div className="max-w-6xl mx-auto">
             <h2 className="text-3xl font-light text-gray-900 mb-8">
               Vous êtes gérant d'un institut de beauté au Maroc ?

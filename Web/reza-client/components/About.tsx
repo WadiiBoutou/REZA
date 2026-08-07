@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Sparkles, ArrowRight, Clock, Tag, Star, MapPin } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, ArrowRight, Clock, Tag, Star, MapPin, Plus } from 'lucide-react';
 import api from '../lib/api';
 import { useRouter } from 'next/navigation';
 import { filterCompleteTenants, getImageUrl, getSalonHref } from '../lib/utils';
@@ -198,6 +198,111 @@ const weeklyHighlights = [
   }
 ];
 
+// Elite Professionals data with real service references
+const professionals = [
+  {
+    id: 'cms3cc7o000225kpq0exu6tbf', // Nadia Tazi
+    firstName: 'Nadia',
+    lastName: 'Tazi',
+    specialty: 'Esthéticienne & Soins Visage',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&h=256&q=80',
+    rating: 4.8,
+    reviews: 88,
+    salonName: 'Spa Royal Casablanca',
+    tenantId: 'cms3cc7h9001n5kpq744e1r1v',
+    category: 'Institut de beauté',
+    prestations: [
+      { id: 'cms3cc7hj001r5kpq32gwkrvk', name: 'Soin visage premium', price: '220 DH', duration: '50 min' },
+      { id: 'cms3cc7hj001r5kpq32gwkrve', name: 'Manucure complète', price: '150 DH', duration: '45 min' }
+    ]
+  },
+  {
+    id: 'cms3cc7o000225kpq0exu6tbc', // Hicham Alaoui
+    firstName: 'Hicham',
+    lastName: 'Alaoui',
+    specialty: 'Massothérapeute Expert',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&h=256&q=80',
+    rating: 4.9,
+    reviews: 104,
+    salonName: 'Spa Royal Casablanca',
+    tenantId: 'cms3cc7h9001n5kpq744e1r1v',
+    category: 'Spa',
+    prestations: [
+      { id: 'cms3cc7hh001q5kpqmfislgdb', name: 'Massage relaxant', price: '250 DH', duration: '60 min' },
+      { id: 'cms3cc7hj001r5kpq32gwkrvf', name: 'Soin visage hydratant', price: '220 DH', duration: '50 min' }
+    ]
+  },
+  {
+    id: 'cms3cc78b000e5kpqeya5j5tg', // Rachid Tazi
+    firstName: 'Rachid',
+    lastName: 'Tazi',
+    specialty: 'Maître Coiffeur & Visagiste',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=256&h=256&q=80',
+    rating: 4.9,
+    reviews: 142,
+    salonName: 'Reza Salon Casablanca',
+    tenantId: 'cms3cc76v00055kpqkcsfkign',
+    category: 'Coiffeur',
+    prestations: [
+      { id: 'cms3cc77i00075kpq0d7sfzsl', name: 'Coupe homme', price: '80 DH', duration: '30 min' },
+      { id: 'cms3cc77x00085kpqtn2ct6w9', name: 'Coupe femme', price: '150 DH', duration: '60 min' },
+      { id: 'cms3cc78000095kpqb4r5fd0e', name: 'Brushing', price: '100 DH', duration: '45 min' },
+      { id: 'cms3cc782000a5kpq9l6w3fbk', name: 'Coloration', price: '250 DH', duration: '90 min' }
+    ]
+  },
+  {
+    id: 'cms3cc78n000j5kpqa7g43w08', // Sofia Alaoui
+    firstName: 'Sofia',
+    lastName: 'Sofia',
+    specialty: 'Styliste Coloriste & Coiffure',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=256&h=256&q=80',
+    rating: 4.8,
+    reviews: 95,
+    salonName: 'Reza Salon Casablanca',
+    tenantId: 'cms3cc76v00055kpqkcsfkign',
+    category: 'Coiffeur',
+    prestations: [
+      { id: 'cms3cc77x00085kpqtn2ct6w9', name: 'Coupe femme', price: '150 DH', duration: '60 min' },
+      { id: 'cms3cc78000095kpqb4r5fd0e', name: 'Brushing', price: '100 DH', duration: '45 min' },
+      { id: 'cms3cc782000a5kpq9l6w3fbk', name: 'Coloration', price: '250 DH', duration: '90 min' }
+    ]
+  },
+  {
+    id: 'cms3cc7b100185kpqekvo79h1', // Karim Idrissi
+    firstName: 'Karim',
+    lastName: 'Idrissi',
+    specialty: 'Barbier & Soins Masculins',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&h=256&q=80',
+    rating: 4.9,
+    reviews: 110,
+    salonName: 'Reza Salon Rabat',
+    tenantId: 'cms3cc7ao00115kpqn7rkiy6q',
+    category: 'Barbier',
+    prestations: [
+      { id: 'cms3cc7as00135kpq18i19nr3', name: 'Coupe + rasage', price: '120 DH', duration: '45 min' },
+      { id: 'cms3cc7au00145kpqxi4l0akl', name: 'Soin barbe', price: '70 DH', duration: '30 min' },
+      { id: 'cms3cc7aw00155kpqwampe449', name: 'Coupe classique', price: '60 DH', duration: '25 min' }
+    ]
+  },
+  {
+    id: 'cms3cc7o000225kpq0exu6taf', // Sara Benali
+    firstName: 'Sara',
+    lastName: 'Benali',
+    specialty: 'Thérapeute Hammam & Massage',
+    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=256&h=256&q=80',
+    rating: 4.9,
+    reviews: 185,
+    salonName: 'Spa Royal Casablanca',
+    tenantId: 'cms3cc7h9001n5kpq744e1r1v',
+    category: 'Spa',
+    prestations: [
+      { id: 'cms3cc7he001p5kpq6p8n23wi', name: 'Hammam traditionnel', price: '200 DH', duration: '60 min' },
+      { id: 'cms3cc7hh001q5kpqmfislgdb', name: 'Massage relaxant', price: '250 DH', duration: '60 min' },
+      { id: 'cms3cc7hj001r5kpq32gwkrvk', name: 'Gommage argan', price: '180 DH', duration: '45 min' }
+    ]
+  }
+];
+
 export default function BeautyCarousel() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -211,6 +316,7 @@ export default function BeautyCarousel() {
   const [slides, setSlides] = useState<Slide[]>(defaultSlides);
   const [loadingSlides, setLoadingSlides] = useState(true);
   const router = useRouter();
+  const [selectedProfIndex, setSelectedProfIndex] = useState(0);
   
   const offersCount = weeklyHighlightsData.length;
 
@@ -556,394 +662,167 @@ export default function BeautyCarousel() {
   }
 
   return (
-    <div className="min-h-screen bg-white relative overflow-hidden">
+    <div className="bg-white relative overflow-hidden">
       <div className="absolute inset-0 bg-white" />
 
-      {/* Carousel Section */}
-      <div className="min-h-screen flex flex-col lg:flex-row items-center justify-center p-4 relative">
-        <div className="w-full max-w-7xl mx-auto relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center">
-            {/* Left: Content Section */}
-            <div className="order-1 lg:order-1 space-y-8 px-2 pt-6 pb-2 lg:px-0 lg:pt-0 lg:pb-0">
-              
-              <div className="overflow-hidden">
-                <h2
-                  key={`subtitle-${currentIndex}`}
-                  className="text-sm font-medium uppercase tracking-[0.2em] animate-slideUp text-black"
-                >
-                  {currentSlide.subtitle}
-                </h2>
-              </div>
+      {/* Professionals & Prestations Section */}
+      <div className="pt-8 pb-24 md:pt-12 md:pb-32 bg-white relative overflow-hidden">
+        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-              <div className="overflow-hidden">
-                <h1
-                  key={`title-${currentIndex}`}
-                  className="text-3xl md:text-4xl lg:text-5xl font-light text-gray-900 leading-tight animate-slideUp"
-                  style={{
-                    background: 'none',
-                    WebkitBackgroundClip: undefined,
-                    WebkitTextFillColor: undefined,
-                    backgroundClip: undefined,
-                  }}
-                >
-                  {currentSlide.title}
-                </h1>
-              </div>
-
-              <div className="h-1 rounded-full animate-expand" style={{ background: '#8b7260' }} />
-
-              <div className="overflow-hidden">
-                <p
-                  key={`desc-${currentIndex}`}
-                  className="text-lg md:text-xl text-black/70 leading-relaxed max-w-xl animate-slideUp font-light"
-                >
-                  {currentSlide.description}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-6 -mt-6">
-                <button 
-                  onClick={() => {
-                    // Map display title back to API category name
-                    let categoryName = currentSlide.title;
-                    if (currentSlide.title === 'Centre de beauté') {
-                      categoryName = 'Institut de beauté';
-                    }
-                    router.push(`/search-results?query=${encodeURIComponent(currentSlide.title)}&category=${encodeURIComponent(categoryName)}`);
-                  }}
-                  className="px-0 py-4 text-black hover:text-black hover:underline font-medium transition-colors cursor-pointer"
-                >
-                  En savoir plus
-                </button>
-              </div>
-
-              <div className="flex flex-col gap-2 -mt-2 pb-12 lg:pb-0">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={goToPrevious}
-                    disabled={isAnimating}
-                    className="group w-24 h-10 rounded-full bg-black/5 backdrop-blur-xl border border-black/10 flex items-center justify-center hover:bg-black/10 hover:border-black/20 transition-all duration-300 disabled:opacity-30"
-                  >
-                    <ChevronLeft className="w-6 h-6 text-black group-hover:-translate-x-0.5 transition-transform" />
-                  </button>
-                  
-                  <button
-                    onClick={() => goToNext()}
-                    disabled={isAnimating}
-                    className="group w-24 h-10 rounded-full bg-black/5 backdrop-blur-xl border border-black/10 flex items-center justify-center hover:bg-black/10 hover:border-black/20 transition-all duration-300 disabled:opacity-30"
-                  >
-                    <ChevronRight className="w-6 h-6 text-black group-hover:translate-x-0.5 transition-transform" />
-                  </button>
-                </div>
-                
-                <div className="flex items-center gap-2 mt-2 hidden lg:flex">
-                  {slides.map((_, index) => (
-                    <button
-                      key={index}
-                      onClick={() => goToSlide(index)}
-                      disabled={isAnimating}
-                      className="group relative h-3 rounded-xl transition-all duration-300 overflow-hidden"
-                      style={{ 
-                        width: index === currentIndex ? '48px' : '24px',
-                        backgroundColor: index === currentIndex ? 'transparent' : 'rgba(0,0,0,0.08)'
-                      }}
-                    >
-                      {index === currentIndex && (
-                        <>
-                          <div 
-                            className="absolute inset-0 rounded-xl opacity-20"
-                            style={{ backgroundColor: '#8b7260' }}
-                          />
-                          <div 
-                            className="absolute inset-0 rounded-xl transition-all duration-100"
-                            style={{ 
-                              backgroundColor: '#8b7260',
-                              width: `${progress}%`,
-                            }}
-                          />
-                        </>
-                      )}
-                    </button>
-                  ))}
-                  <div className="text-black/40 text-sm font-light ml-2">
-                    <span className="text-black font-medium">{(currentIndex + 1).toString().padStart(2, '0')}</span>
-                    {' '}/{' '}
-                    <span>{slides.length.toString().padStart(2, '0')}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Image Section */}
-            <div className="order-2 lg:order-2 relative h-[320px] md:h-[600px] lg:h-[700px] w-full flex justify-center items-center mt-4 lg:mt-0 mb-24 lg:mb-0">
-              <div className="relative h-full flex items-center justify-center">
-                {slides.map((slide, index) => {
-                  const offset = index - currentIndex;
-                  const isActive = offset === 0;
-                  
-                  return (
-                    <div
-                      key={slide.id}
-                      className="absolute transition-all duration-700 ease-out"
-                      style={{
-                        transform: `
-                          translateX(${offset * 100}%) 
-                          scale(${isActive ? 1 : 0.85}) 
-                          rotateY(${offset * -15}deg)
-                        `,
-                        opacity: isActive ? 1 : 0,
-                        zIndex: isActive ? 10 : 0,
-                        pointerEvents: isActive ? 'auto' : 'none',
-                      }}
-                    >
-                      <div className="relative w-[320px] h-[480px] md:w-[380px] md:h-[560px] lg:w-[540px] lg:h-[440px]">
-                        <div className="absolute inset-0 rounded-lg bg-black/5 backdrop-blur-xl">
-                          <div className="relative w-full h-full rounded-lg overflow-hidden">
-                            <img
-                              src={slide.image}
-                              alt={slide.title}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {/* Section label */}
+          <div className="overflow-hidden mb-6">
+            <h2 className="text-sm font-medium uppercase tracking-[0.2em] text-black">
+              Notre Équipe
+            </h2>
           </div>
-        </div>
-      </div>
 
-      {/* Offers Section - Responsive */}
-      <div className="min-h-screen flex flex-col lg:flex-row items-center justify-center p-4 relative -mt-0 lg:-mt-32 mb-12 lg:mb-0">
-        <div className="w-full max-w-7xl mx-auto relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center">
-            {/* Left: Offers Grid */}
-            <div className="order-2 lg:order-1 w-full -mt-6 lg:mt-0">
-              <div className="relative overflow-hidden">
-                <div
-                  className={`grid gap-6 ${offerAnimating ? 'offer-fade-out' : 'offer-fade-in'}`}
-                  style={{
-                    transition: 'opacity 0.4s cubic-bezier(0.16,1,0.3,1), transform 0.4s cubic-bezier(0.16,1,0.3,1)',
-                    opacity: offerAnimating ? 0 : 1,
-                    transform: offerAnimating ? 'scale(0.98)' : 'scale(1)',
-                  }}
-                >
-                  {loadingOffers ? (
-                    <div className="group relative overflow-hidden rounded-lg bg-black/5 backdrop-blur-xl border border-black/10 flex items-center justify-center"
-                      style={{ minHeight: '180px' }}>
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-black"></div>
-                        <p className="text-sm text-black/60">Chargement des offres...</p>
-                      </div>
-                    </div>
-                  ) : weeklyHighlightsData.length > 0 && weeklyHighlightsData[offerIndex] ? (
+          {/* Divider */}
+          <div className="h-[1px] bg-gray-200 mb-10" />
+
+          {/* Headline + Professional avatars selector side-by-side */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center mb-16">
+            <div className="lg:col-span-5">
+              <h3 className="text-3xl md:text-4xl lg:text-[2.5rem] font-light text-gray-900 leading-[1.15] tracking-tight">
+                Réservez avec nos{" "}
+                <span className="font-semibold">experts d'élite</span>
+              </h3>
+            </div>
+            
+            <div className="lg:col-span-7 flex gap-6 md:gap-8 overflow-x-auto pb-4 no-scrollbar justify-start lg:justify-end">
+              {professionals.map((prof, idx) => {
+                const isSelected = selectedProfIndex === idx;
+                return (
+                  <button
+                    key={prof.id}
+                    onClick={() => setSelectedProfIndex(idx)}
+                    className="flex flex-col items-center gap-2 group flex-shrink-0 transition-opacity duration-300"
+                    style={{ opacity: isSelected ? 1 : 0.45 }}
+                  >
                     <div
-                      key={weeklyHighlightsData[offerIndex].id}
-                      className="group relative overflow-hidden rounded-lg bg-black/5 backdrop-blur-xl border border-black/10 hover:border-black/20 transition-all duration-400 hover:shadow-xl hover:shadow-black/5 flex"
-                      style={{
-                        transition: 'opacity 0.4s cubic-bezier(0.16,1,0.3,1), transform 0.4s cubic-bezier(0.16,1,0.3,1)',
-                        minHeight: '180px',
-                        position: 'relative',
-                      }}
+                      className={`w-14 h-14 md:w-16 md:h-16 flex-shrink-0 rounded-full flex items-center justify-center transition-all duration-500 ${
+                        isSelected ? "border-[1.5px] border-dashed border-black p-0.5" : "border-[1.5px] border-transparent p-0.5"
+                      }`}
                     >
-                      {/* Image fills left 30% */}
-                      <div className="relative" style={{ width: '30%', minWidth: '120px', height: '100%' }}>
+                      <div className="w-full h-full rounded-full overflow-hidden bg-gray-100">
                         <img
-                          src={weeklyHighlightsData[offerIndex].image}
-                          alt={weeklyHighlightsData[offerIndex].title}
-                          className="w-full h-full object-cover rounded-l-lg"
-                          style={{ height: '100%', objectFit: 'cover' }}
+                          src={prof.avatar}
+                          alt={`${prof.firstName} ${prof.lastName}`}
+                          className="w-full h-full object-cover"
                         />
                       </div>
-                      {/* Content fills right 70% */}
-                      <div className="flex-1 p-4 flex flex-col justify-between relative">
-                        {/* Category pill badge - original size and style */}
-                        <div className="mb-2">
-                          <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-black/90 text-white">
-                            {weeklyHighlightsData[offerIndex].badge}
-                          </span>
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-bold text-black group-hover:text-black/80 transition-colors">
-                            {weeklyHighlightsData[offerIndex].title}
-                          </h3>
-                          <p className="text-sm font-medium text-black/70">{weeklyHighlightsData[offerIndex].description}</p>
-                        </div>
-                        <div className="flex items-center justify-between pt-2">
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1">
-                              <Star className="w-3.5 h-3.5" style={{ fill: '#8b7260', color: '#8b7260' }} />
-                              <span className="text-sm font-semibold text-black">{weeklyHighlightsData[offerIndex].rating}</span>
-                            </div>
-                            <span className="text-xs text-black/50">({weeklyHighlightsData[offerIndex].reviews})</span>
-                          </div>
-                          
-                          <div className="flex items-center gap-2 px-2 py-1 rounded-full bg-white/20 border border-black/10">
-                            <Clock className="w-3 h-3 text-black/60" />
-                            <span className="text-xs font-medium text-black/60">{weeklyHighlightsData[offerIndex].timeLeft}</span>
-                          </div>
-                        </div>
-
-                        {/* Réserver button responsive position */}
-                        {/* Mobile: inline with content, Desktop: absolute bottom right */}
-                        <div className="block lg:hidden mt-4">
-                          <button 
-                            onClick={() => router.push(getSalonHref(weeklyHighlightsData[offerIndex]))}
-                            className="px-4 py-2 rounded-full bg-black text-white text-sm font-medium hover:bg-black/90 transition-all duration-300 flex items-center gap-1.5 w-full justify-center"
-                          >
-                            <span>Réserver</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                        <div className="hidden lg:block" style={{ position: 'absolute', right: 16, bottom: 10 }}>
-                          <button 
-                            onClick={() => router.push(getSalonHref(weeklyHighlightsData[offerIndex]))}
-                            className="px-4 py-2 rounded-full bg-black text-white text-sm font-medium hover:bg-black/90 transition-all duration-300 flex items-center gap-1.5"
-                          >
-                            <span>Réserver</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
                     </div>
-                  ) : (
-                    <div className="group relative overflow-hidden rounded-lg bg-black/5 backdrop-blur-xl border border-black/10 flex items-center justify-center"
-                      style={{ minHeight: '180px' }}>
-                      <div className="text-center p-4">
-                        <p className="text-sm text-black/60">Aucune offre disponible pour le moment.</p>
-                      </div>
+                    <div className="text-center">
+                      <p className="text-[11px] md:text-xs font-semibold text-gray-900 whitespace-nowrap">
+                        {prof.firstName} {prof.lastName}
+                      </p>
+                      <p className="text-[9px] md:text-[10px] text-gray-400 whitespace-nowrap">
+                        {prof.category}
+                      </p>
                     </div>
-                  )}
-                </div>
-                {errorOffers && (
-                  <div className="mt-2 text-xs text-orange-600/80 text-center">
-                    {errorOffers}
-                  </div>
-                )}
-                <div className="flex justify-between mt-6 items-center">
-                  {/* Mobile: group left and right arrows together */}
-                  <div className="flex gap-2 w-full lg:hidden">
-                    <button
-                      onClick={goToPrevOffer}
-                      disabled={offerAnimating || loadingOffers || weeklyHighlightsData.length === 0}
-                      className="group w-24 h-10 rounded-full bg-black/5 backdrop-blur-xl border border-black/10 flex items-center justify-center hover:bg-black/10 hover:border-black/20 transition-all duration-300 disabled:opacity-30"
-                    >
-                      <ChevronLeft className="w-6 h-6 text-black group-hover:-translate-x-0.5 transition-transform" />
-                    </button>
-                    <button
-                      onClick={() => goToNextOffer()}
-                      disabled={offerAnimating || loadingOffers || weeklyHighlightsData.length === 0}
-                      className="group w-24 h-10 rounded-full bg-black/5 backdrop-blur-xl border border-black/10 flex items-center justify-center hover:bg-black/10 hover:border-black/20 transition-all duration-300 disabled:opacity-30"
-                    >
-                      <ChevronRight className="w-6 h-6 text-black group-hover:translate-x-0.5 transition-transform" />
-                    </button>
-                  </div>
-                  {/* Desktop: keep arrows at ends */}
-                  <button
-                    onClick={goToPrevOffer}
-                    disabled={offerAnimating || loadingOffers || weeklyHighlightsData.length === 0}
-                    className="group w-24 h-10 rounded-full bg-black/5 backdrop-blur-xl border border-black/10 flex items-center justify-center hover:bg-black/10 hover:border-black/20 transition-all duration-300 disabled:opacity-30 hidden lg:flex"
-                  >
-                    <ChevronLeft className="w-6 h-6 text-black group-hover:-translate-x-0.5 transition-transform" />
+                    <div
+                      className={`h-[1.5px] w-full transition-all duration-300 ${
+                        isSelected ? "bg-black" : "bg-transparent"
+                      }`}
+                    />
                   </button>
-                  <div className="flex items-center gap-2 relative hidden lg:flex" style={{ minWidth: '60px' }}>
-                    {loadingOffers ? (
-                      <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded-xl bg-black/20 animate-pulse"></div>
-                        <span className="ml-2 text-black/40 text-sm font-light">-- / --</span>
-                      </div>
-                    ) : (
-                      weeklyHighlightsData.map((_, idx) => (
-                        <button
-                          key={idx}
-                          disabled={offerAnimating || loadingOffers}
-                          onClick={() => goToOffer(idx)}
-                          className="group relative h-3 rounded-xl transition-all duration-300 overflow-hidden"
-                        style={{
-                          width: offerIndex === idx ? '48px' : '24px',
-                          backgroundColor: offerIndex === idx ? 'transparent' : 'rgba(0,0,0,0.08)'
-                        }}
-                      >
-                        {offerIndex === idx && (
-                          <>
-                            <div 
-                              className="absolute inset-0 rounded-xl opacity-20"
-                              style={{ backgroundColor: '#8b7260' }}
-                            />
-                            <div 
-                              className="absolute inset-0 rounded-xl transition-all duration-100"
-                              style={{ 
-                                backgroundColor: '#8b7260',
-                                width: `${offerProgress}%`,
-                              }}
-                            />
-                          </>
-                        )}
-                      </button>
-                    )))}
-                    {!loadingOffers && (
-                      <span className="ml-2 text-black/40 text-sm font-light">
-                        <span className="text-black font-medium">{(offerIndex + 1).toString().padStart(2, '0')}</span>
-                        {' '} / {' '}
-                        <span>{offersCount.toString().padStart(2, '0')}</span>
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => goToNextOffer()}
-                    disabled={offerAnimating || loadingOffers || weeklyHighlightsData.length === 0}
-                    className="group w-24 h-10 rounded-full bg-black/5 backdrop-blur-xl border border-black/10 flex items-center justify-center hover:bg-black/10 hover:border-black/20 transition-all duration-300 disabled:opacity-30 hidden lg:flex"
-                  >
-                    <ChevronRight className="w-6 h-6 text-black group-hover:translate-x-0.5 transition-transform" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Content Section */}
-            <div className="order-1 lg:order-2 space-y-8 px-2 pt-6 pb-2 lg:px-0 lg:pt-0 lg:pb-0 w-full">
-              <div className="overflow-hidden">
-                <h2 className="text-sm font-medium uppercase tracking-[0.2em] text-black">
-                  Offres Exclusives
-                </h2>
-              </div>
-
-              <div className="overflow-hidden">
-                <h1 className="text-3xl md:text-4xl lg:text-5xl font-light text-gray-900 leading-tight"
-                  style={{
-                    background: 'none',
-                    WebkitBackgroundClip: undefined,
-                    WebkitTextFillColor: undefined,
-                    backgroundClip: undefined,
-                  }}
-                >
-                  Les incontournables de la semaine
-                </h1>
-              </div>
-
-              <div className="h-1 rounded-full animate-expand" style={{ background: '#8b7260' }} />
-
-              <div className="overflow-hidden">
-                <p className="text-lg md:text-xl text-black/70 leading-relaxed max-w-xl font-light">
-                  Offres limitées, expériences inoubliables - ne passez pas à côté !
-                </p>
-              </div>
-
-              <div className="flex items-center gap-6 -mt-6">
-                <button 
-                  onClick={() => router.push('/search-results')}
-                  className="px-0 py-4 text-black hover:text-black hover:underline font-medium transition-colors"
-                >
-                  Voir toutes les offres
-                </button>
-              </div>
+                );
+              })}
             </div>
           </div>
+
+          {/* Active professional detail + prestations */}
+          {(() => {
+            const currentProf = professionals[selectedProfIndex];
+            if (!currentProf) return null;
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16">
+                {/* Left — professional info */}
+                <div className="lg:col-span-4 space-y-6">
+                  <div>
+                    <p className="text-sm text-gray-400 font-medium mb-1">
+                      {currentProf.salonName}
+                    </p>
+                    <h4 className="text-2xl md:text-3xl font-light text-gray-900 leading-tight">
+                      {currentProf.firstName}{" "}
+                      <span className="font-semibold">{currentProf.lastName}</span>
+                    </h4>
+                    <p className="text-sm text-gray-500 mt-2 font-light">
+                      {currentProf.specialty}
+                    </p>
+                  </div>
+
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-3xl font-light text-gray-900 tabular-nums">
+                      {currentProf.rating}
+                    </span>
+                    <div>
+                      <div className="flex gap-0.5">
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Star
+                            key={s}
+                            className={`w-3 h-3 ${
+                              s <= Math.round(currentProf.rating)
+                                ? "fill-gray-900 text-gray-900"
+                                : "text-gray-200"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {currentProf.reviews} avis
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right — prestations list */}
+                <div className="lg:col-span-8">
+                  <p className="text-sm font-medium uppercase tracking-[0.2em] text-gray-400 mb-6">
+                    Prestations disponibles
+                  </p>
+
+                  <div className="divide-y divide-gray-100">
+                    {currentProf.prestations.map((pres) => (
+                      <div
+                        key={pres.id}
+                        className="group flex items-center justify-between py-5 first:pt-0"
+                      >
+                        <div className="min-w-0 pr-6">
+                          <p className="text-base md:text-lg font-normal text-gray-900 group-hover:text-black transition-colors">
+                            {pres.name}
+                          </p>
+                          <p className="text-sm text-gray-400 mt-0.5 font-light">
+                            {pres.duration}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-6 flex-shrink-0">
+                          <span className="text-base font-medium text-gray-900 tabular-nums">
+                            {pres.price}
+                          </span>
+                          <button
+                            onClick={() => {
+                              router.push(
+                                `/salon/${currentProf.tenantId}?employeeId=${currentProf.id}&serviceId=${pres.id}`
+                              );
+                            }}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-black text-white text-xs font-semibold rounded-full hover:bg-gray-800 transition-colors"
+                          >
+                            Réserver
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
+
+
 
       <style jsx>{`
         @keyframes fadeIn {
