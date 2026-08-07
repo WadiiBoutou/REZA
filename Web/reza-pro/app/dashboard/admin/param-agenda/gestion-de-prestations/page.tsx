@@ -10,6 +10,24 @@ import { useAuth } from '@/contexts/AuthContext';
 import SalonScopeNotice from '@/components/SalonScopeNotice';
 import toast from 'react-hot-toast';
 
+// Canonical salon service categories — hardcoded (well-known), shared with the
+// mobile client so each category maps to an icon there. Admins pick from this
+// list instead of typing free text.
+const SALON_CATEGORIES = [
+  'Coiffeur',
+  'Couleur',
+  'Barbier',
+  'Manucure',
+  'Pédicure',
+  'Épilation',
+  'Esthétique',
+  'Maquillage',
+  'Massage',
+  'Spa',
+  'Hammam',
+  'Soin',
+];
+
 // API Service type (from backend)
 type ApiService = {
   id: string;
@@ -125,7 +143,6 @@ const GestionPrestations = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
   const [draggedService, setDraggedService] = useState<Service | null>(null);
   const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -213,6 +230,8 @@ const GestionPrestations = () => {
       // Transform API services to frontend format
       const transformedServices = servicesData.map((s: ApiService) => transformApiService(s));
       setServices(transformedServices);
+      // categories stays backend-derived (categories actually in use) — it
+      // drives section rendering. Dropdowns get a separate merged list below.
       setCategories(categoriesData);
 
       // Always fetch employees from API to ensure fresh data
@@ -282,15 +301,19 @@ const GestionPrestations = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [services, categories, loading]);
 
-  const handleAddCategory = () => {
-    if (newCategoryName.trim()) {
-      // Categories are automatically extracted from services, so we just need to create a service with this category
-      // For now, we'll just add it to the local state - it will be persisted when a service with this category is created
-      setCategories([...categories, newCategoryName.trim()]);
-      setNewCategoryName('');
-      setShowCategoryModal(false);
-      toast.success(`Catégorie "${newCategoryName.trim()}" ajoutée. Créez une prestation pour la sauvegarder.`);
+  const handleAddCategory = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (categories.includes(trimmed)) {
+      toast('Cette catégorie est déjà disponible');
+      return;
     }
+    // Categories are automatically extracted from services, so we just need to
+    // create a service with this category. It's persisted when a service with
+    // this category is created.
+    setCategories([...categories, trimmed]);
+    setShowCategoryModal(false);
+    toast.success(`Catégorie "${trimmed}" ajoutée. Créez une prestation pour la sauvegarder.`);
   };
 
   const handleDeleteCategory = async (category: string) => {
@@ -454,6 +477,11 @@ const GestionPrestations = () => {
     });
   };
 
+  // Full known list for dropdowns: canonical categories + any legacy/custom
+  // ones in use. Kept separate from `categories` (which drives section
+  // rendering) so empty canonical sections don't clutter the page.
+  const categoryOptions = Array.from(new Set([...SALON_CATEGORIES, ...categories]));
+
   const nonEmptyCategories = categories.filter((c) => (groupedServices[c] || []).length > 0);
   const allCollapsed = nonEmptyCategories.length > 0 && nonEmptyCategories.every((c) => collapsedCategories.has(c));
   const expandAll = () => setCollapsedCategories(new Set());
@@ -573,7 +601,7 @@ const GestionPrestations = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Toutes les catégories</SelectItem>
-                  {categories.map(cat => (
+                  {categoryOptions.map(cat => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                   ))}
                 </SelectContent>
@@ -674,7 +702,7 @@ const GestionPrestations = () => {
       {showModal && (
         <ServiceModal
           service={editingService}
-          categories={categories}
+          categories={categoryOptions}
           employees={employees}
           onClose={() => {
             setShowModal(false);
@@ -717,12 +745,12 @@ const GestionPrestations = () => {
         />
       )}
 
-      {/* Category Modal */}
+      {/* Category Modal — pick from the canonical category list (no free text) */}
       {showCategoryModal && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold text-gray-900">Nouvelle catégorie</h3>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xl font-semibold text-gray-900">Choisir une catégorie</h3>
               <button 
                 onClick={() => setShowCategoryModal(false)}
                 className="p-2 text-gray-400 hover:text-gray-900 transition-colors"
@@ -730,30 +758,40 @@ const GestionPrestations = () => {
                 <X size={20} />
               </button>
             </div>
+            <p className="text-sm text-gray-500 mb-5">
+              Les catégories sont prédéfinies pour rester cohérentes avec l&apos;application client.
+            </p>
 
-            <div className="space-y-4">
-              <input
-                type="text"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="Nom de la catégorie"
-                className="w-full px-4 py-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-gray-900"
-                onKeyPress={(e) => e.key === 'Enter' && handleAddCategory()}
-              />
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowCategoryModal(false)}
-                  className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={handleAddCategory}
-                  className="flex-1 px-4 py-2.5 bg-[#002366] text-white text-sm font-medium rounded-full hover:bg-gray-800 transition-colors"
-                >
-                  Créer
-                </button>
-              </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[50vh] overflow-y-auto pr-1">
+              {SALON_CATEGORIES.map((cat) => {
+                const existing = categories.includes(cat);
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => handleAddCategory(cat)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                      existing
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 cursor-default'
+                        : 'border-gray-200 text-gray-700 hover:border-[#002366] hover:text-[#002366] hover:bg-[#002366]/5'
+                    }`}
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${existing ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                    />
+                    {cat}
+                    {existing && <Check size={14} className="ml-auto text-emerald-600" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end pt-4">
+              <button
+                onClick={() => setShowCategoryModal(false)}
+                className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Fermer
+              </button>
             </div>
           </div>
         </div>

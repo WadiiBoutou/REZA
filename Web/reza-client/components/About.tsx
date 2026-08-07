@@ -198,110 +198,15 @@ const weeklyHighlights = [
   }
 ];
 
-// Elite Professionals data with real service references
-const professionals = [
-  {
-    id: 'cms3cc7o000225kpq0exu6tbf', // Nadia Tazi
-    firstName: 'Nadia',
-    lastName: 'Tazi',
-    specialty: 'Esthéticienne & Soins Visage',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&h=256&q=80',
-    rating: 4.8,
-    reviews: 88,
-    salonName: 'Spa Royal Casablanca',
-    tenantId: 'cms3cc7h9001n5kpq744e1r1v',
-    category: 'Institut de beauté',
-    prestations: [
-      { id: 'cms3cc7hj001r5kpq32gwkrvk', name: 'Soin visage premium', price: '220 DH', duration: '50 min' },
-      { id: 'cms3cc7hj001r5kpq32gwkrve', name: 'Manucure complète', price: '150 DH', duration: '45 min' }
-    ]
-  },
-  {
-    id: 'cms3cc7o000225kpq0exu6tbc', // Hicham Alaoui
-    firstName: 'Hicham',
-    lastName: 'Alaoui',
-    specialty: 'Massothérapeute Expert',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&h=256&q=80',
-    rating: 4.9,
-    reviews: 104,
-    salonName: 'Spa Royal Casablanca',
-    tenantId: 'cms3cc7h9001n5kpq744e1r1v',
-    category: 'Spa',
-    prestations: [
-      { id: 'cms3cc7hh001q5kpqmfislgdb', name: 'Massage relaxant', price: '250 DH', duration: '60 min' },
-      { id: 'cms3cc7hj001r5kpq32gwkrvf', name: 'Soin visage hydratant', price: '220 DH', duration: '50 min' }
-    ]
-  },
-  {
-    id: 'cms3cc78b000e5kpqeya5j5tg', // Rachid Tazi
-    firstName: 'Rachid',
-    lastName: 'Tazi',
-    specialty: 'Maître Coiffeur & Visagiste',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=256&h=256&q=80',
-    rating: 4.9,
-    reviews: 142,
-    salonName: 'Reza Salon Casablanca',
-    tenantId: 'cms3cc76v00055kpqkcsfkign',
-    category: 'Coiffeur',
-    prestations: [
-      { id: 'cms3cc77i00075kpq0d7sfzsl', name: 'Coupe homme', price: '80 DH', duration: '30 min' },
-      { id: 'cms3cc77x00085kpqtn2ct6w9', name: 'Coupe femme', price: '150 DH', duration: '60 min' },
-      { id: 'cms3cc78000095kpqb4r5fd0e', name: 'Brushing', price: '100 DH', duration: '45 min' },
-      { id: 'cms3cc782000a5kpq9l6w3fbk', name: 'Coloration', price: '250 DH', duration: '90 min' }
-    ]
-  },
-  {
-    id: 'cms3cc78n000j5kpqa7g43w08', // Sofia Alaoui
-    firstName: 'Sofia',
-    lastName: 'Sofia',
-    specialty: 'Styliste Coloriste & Coiffure',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=256&h=256&q=80',
-    rating: 4.8,
-    reviews: 95,
-    salonName: 'Reza Salon Casablanca',
-    tenantId: 'cms3cc76v00055kpqkcsfkign',
-    category: 'Coiffeur',
-    prestations: [
-      { id: 'cms3cc77x00085kpqtn2ct6w9', name: 'Coupe femme', price: '150 DH', duration: '60 min' },
-      { id: 'cms3cc78000095kpqb4r5fd0e', name: 'Brushing', price: '100 DH', duration: '45 min' },
-      { id: 'cms3cc782000a5kpq9l6w3fbk', name: 'Coloration', price: '250 DH', duration: '90 min' }
-    ]
-  },
-  {
-    id: 'cms3cc7b100185kpqekvo79h1', // Karim Idrissi
-    firstName: 'Karim',
-    lastName: 'Idrissi',
-    specialty: 'Barbier & Soins Masculins',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&h=256&q=80',
-    rating: 4.9,
-    reviews: 110,
-    salonName: 'Reza Salon Rabat',
-    tenantId: 'cms3cc7ao00115kpqn7rkiy6q',
-    category: 'Barbier',
-    prestations: [
-      { id: 'cms3cc7as00135kpq18i19nr3', name: 'Coupe + rasage', price: '120 DH', duration: '45 min' },
-      { id: 'cms3cc7au00145kpqxi4l0akl', name: 'Soin barbe', price: '70 DH', duration: '30 min' },
-      { id: 'cms3cc7aw00155kpqwampe449', name: 'Coupe classique', price: '60 DH', duration: '25 min' }
-    ]
-  },
-  {
-    id: 'cms3cc7o000225kpq0exu6taf', // Sara Benali
-    firstName: 'Sara',
-    lastName: 'Benali',
-    specialty: 'Thérapeute Hammam & Massage',
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=256&h=256&q=80',
-    rating: 4.9,
-    reviews: 185,
-    salonName: 'Spa Royal Casablanca',
-    tenantId: 'cms3cc7h9001n5kpq744e1r1v',
-    category: 'Spa',
-    prestations: [
-      { id: 'cms3cc7he001p5kpq6p8n23wi', name: 'Hammam traditionnel', price: '200 DH', duration: '60 min' },
-      { id: 'cms3cc7hh001q5kpqmfislgdb', name: 'Massage relaxant', price: '250 DH', duration: '60 min' },
-      { id: 'cms3cc7hj001r5kpq32gwkrvk', name: 'Gommage argan', price: '180 DH', duration: '45 min' }
-    ]
-  }
-];
+// Format a duration in minutes into a human label ("1h 30min", "45min"...).
+const formatMinutes = (min?: number): string => {
+  const m = min || 0;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (h > 0 && r > 0) return `${h}h ${r}min`;
+  if (h > 0) return `${h}h`;
+  return `${r}min`;
+};
 
 export default function BeautyCarousel() {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -317,6 +222,38 @@ export default function BeautyCarousel() {
   const [loadingSlides, setLoadingSlides] = useState(true);
   const router = useRouter();
   const [selectedProfIndex, setSelectedProfIndex] = useState(0);
+
+  // Featured professionals — REAL data from subscribed salons only (no fake
+  // entries, no links to dead salons).
+  const [professionals, setProfessionals] = useState<any[]>([]);
+  const [loadingProfessionals, setLoadingProfessionals] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadProfessionals = async () => {
+      try {
+        setLoadingProfessionals(true);
+        const res = await api.getFeaturedEmployees(8);
+        if (!cancelled) setProfessionals(res.employees || []);
+      } catch (err) {
+        console.error('Error fetching featured employees:', err);
+        if (!cancelled) setProfessionals([]);
+      } finally {
+        if (!cancelled) setLoadingProfessionals(false);
+      }
+    };
+    loadProfessionals();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Keep the selected professional valid if the fetched list shrinks.
+  useEffect(() => {
+    if (professionals.length > 0 && selectedProfIndex >= professionals.length) {
+      setSelectedProfIndex(0);
+    }
+  }, [professionals.length, selectedProfIndex]);
   
   const offersCount = weeklyHighlightsData.length;
 
@@ -665,7 +602,8 @@ export default function BeautyCarousel() {
     <div className="bg-white relative overflow-hidden">
       <div className="absolute inset-0 bg-white" />
 
-      {/* Professionals & Prestations Section */}
+      {/* Professionals & Prestations Section — only when real featured data exists */}
+      {professionals.length > 0 && (
       <div className="pt-8 pb-24 md:pt-12 md:pb-32 bg-white relative overflow-hidden">
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
@@ -703,12 +641,18 @@ export default function BeautyCarousel() {
                         isSelected ? "border-[1.5px] border-dashed border-black p-0.5" : "border-[1.5px] border-transparent p-0.5"
                       }`}
                     >
-                      <div className="w-full h-full rounded-full overflow-hidden bg-gray-100">
-                        <img
-                          src={prof.avatar}
-                          alt={`${prof.firstName} ${prof.lastName}`}
-                          className="w-full h-full object-cover"
-                        />
+                      <div className="w-full h-full rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
+                        {prof.avatar ? (
+                          <img
+                            src={prof.avatar}
+                            alt={`${prof.firstName} ${prof.lastName}`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-xs font-bold text-gray-400">
+                            {(prof.firstName?.[0] || '') + (prof.lastName?.[0] || '')}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="text-center">
@@ -716,7 +660,7 @@ export default function BeautyCarousel() {
                         {prof.firstName} {prof.lastName}
                       </p>
                       <p className="text-[9px] md:text-[10px] text-gray-400 whitespace-nowrap">
-                        {prof.category}
+                        {prof.specialty}
                       </p>
                     </div>
                     <div
@@ -753,7 +697,7 @@ export default function BeautyCarousel() {
 
                   <div className="flex items-baseline gap-3">
                     <span className="text-3xl font-light text-gray-900 tabular-nums">
-                      {currentProf.rating}
+                      {Math.ceil(currentProf.rating * 100) / 100}
                     </span>
                     <div>
                       <div className="flex gap-0.5">
@@ -782,7 +726,7 @@ export default function BeautyCarousel() {
                   </p>
 
                   <div className="divide-y divide-gray-100">
-                    {currentProf.prestations.map((pres) => (
+                    {currentProf.services.map((pres: any) => (
                       <div
                         key={pres.id}
                         className="group flex items-center justify-between py-5 first:pt-0"
@@ -792,13 +736,13 @@ export default function BeautyCarousel() {
                             {pres.name}
                           </p>
                           <p className="text-sm text-gray-400 mt-0.5 font-light">
-                            {pres.duration}
+                            {formatMinutes(pres.duration)}
                           </p>
                         </div>
 
                         <div className="flex items-center gap-6 flex-shrink-0">
                           <span className="text-base font-medium text-gray-900 tabular-nums">
-                            {pres.price}
+                            {pres.price ? `${pres.price} DH` : 'Sur devis'}
                           </span>
                           <button
                             onClick={() => {
@@ -821,6 +765,7 @@ export default function BeautyCarousel() {
           })()}
         </div>
       </div>
+      )}
 
 
 

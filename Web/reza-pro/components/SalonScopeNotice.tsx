@@ -25,7 +25,7 @@ export default function SalonScopeNotice({
           Ces paramètres sont propres à chaque salon.
         </p>
         <p className="text-sm text-amber-700">
-          Utilisez le sélecteur « Tous les salons » en haut à droite pour choisir un salon
+          Utilisez le sélecteur de salon en haut à droite pour choisir un salon
           précis avant de configurer cette section.
         </p>
       </div>

@@ -431,44 +431,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         ),
         if (_step == 0) ...[
           const SizedBox(height: 20),
-          Row(
-            children: [
-              const Expanded(child: Divider(color: AppColors.border)),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text('OU', style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray, fontWeight: FontWeight.w600)),
-              ),
-              const Expanded(child: Divider(color: AppColors.border)),
-            ],
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: OutlinedButton(
-              onPressed: () => _showError('Connexion Google bientôt disponible'),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: AppColors.border),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 22,
-                    height: 22,
-                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFEA4335)),
-                    child: const Center(
-                      child: Text('G', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text('Continuer avec Google', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textDark)),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 32),
           Center(
             child: GestureDetector(
               onTap: () {

@@ -57,6 +57,24 @@ class ApiClient {
     );
   }
 
+  // Featured "elite" professionals across subscribed salons (homepage team section)
+  async getFeaturedEmployees(limit: number = 8) {
+    return this.request<{ employees: any[] }>(
+      `/public/employees/featured?limit=${limit}`
+    );
+  }
+
+  // Public pricing info (per-salon one-time fee + monthly employee tiers)
+  async getPublicBillingConfig() {
+    return this.request<{
+      pricePerSalon: number;
+      pricePerEmployee: number;
+      currency: string;
+      freeEmployeeThreshold: number;
+      employeeTiers: { min: number; max: number | null; price: number }[] | null;
+    }>(`/public/billing-config`);
+  }
+
   async searchTenants(
     search?: string,
     category?: string,
@@ -239,6 +257,7 @@ class ApiClient {
   async createReview(data: {
     tenantId: string;
     appointmentId?: string;
+    employeeId?: string;
     firstName: string;
     lastName: string;
     email: string;
@@ -367,13 +386,6 @@ class ApiClient {
     return this.request<{ client: any; message: string }>('/public/auth/client-login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
-    });
-  }
-
-  async clientGoogleLogin(email: string) {
-    return this.request<{ client: any; message: string }>('/public/auth/client-google-login', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
     });
   }
 

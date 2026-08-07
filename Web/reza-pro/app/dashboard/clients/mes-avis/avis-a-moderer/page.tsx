@@ -10,6 +10,7 @@ interface Review {
   id: string;
   clientName: string;
   clientEmail: string;
+  clientAvatar?: string;
   rating: number;
   comment: string;
   service?: string;
@@ -56,6 +57,7 @@ export default function AvisAModererPage() {
           id: review.id,
           clientName: review.client ? `${review.client.firstName || ''} ${review.client.lastName || ''}`.trim() : 'Client',
           clientEmail: review.client?.email || '',
+          clientAvatar: review.client?.avatar || '',
           rating: review.rating || 0,
           comment: review.comment || '',
           service: review.appointment?.service?.name || undefined,
@@ -211,11 +213,13 @@ export default function AvisAModererPage() {
               {/* Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-10 h-10 rounded-full accent-bg flex items-center justify-center flex-shrink-0">
-                    <span className="text-white font-medium text-sm">
-                      {review.clientName.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  <div className="w-10 h-10 rounded-full overflow-hidden accent-bg flex items-center justify-center flex-shrink-0">
+                        {review.clientAvatar ? (
+                          <img src={review.clientAvatar} alt={review.clientName} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-white font-medium text-sm">{review.clientName.charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-medium text-gray-900 truncate text-sm">{review.clientName}</h3>
                     <div className="flex items-center gap-2 mt-1">
@@ -297,11 +301,13 @@ export default function AvisAModererPage() {
                   <tr key={review.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full accent-bg flex items-center justify-center flex-shrink-0">
-                          <span className="text-white font-medium text-xs">
-                            {review.clientName.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
+                        <div className="w-8 h-8 rounded-full overflow-hidden accent-bg flex items-center justify-center flex-shrink-0">
+                        {review.clientAvatar ? (
+                          <img src={review.clientAvatar} alt={review.clientName} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-white font-medium text-xs">{review.clientName.charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
                         <div className="min-w-0">
                           <div className="font-medium text-gray-900 text-sm truncate">{review.clientName}</div>
                           <div className="text-[10px] text-gray-400 truncate">{review.clientEmail}</div>
@@ -421,11 +427,13 @@ export default function AvisAModererPage() {
               {/* Review Details */}
               <div className="bg-gray-50 rounded-lg p-6 mb-6">
                 <div className="flex items-start gap-4 mb-4">
-                  <div className="w-12 h-12 rounded-full accent-bg flex items-center justify-center flex-shrink-0">
-                    <span className="text-white font-medium">
-                      {selectedReview.clientName.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  <div className="w-12 h-12 rounded-full overflow-hidden accent-bg flex items-center justify-center flex-shrink-0">
+                        {selectedReview.clientAvatar ? (
+                          <img src={selectedReview.clientAvatar} alt={selectedReview.clientName} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-white font-medium">{selectedReview.clientName.charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-medium text-gray-900 mb-2">{selectedReview.clientName}</h3>
                     <div className="flex items-center gap-3 mb-3">

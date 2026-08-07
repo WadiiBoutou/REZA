@@ -350,6 +350,14 @@ const EMPLOYEE_COLOR_PALETTE = [
 const UNASSIGNED_COLOR = '#9CA3AF';
 const MINUTE_HEIGHT_REM = 5 / 30; // 5rem per 30-min slot (same scale as the old min-h-20)
 
+// Minimum readable width for a single lane of agenda cards (px). Each day
+// column is sized as (its own peak concurrent-lane count) × this value, so
+// cards are never squeezed below it no matter how many appointments genuinely
+// overlap — days with heavier overlap simply get wider columns and the whole
+// week scrolls horizontally instead of compressing every lane into a fixed
+// narrow column.
+const MIN_LANE_WIDTH_PX = 160;
+
 const timeToMinutes = (time: string): number => {
   const [h, m] = time.split(':').map(Number);
   return (h || 0) * 60 + (m || 0);
@@ -458,91 +466,102 @@ const expandAppointmentToServiceCards = (
 
 type LaidOutServiceCard = ServiceCardData & { lane: number; laneCount: number };
 
-// Assign concurrent cards to side-by-side lanes (classic calendar layout):
-// cards that overlap in time get distinct lanes, sequential cards stay in lane 0.
+// Day column width = the day's own peak concurrent-lane count × the minimum
+// readable card width (Math.max(1, …) covers empty days).
+const dayColumnWidthPx = (laid: LaidOutServiceCard[]): number =>
+  Math.max(1, ...laid.map((c) => c.laneCount)) * MIN_LANE_WIDTH_PX;
+
+// Assign concurrent cards to side-by-side lanes with booking-group awareness:
+// ALL sibling cards of the same booking are treated as ONE atomic block and
+// assigned to the SAME lane. Only cards from DIFFERENT bookings that genuinely
+// overlap in time are split into separate lanes.
+//
+// Algorithm:
+//   1. Collapse each booking into a single [startMin, endMin] span (the union
+//      of its service cards' spans — i.e. from first card start to last card end).
+//   2. Run the greedy lane-assignment on these booking-level spans (not on
+//      individual service cards), so a booking's internal service sequence
+//      never falsely inflates the lane count.
+//   3. Compute each booking's laneCount as the max number of booking blocks
+//      active at any single moment WITHIN that booking's own span — NOT the
+//      day's global max. A booking that never overlaps anything renders at
+//      full column width even if unrelated bookings elsewhere in the day
+//      needed 2+ lanes; a booking that genuinely overlaps others is divided
+//      only by the real number of concurrent lanes it contends with.
+//   4. Propagate the assigned lane + per-booking laneCount to every service
+//      card of that booking (all siblings share one lane and one laneCount, so
+//      a booking's cards always stay visually consistent in width).
 const layoutConcurrentCards = (cards: ServiceCardData[]): LaidOutServiceCard[] => {
-  const sorted = [...cards].sort(
-    (a, b) => a.startMin - b.startMin || b.duration - a.duration
-  );
-  const laneEnds: number[] = [];
-  const laid: LaidOutServiceCard[] = [];
-  for (const c of sorted) {
-    let lane = laneEnds.findIndex((end) => end <= c.startMin);
-    if (lane === -1) {
-      lane = laneEnds.length;
-      laneEnds.push(c.endMin);
-    } else {
-      laneEnds[lane] = c.endMin;
-    }
-    laid.push({ ...c, lane, laneCount: 0 });
-  }
-  const laneCount = laneEnds.length;
-  return laid.map((c) => ({ ...c, laneCount }));
-};
+  if (cards.length === 0) return [];
 
-type BookingGroupFrame = {
-  aptId: string;
-  topRem: number;
-  heightRem: number;
-  leftPct: number;
-  widthPct: number;
-};
-
-// Persistent grouping boundary for multi-service bookings: one solid frame per
-// booking (>= 2 service cards) drawn just OUTSIDE the cards' block (small gap),
-// spanning the union of its cards' vertical extent and lanes, so a booking's
-// block of cards reads as one visit at a glance.
-const computeBookingGroupFrames = (
-  laid: LaidOutServiceCard[],
-  toTopRem: (min: number) => number,
-  minCardMinutes: number
-): BookingGroupFrame[] => {
-  const byBooking = new Map<string, LaidOutServiceCard[]>();
-  for (const c of laid) {
-    const arr = byBooking.get(c.apt.id);
+  // ── Step 1: group cards by booking (apt.id) ──────────────────────────────
+  const bookingMap = new Map<string, ServiceCardData[]>();
+  for (const c of cards) {
+    const arr = bookingMap.get(c.apt.id);
     if (arr) arr.push(c);
-    else byBooking.set(c.apt.id, [c]);
+    else bookingMap.set(c.apt.id, [c]);
   }
-  const frames: BookingGroupFrame[] = [];
-  for (const [aptId, cards] of byBooking) {
-    if (cards.length < 2) continue;
-    const startMin = Math.min(...cards.map((c) => c.startMin));
-    // Respect the same min-height clamp used when rendering each card
-    const endMin = Math.max(
-      ...cards.map((c) => c.startMin + Math.max(c.duration || 0, minCardMinutes))
-    );
-    const laneMin = Math.min(...cards.map((c) => c.lane));
-    const laneMax = Math.max(...cards.map((c) => c.lane));
-    const laneCount = Math.max(...cards.map((c) => c.laneCount)) || 1;
-    frames.push({
+
+  // Represent each booking as its union time span
+  type BookingSpan = { aptId: string; startMin: number; endMin: number };
+  const spans: BookingSpan[] = [];
+  for (const [aptId, group] of bookingMap) {
+    spans.push({
       aptId,
-      topRem: toTopRem(startMin),
-      heightRem: (endMin - startMin) * MINUTE_HEIGHT_REM,
-      leftPct: (laneMin / laneCount) * 100,
-      widthPct: ((laneMax - laneMin + 1) / laneCount) * 100,
+      startMin: Math.min(...group.map((c) => c.startMin)),
+      endMin: Math.max(...group.map((c) => c.endMin)),
     });
   }
-  return frames;
+
+  // Sort bookings by start time, then longest first (stable calendar heuristic)
+  spans.sort((a, b) => a.startMin - b.startMin || (b.endMin - b.startMin) - (a.endMin - a.startMin));
+
+  // ── Step 2: greedy lane assignment at the booking level ───────────────────
+  const laneEnds: number[] = [];
+  const bookingLane = new Map<string, number>();
+  for (const span of spans) {
+    let lane = laneEnds.findIndex((end) => end <= span.startMin);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(span.endMin);
+    } else {
+      laneEnds[lane] = span.endMin;
+    }
+    bookingLane.set(span.aptId, lane);
+  }
+
+  // ── Step 3: per-booking lane count (momentary max concurrency) ────────────
+  // The active booking count only changes at booking start/end boundaries, so
+  // scanning those moments inside each booking's own span gives the exact max
+  // number of lanes that booking ever genuinely contends with. Greedy lane
+  // assignment guarantees lane < this count (a booking's lane never exceeds
+  // the number of blocks active at its start), so left/width never overflow.
+  const moments = [...new Set(spans.flatMap((s) => [s.startMin, s.endMin]))].sort(
+    (a, b) => a - b
+  );
+  const bookingLaneCount = new Map<string, number>();
+  for (const span of spans) {
+    let maxActive = 1;
+    for (const m of moments) {
+      if (m < span.startMin || m >= span.endMin) continue;
+      let active = 0;
+      for (const other of spans) {
+        if (other.startMin <= m && other.endMin > m) active++;
+      }
+      if (active > maxActive) maxActive = active;
+    }
+    bookingLaneCount.set(span.aptId, Math.max(maxActive, 1));
+  }
+
+  // ── Step 4: stamp every service card with its booking's lane + laneCount ─
+  return cards.map((c) => ({
+    ...c,
+    lane: bookingLane.get(c.apt.id) ?? 0,
+    laneCount: bookingLaneCount.get(c.apt.id) ?? 1,
+  }));
 };
 
-// Rendered behind the service cards (z-[5], below cards' z-10). pointer-events-none
-// so drag & drop and clicks pass straight through to the grid beneath.
-const BookingGroupLayer: React.FC<{ frames: BookingGroupFrame[] }> = ({ frames }) => (
-  <>
-    {frames.map((f) => (
-      <div
-        key={f.aptId}
-        className="absolute z-[5] pointer-events-none rounded-lg border border-gray-400/60 bg-gray-400/5"
-        style={{
-          left: `calc(${f.leftPct}% - 2px)`,
-          width: `calc(${f.widthPct}% + 4px)`,
-          top: `calc(${f.topRem}rem - 2px)`,
-          height: `calc(${f.heightRem}rem + 4px)`,
-        }}
-      />
-    ))}
-  </>
-);
+
 
 const canConfirmStatus = (status: string) => status === 'pending';
 const canMarkAbsentOrDone = (status: string) =>
@@ -1606,7 +1625,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
       onMouseEnter={() => onBookingHover?.(apt.id)}
       onMouseLeave={() => onBookingHover?.(null)}
       className={cn(
-        'relative rounded-lg cursor-move border transition-all overflow-hidden w-full h-full',
+        'relative rounded-lg cursor-move border transition-all overflow-hidden w-fit h-full',
         getStatusBg(apt.status),
         isCompact ? 'text-xs' : 'text-sm',
         isSiblingHovered ? 'shadow-md ring-2 ring-gray-900/15' : 'hover:shadow-md',
@@ -2216,6 +2235,36 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
     });
   };
 
+  // Week view: lay out each day's cards once and size that day's column from
+  // its OWN peak concurrent-lane count × the minimum readable card width — a
+  // day with 4 genuinely concurrent bookings gets a 4-lane-wide column, a
+  // quiet day stays narrow, and the whole week scrolls horizontally while the
+  // time gutter stays pinned on the left.
+  const weekDayLayouts = useMemo(() => {
+    return getWeekDays().map((date) => {
+      const laid = layoutConcurrentCards(
+        serviceCards.filter((c) => isSameDay(c.apt.date, date))
+      );
+      return { date, laid, widthPx: dayColumnWidthPx(laid) };
+    });
+    // getWeekDays is recreated each render; currentDate is the real trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceCards, currentDate]);
+
+  // Day view: the single day's laid-out cards, computed once and shared by
+  // both the column's min-width floor and the render below.
+  const dayViewLaid = useMemo(
+    () =>
+      layoutConcurrentCards(
+        serviceCards.filter((c) => isSameDay(c.apt.date, currentDate))
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [serviceCards, currentDate]
+  );
+  // The column still grows (flex-1) to fill available space; the floor only
+  // guarantees cards are never compressed below the readable minimum.
+  const dayViewMinWidthPx = dayColumnWidthPx(dayViewLaid);
+
   // Get month days - normalized
   const getMonthDays = () => {
     const year = currentDate.getFullYear();
@@ -2623,6 +2672,68 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
     );
   }
 
+  // Render agenda cards grouped by booking: single-service bookings render
+  // directly; multi-service bookings are wrapped in an auto-sizing frame that
+  // hugs the cards tightly instead of stretching to the full lane width.
+  const renderAgendaCards = (dayCards: LaidOutServiceCard[], isCompact: boolean) => {
+    const groups = new Map<string, LaidOutServiceCard[]>();
+    for (const card of dayCards) {
+      const arr = groups.get(card.apt.id);
+      if (arr) arr.push(card);
+      else groups.set(card.apt.id, [card]);
+    }
+    const minH = isCompact ? 4 : 5;
+    return [...groups.entries()].map(([aptId, grp]) => {
+      const sorted = [...grp].sort((a, b) => a.startMin - b.startMin);
+      const lane = sorted[0].lane;
+      const laneCount = sorted[0].laneCount;
+      const startMin = sorted[0].startMin;
+      const cardProps = (c: LaidOutServiceCard) => ({
+        apt: c.apt,
+        serviceCard: c,
+        isCompact,
+        onDragStart: handleDragStart,
+        onStatusUpdate: handleUpdateAppointmentStatus,
+        onShowDetails: handleShowDetails,
+        employeeColor: c.color,
+        showColorInRDV: displaySettings.showColorInRDV,
+        displayFields: displaySettings.fields,
+        hoveredBookingId,
+        onBookingHover: setHoveredBookingId,
+      });
+      if (sorted.length === 1) {
+        const c = sorted[0];
+        return (
+          <div key={c.key} className="absolute z-10" style={{
+            left: `${(c.lane / c.laneCount) * 100}%`,
+            maxWidth: `${100 / c.laneCount}%`,
+            top: `${minToTopRem(c.startMin)}rem`,
+            height: `${Math.max(c.duration * MINUTE_HEIGHT_REM, minH)}rem`,
+          }}>
+            <AppointmentCard {...cardProps(c)} />
+          </div>
+        );
+      }
+      // Multi-card: frame wrapper auto-sized around the cards
+      return (
+        <div key={`grp-${aptId}`} className="absolute z-[8] rounded-lg border border-gray-400/60 bg-gray-400/5 pointer-events-none" style={{
+          left: `calc(${(lane / laneCount) * 100}% - 2px)`,
+          maxWidth: `calc(${100 / laneCount}% + 4px)`,
+          top: `${minToTopRem(startMin)}rem`,
+          padding: '2px',
+        }}>
+          {sorted.map(c => (
+            <div key={c.key} className="pointer-events-auto" style={{ marginBottom: '2px' }}>
+              <div style={{ height: `${Math.max(c.duration * MINUTE_HEIGHT_REM, minH)}rem` }}>
+                <AppointmentCard {...cardProps(c)} />
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    });
+  };
+
   return (
     <div suppressHydrationWarning className="min-h-screen p-0 md:p-0">
       <style>{`
@@ -2784,14 +2895,18 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
       <div key={refreshKey} className="overflow-hidden animate-fadeIn">
         {view === 'week' && (
           <div className="overflow-x-auto bg-white rounded-lg border border-gray-100 shadow-sm">
-            <div style={{ minWidth: `${56 + 7 * 220}px` }}>
+            <div style={{ minWidth: `${56 + weekDayLayouts.reduce((sum, d) => sum + d.widthPx, 0)}px` }}>
               {/* Header */}
               <div className="flex border-b border-gray-100">
-                <div className="w-14 shrink-0 border-r border-gray-100"></div>
-                {getWeekDays().map((date, i) => {
+                <div className="sticky left-0 z-30 w-14 shrink-0 border-r border-gray-100 bg-white"></div>
+                {weekDayLayouts.map(({ date, widthPx }, i) => {
                   const isToday = date.toDateString() === new Date().toDateString();
                   return (
-                    <div key={i} className="border-r border-gray-100 last:border-r-0 p-4 text-center" style={{ flex: '1 0 220px' }}>
+                    <div
+                      key={i}
+                      className="border-r border-gray-100 last:border-r-0 p-4 text-center"
+                      style={{ flexGrow: 1, flexShrink: 0, flexBasis: `${widthPx}px` }}
+                    >
                       <div className={`text-xs font-medium uppercase tracking-wider mb-2 ${isToday ? 'text-gray-900' : 'text-gray-400'}`}>
                         {date.toLocaleDateString('fr-FR', { weekday: 'short' })}
                       </div>
@@ -2809,9 +2924,9 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
 
               {/* Body: time gutter + day columns */}
               <div className="flex">
-                {/* Time gutter */}
+                {/* Time gutter (sticky while the day columns scroll horizontally) */}
                 <div
-                  className="w-14 shrink-0 relative border-r border-gray-100"
+                  className="sticky left-0 z-30 w-14 shrink-0 relative border-r border-gray-100 bg-white"
                   style={{ height: `${agendaHeightRem}rem` }}
                 >
                   {timeSlots.map((time) => (
@@ -2825,18 +2940,20 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                   ))}
                 </div>
 
-                {getWeekDays().map((date, i) => {
+                {weekDayLayouts.map(({ date, laid: dayCards, widthPx }, i) => {
                   const isToday = date.toDateString() === new Date().toDateString();
                   const nowMin = isToday ? getMoroccoNowMin() : null;
-                  const dayCards = layoutConcurrentCards(
-                    serviceCards.filter((c) => isSameDay(c.apt.date, date))
-                  );
                   const cellStyle = getCalendarCellStyle();
                   return (
                     <div
                       key={i}
                       className="relative border-r border-gray-100 last:border-r-0 overflow-hidden"
-                      style={{ flex: '1 0 220px', height: `${agendaHeightRem}rem` }}
+                      style={{
+                        flexGrow: 1,
+                        flexShrink: 0,
+                        flexBasis: `${widthPx}px`,
+                        height: `${agendaHeightRem}rem`,
+                      }}
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleGridDrop(e, date)}
                     >
@@ -2880,37 +2997,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                         />
                       ))}
 
-                      {/* Persistent grouping boundary around multi-service bookings */}
-                      <BookingGroupLayer frames={computeBookingGroupFrames(dayCards, minToTopRem, 24)} />
-
-                      {/* One card per service, sized by that service's own slot */}
-                      {dayCards.map((card) => (
-                        <div
-                          key={card.key}
-                          className="absolute z-10"
-                          style={{
-                            left: `${(card.lane / card.laneCount) * 100}%`,
-                            width: `${100 / card.laneCount}%`,
-                            top: `${minToTopRem(card.startMin)}rem`,
-                            height: `${Math.max(card.duration * MINUTE_HEIGHT_REM, 4)}rem`,
-                            padding: '0 3px',
-                          }}
-                        >
-                          <AppointmentCard
-                            apt={card.apt}
-                            serviceCard={card}
-                            isCompact
-                            onDragStart={handleDragStart}
-                            onStatusUpdate={handleUpdateAppointmentStatus}
-                            onShowDetails={handleShowDetails}
-                            employeeColor={card.color}
-                            showColorInRDV={displaySettings.showColorInRDV}
-                            displayFields={displaySettings.fields}
-                            hoveredBookingId={hoveredBookingId}
-                            onBookingHover={setHoveredBookingId}
-                          />
-                        </div>
-                      ))}
+                      {renderAgendaCards(dayCards, true)}
 
                       {/* Now line */}
                       {nowMin != null && nowMin >= agendaStartMin && nowMin <= agendaEndMin && (
@@ -2932,11 +3019,11 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
         )}
 
         {view === 'day' && (
-          <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto bg-white rounded-lg border border-gray-100 shadow-sm">
             <div className="flex">
-              {/* Time gutter */}
+              {/* Time gutter (sticky while the day column scrolls horizontally) */}
               <div
-                className="w-14 shrink-0 relative border-r border-gray-100"
+                className="sticky left-0 z-30 w-14 shrink-0 relative border-r border-gray-100 bg-white"
                 style={{ height: `${agendaHeightRem}rem` }}
               >
                 {timeSlots.map((time) => (
@@ -2953,7 +3040,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
               {/* Day column */}
               <div
                 className="flex-1 relative overflow-hidden"
-                style={{ height: `${agendaHeightRem}rem` }}
+                style={{ height: `${agendaHeightRem}rem`, minWidth: `${dayViewMinWidthPx}px` }}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleGridDrop(e, currentDate)}
               >
@@ -2998,45 +3085,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                   />
                 ))}
 
-                {(() => {
-                  const dayCards = layoutConcurrentCards(
-                    serviceCards.filter((c) => isSameDay(c.apt.date, currentDate))
-                  );
-                  return (
-                    <>
-                      {/* Persistent grouping boundary around multi-service bookings */}
-                      <BookingGroupLayer frames={computeBookingGroupFrames(dayCards, minToTopRem, 30)} />
-
-                      {/* One card per service, sized by that service's own slot */}
-                      {dayCards.map((card) => (
-                        <div
-                          key={card.key}
-                          className="absolute z-10"
-                          style={{
-                            left: `${(card.lane / card.laneCount) * 100}%`,
-                            width: `${100 / card.laneCount}%`,
-                            top: `${minToTopRem(card.startMin)}rem`,
-                            height: `${Math.max(card.duration * MINUTE_HEIGHT_REM, 5)}rem`,
-                            padding: '0 3px',
-                          }}
-                        >
-                          <AppointmentCard
-                            apt={card.apt}
-                            serviceCard={card}
-                            onDragStart={handleDragStart}
-                            onStatusUpdate={handleUpdateAppointmentStatus}
-                            onShowDetails={handleShowDetails}
-                            employeeColor={card.color}
-                            showColorInRDV={displaySettings.showColorInRDV}
-                            displayFields={displaySettings.fields}
-                            hoveredBookingId={hoveredBookingId}
-                            onBookingHover={setHoveredBookingId}
-                          />
-                        </div>
-                      ))}
-                    </>
-                  );
-                })()}
+{renderAgendaCards(dayViewLaid, false)}
 
                 {/* Now line (only on today) */}
                 {isSameDay(currentDate, new Date()) &&

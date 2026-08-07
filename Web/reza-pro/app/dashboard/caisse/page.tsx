@@ -190,6 +190,7 @@ function CaissePageContent({
     if (method !== internalMethodFilter) setInternalMethodFilter(method as any);
     if (type !== internalTypeFilter) setInternalTypeFilter(type as any);
     if (period !== internalSelectedPeriod) setInternalSelectedPeriod(period as any);
+    setCurrentPage(1);
   }, [searchParams]);
   
   // Use props if provided, otherwise use internal state
@@ -206,6 +207,8 @@ function CaissePageContent({
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 20;
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>('sale');
   const [saleForm, setSaleForm] = useState(emptySaleForm);
@@ -983,73 +986,15 @@ function CaissePageContent({
         </div>
       </div>
 
-      {/* Search & Quick Actions */}
-      <div className="mb-4 animate-fadeIn">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
-              placeholder="Rechercher une transaction..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 rounded-full bg-white border border-gray-200 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all"
-            />
-          </div>
-          <button
-            onClick={handlePrint}
-            className="px-4 py-3 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-full text-xs font-medium transition-colors flex items-center gap-2"
-            title="Imprimer le rapport"
-          >
-            <Printer size={14} />
-          </button>
-        </div>
-      </div>
-
-      {/* Filtres Caisse */}
-      <div className="mb-6 animate-fadeIn">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Filter size={14} className="text-gray-400" />
-            <span className="text-xs text-gray-500 font-medium">Filtres:</span>
-          </div>
-          {(() => {
-            const availableMethods = [...new Set(transactions.map(t => t.method).filter(Boolean))].sort();
-            return (
-            <select
-              value={methodFilter}
-              onChange={(e) => setMethodFilter(e.target.value as any)}
-              className="px-4 py-2 rounded-full bg-white border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent appearance-none cursor-pointer"
-            >
-              <option value="all">Tous les moyens</option>
-              {availableMethods.map((method) => (
-                <option key={method} value={method}>{method}</option>
-              ))}
-            </select>
-            );
-          })()}
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as any)}
-            className="px-4 py-2 rounded-full bg-white border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent appearance-none cursor-pointer"
-          >
-            <option value="all">Tous les types</option>
-            <option value="Vente">Vente</option>
-            <option value="Remboursement">Remboursement</option>
-            <option value="Dépôt">Dépôt</option>
-            <option value="Retrait">Retrait</option>
-          </select>
-          <select
-            value={selectedPeriod}
-            onChange={(e) => setSelectedPeriod(e.target.value as any)}
-            className="px-4 py-2 rounded-full bg-white border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent appearance-none cursor-pointer"
-          >
-            <option value="all">Toute période</option>
-            <option value="day">Aujourd'hui</option>
-            <option value="week">7 derniers jours</option>
-            <option value="month">30 derniers jours</option>
-          </select>
-        </div>
+      {/* Quick Actions */}
+      <div className="mb-4 animate-fadeIn flex justify-end">
+        <button
+          onClick={handlePrint}
+          className="px-4 py-3 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-full text-xs font-medium transition-colors flex items-center gap-2"
+          title="Imprimer le rapport"
+        >
+          <Printer size={14} />
+        </button>
       </div>
 
       {/* Analytics Grid */}
@@ -1123,8 +1068,19 @@ function CaissePageContent({
 
       {/* Transactions Table */}
       <div className="bg-white rounded-lg border border-gray-100 overflow-hidden animate-fadeIn">
-        <div className="px-6 py-4 border-b border-gray-100">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
           <h3 className="text-sm font-medium text-gray-900">Toutes les transactions</h3>
+          {/* Search bar moved here — above the table, below the cards */}
+          <div className="relative w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+            <input
+              type="text"
+              placeholder="Rechercher…"
+              value={searchTerm}
+              onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+              className="w-full pl-9 pr-4 py-2 rounded-full bg-gray-50 border border-gray-200 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#002366]/30 transition-all"
+            />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-full table-auto">
@@ -1142,7 +1098,7 @@ function CaissePageContent({
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filteredTransactions.length > 0 ? (
-                filteredTransactions.map(tx => {
+                filteredTransactions.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map(tx => {
                    const isMultiService = tx.items && tx.items.length > 1;
                    const isGroupInvoice = !!tx.bookingGroupId;
                    const canExpand = isMultiService || isGroupInvoice;
@@ -1265,6 +1221,33 @@ function CaissePageContent({
             </tbody>
           </table>
         </div>
+        {/* Pagination */}
+        {filteredTransactions.length > PAGE_SIZE && (
+          <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between gap-4">
+            <p className="text-xs text-gray-500">
+              {((currentPage - 1) * PAGE_SIZE) + 1}–{Math.min(currentPage * PAGE_SIZE, filteredTransactions.length)} sur {filteredTransactions.length} transactions
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(p => p - 1)}
+                className="inline-flex items-center gap-1 px-3.5 py-2 rounded-full text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-all"
+              >
+                <ChevronRight size={14} className="rotate-180" /> Préc.
+              </button>
+              <span className="text-xs text-gray-500 px-1">
+                Page {currentPage} / {Math.ceil(filteredTransactions.length / PAGE_SIZE)}
+              </span>
+              <button
+                disabled={currentPage >= Math.ceil(filteredTransactions.length / PAGE_SIZE)}
+                onClick={() => setCurrentPage(p => p + 1)}
+                className="inline-flex items-center gap-1 px-3.5 py-2 rounded-full text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-all"
+              >
+                Suiv. <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal — Flow A vente / Flow B mouvement */}

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Building, ChevronDown, Check, ExternalLink } from 'lucide-react';
+import { Building, ChevronDown, ExternalLink } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAuth, type Salon } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -12,13 +12,12 @@ function filterLabel(
   salons: Salon[],
   effectiveSalonIds: string[]
 ): string {
-  if (salonFilter === 'all' || effectiveSalonIds.length === salons.length) {
-    return 'Tous les salons';
+  if (salonFilter === 'all' || effectiveSalonIds.length !== 1) {
+    // Single-salon mode: while a stale 'all' filter is being migrated (or if
+    // nothing is selected yet), fall back to the first salon.
+    return salons[0]?.name || 'Choisir un salon';
   }
-  if (effectiveSalonIds.length === 1) {
-    return salons.find((s) => s.id === effectiveSalonIds[0])?.name || '1 salon';
-  }
-  return `${effectiveSalonIds.length} salons`;
+  return salons.find((s) => s.id === effectiveSalonIds[0])?.name || 'Choisir un salon';
 }
 
 export function SalonFilterControl({
@@ -33,17 +32,10 @@ export function SalonFilterControl({
     salonFilter,
     setSalonFilter,
     effectiveSalonIds,
-    isSalonFilterMulti,
   } = useAuth();
   const [open, setOpen] = useState(false);
 
   if (salons.length <= 1) return null;
-
-  const allSelected = salonFilter === 'all' || effectiveSalonIds.length === salons.length;
-
-  const selectAll = () => {
-    setSalonFilter('all');
-  };
 
   const selectSalon = (id: string) => {
     // Radio semantics: choosing one salon replaces any other selection.
@@ -60,7 +52,6 @@ export function SalonFilterControl({
           className={cn(
             'inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors',
             compact ? 'px-3 py-1.5' : 'px-4 py-2',
-            isSalonFilterMulti && 'border-[#002366]/40',
             className
           )}
         >
@@ -73,29 +64,10 @@ export function SalonFilterControl({
         <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
           Filtrer les salons
         </p>
-        <button
-          type="button"
-          onClick={selectAll}
-          className={cn(
-            'w-full flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-gray-50',
-            allSelected && 'bg-[#002366]/5 text-[#002366] font-medium'
-          )}
-        >
-          <span
-            className={cn(
-              'size-4 shrink-0 rounded-full border grid place-content-center',
-              allSelected ? 'border-[#002366]' : 'border-gray-300'
-            )}
-          >
-            {allSelected && <span className="size-2 rounded-full bg-[#002366]" />}
-          </span>
-          <span>Tous les salons</span>
-          {allSelected && <Check size={14} className="ml-auto text-[#002366]" />}
-        </button>
-        <div className="my-1 h-px bg-gray-100" />
         <div className="max-h-56 overflow-y-auto">
           {salons.map((salon) => {
-            const checked = !allSelected && effectiveSalonIds[0] === salon.id;
+            const checked =
+              salonFilter !== 'all' && effectiveSalonIds[0] === salon.id;
             return (
               <button
                 key={salon.id}

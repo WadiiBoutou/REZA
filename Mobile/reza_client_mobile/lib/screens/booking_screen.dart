@@ -588,6 +588,13 @@ class _BookingScreenState extends State<BookingScreen> {
 
     final auth = context.read<AuthViewModel>();
     if (!auth.isAuthenticated || auth.email == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Veuillez vous connecter d'abord", style: GoogleFonts.inter(fontSize: 13)),
+          backgroundColor: AppColors.primary,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
       final loginResult = await Navigator.push<bool>(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen(returnResultOnSuccess: true)),
@@ -1034,7 +1041,7 @@ class _BookingScreenState extends State<BookingScreen> {
           child: Text(
             _professionalPhase == 0
                 ? 'Choisissez votre\nprofessionnel'
-                : 'Professionnel par\nprestation',
+                : 'Professionnel par\npersonnel',
             style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textDark),
           ),
         ),
@@ -1069,7 +1076,7 @@ class _BookingScreenState extends State<BookingScreen> {
         _bottomBar(
           priceLabel: '${_totalPrice.toInt()} MAD',
           subtitle: _professionalPhase == 0
-              ? (_perServiceMode ? 'Sélection par prestation' : 'Attribution automatique')
+              ? (_perServiceMode ? 'Sélection par personnel' : 'Attribution automatique')
               : _perServiceSelectionComplete
                   ? 'Prestations assignées'
                   : 'Sélectionnez pour chaque prestation',
@@ -1107,7 +1114,7 @@ class _BookingScreenState extends State<BookingScreen> {
         const SizedBox(height: 12),
         _ProfessionalChoiceCard(
           icon: Icons.groups_rounded,
-          title: 'Sélectionner par prestation',
+          title: 'Sélectionner par personnel',
           subtitle: 'Choisissez un professionnel différent pour chaque prestation.',
           selected: _perServiceMode,
           onTap: () => setState(() => _perServiceMode = true),

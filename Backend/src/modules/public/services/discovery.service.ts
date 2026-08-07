@@ -183,6 +183,7 @@ export class DiscoveryService {
           coverImages: ((tenant.settings as any)?.coverImages || []).map((img: string) => transformImageUrl(img)),
           socialMedia: tenant.settings?.socialMedia || {},
           amenities: tenant.settings?.amenities || [],
+          badges: (tenant.settings as any)?.badges || [],
         onlineReservationEnabled: tenant.settings?.onlineReservationEnabled !== false,
           showMap: tenant.settings?.showMap !== false,
           showOpeningHours: tenant.settings?.showOpeningHours !== false,
@@ -197,32 +198,91 @@ export class DiscoveryService {
   }
 
   async searchTenants(query: Record<string, unknown>) {
-    try {
     const { search, category, city, limit = '50', lat, lng, radiusKm } = query;
-    const take = parseInt(limit as string);
+    // Multi-category support: `categories` accepts a comma-separated list
+    // (e.g. "Massage,Spa"). Falls back to the legacy single `category` param.
+    // A salon matches if ANY selected category matches its own category OR a
+    // bookable/visible service category (OR semantics across categories).
+    const rawCategories = (query.categories as string) || (category as string) || '';
+    const categories = rawCategories.split(',').map((c) => c.trim()).filter(Boolean);
+    const take = Math.min(parseInt(limit as string) || 50, 200);
     const userLat = lat != null ? parseFloat(String(lat)) : null;
     const userLng = lng != null ? parseFloat(String(lng)) : null;
     const radius = radiusKm != null ? parseFloat(String(radiusKm)) : null;
 
     const where: any = {
       isActive: true,
-      // Only paid/covered salons appear in public search — unpaid salons stay
-      // hidden until the owner's virement payment is approved.
       subscriptionActive: true,
     };
 
     if (search) {
+      const searchStr = search as string;
+      // Base OR covers Tenant-level text fields + exact tags match
       where.OR = [
-        { name: { contains: search as string, mode: 'insensitive' } },
-        { address: { contains: search as string, mode: 'insensitive' } },
-        { subdomain: { contains: search as string, mode: 'insensitive' } },
-        { shortDescription: { contains: search as string, mode: 'insensitive' } },
-        { tags: { has: search as string } }
+        { name: { contains: searchStr, mode: 'insensitive' } },
+        { address: { contains: searchStr, mode: 'insensitive' } },
+        { subdomain: { contains: searchStr, mode: 'insensitive' } },
+        { shortDescription: { contains: searchStr, mode: 'insensitive' } },
+        { tags: { has: searchStr } },
+        // Search within TenantSettings.description (free-text À-propos)
+        {
+          settings: {
+            is: { description: { contains: searchStr, mode: 'insensitive' } }
+          }
+        },
       ];
+
+      // Extend with tenants whose amenities / badges JSON arrays or tags array
+      // contain the search string (substring match). Prisma can't do JSON-array
+      // substring natively, so we use a raw query to collect matching tenantIds
+      // and add them as an extra OR clause. This makes "climatisé", "wifi",
+      // badge names, etc. searchable.
+      try {
+        const like = '%' + searchStr.toLowerCase() + '%';
+        const tagBadgeMatches: Array<{ tenant_id: string }> = await (prisma as any).$queryRaw`
+          SELECT t.id AS tenant_id
+          FROM tenants t
+          LEFT JOIN tenant_settings ts ON ts."tenantId" = t.id
+          WHERE (t.tags IS NOT NULL AND LOWER(t.tags::text) LIKE ${like})
+             OR (ts."amenities" IS NOT NULL AND LOWER(ts."amenities"::text) LIKE ${like})
+             OR (ts."badges" IS NOT NULL AND LOWER(ts."badges"::text) LIKE ${like})
+        `;
+        const matchingTenantIds = tagBadgeMatches.map((r) => r.tenant_id);
+        if (matchingTenantIds.length > 0) {
+          where.OR.push({ id: { in: matchingTenantIds } });
+        }
+      } catch {
+        // Ignore raw query failure — basic search still works
+      }
     }
-    
-    if (category) {
-      where.category = category as string;
+
+    if (categories.length > 0) {
+      // OR semantics across the selected categories. Per-element `equals` with
+      // `mode: 'insensitive'` is used instead of `{ in: categories }` because
+      // Prisma's `mode` is ignored on `in` queries for standard PostgreSQL
+      // text columns. A salon matches if:
+      //   a) its top-level category equals any selected category, OR
+      //   b) it offers at least one BOOKABLE/VISIBLE service whose category
+      //      equals any selected category.
+      const tenantCategoryOR = categories.map((c) => ({
+        category: { equals: c, mode: 'insensitive' as const },
+      }));
+      const serviceCategoryOR = categories.map((c) => ({
+        services: {
+          some: {
+            category: { equals: c, mode: 'insensitive' as const },
+            visibility: { in: ['BOOKABLE', 'VISIBLE'] },
+          },
+        },
+      }));
+      const catMatch = [...tenantCategoryOR, ...serviceCategoryOR];
+      if (where.OR) {
+        // Search is present: keep AND semantics (search AND categories) while
+        // the category strategies stay OR'd inside their own group.
+        where.AND = [...(where.AND ?? []), { OR: catMatch }];
+      } else {
+        where.OR = catMatch;
+      }
     }
 
     if (city) {
@@ -235,17 +295,14 @@ export class DiscoveryService {
       orderBy: { name: 'asc' },
       include: {
         settings: true,
-        _count: {
-          select: {
-            reviews: true
-          }
-        }
+        _count: { select: { reviews: true } }
       }
     });
 
     // Get reviews stats for each tenant
-    const tenantsWithStats = await Promise.all(
+    const tenantsWithStats = (await Promise.all(
       tenants.map(async (tenant) => {
+        try {
         const reviewStats = await prisma.review.aggregate({
           where: {
             tenantId: tenant.id,
@@ -288,14 +345,15 @@ export class DiscoveryService {
 
         const minPrice = servicePrices.length > 0 ? Math.min(...servicePrices) : null;
         const maxPrice = servicePrices.length > 0 ? Math.max(...servicePrices) : null;
-        const avgPrice = servicePrices.length > 0 
-          ? servicePrices.reduce((a, b) => a + b, 0) / servicePrices.length 
+        const avgPrice = servicePrices.length > 0
+          ? servicePrices.reduce((a, b) => a + b, 0) / servicePrices.length
           : null;
 
         // Calculate current status based on business hours
         const now = new Date();
-        const businessHours = tenant.settings?.businessHours as any || {};
-        const nextAvailable = calculateBusinessStatus(businessHours, now);
+        const businessHours = (tenant.settings?.businessHours as any) ?? {};
+        let nextAvailable = 'Fermé';
+        try { nextAvailable = calculateBusinessStatus(businessHours, now); } catch {}
 
         // Format price display
         let priceDisplay: string | null = null;
@@ -331,7 +389,7 @@ export class DiscoveryService {
           services: services.map(s => s.name),
           price: priceDisplay,
           priceRange: minPrice !== null && maxPrice !== null ? { min: minPrice, max: maxPrice, avg: avgPrice } : null,
-          nextAvailable: nextAvailable,
+          nextAvailable,
           coordinates:
             tenant.latitude != null && tenant.longitude != null
               ? { lat: tenant.latitude, lng: tenant.longitude }
@@ -350,8 +408,12 @@ export class DiscoveryService {
           showOpeningHours: tenant.settings?.showOpeningHours !== false,
           showReviews: tenant.settings?.showReviews !== false
         };
+        } catch (err) {
+          // Skip tenants that fail to process individually rather than crashing the whole request
+          return null;
+        }
       })
-    );
+    )).filter((t): t is NonNullable<typeof t> => t !== null);
 
     let results = tenantsWithStats;
 
@@ -371,9 +433,6 @@ export class DiscoveryService {
     }
 
     return { tenants: results.slice(0, take) };
-  } catch (error) {
-    throw error;
-  }
   }
 
   async getCategories() {

@@ -5,10 +5,12 @@ import '../services/discovery_service.dart';
 import '../services/location_service.dart';
 
 class HomeViewModel extends ChangeNotifier {
-  String searchCategory = 'Prestations (coupe, barbier...)';
+  /// Search-bar label — derived from the selected categories (multi-select).
   /// Empty = no city filter (show all complete salons).
   String searchCity = '';
-  String? selectedCategory;
+  /// Categories currently selected on the carousel (multi-select).
+  /// Empty = show all salons (no category filter).
+  final Set<String> selectedCategories = {};
   List<VenueItem> venues = [];
   bool loading = true;
   String? error;
@@ -39,19 +41,19 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> loadTenants({String? category}) async {
+  Future<void> loadTenants({List<String>? categories}) async {
     loading = true;
     error = null;
     notifyListeners();
     try {
-      final cat = category ?? selectedCategory;
+      final cats = categories ?? selectedCategories.toList();
       final city = searchCity.isNotEmpty ? searchCity : null;
       // Radius filter first when GPS on (nearby). Emulator GPS (e.g. Mountain
       // View) often yields 0 Casablanca salons — fall back to all, still sorted
       // by distance. Never use mock allVenues (fake ids 1/2 → detail 404).
       var tenants = await discoveryService.searchTenants(
         city: city,
-        category: cat,
+        categories: cats,
         lat: userLat,
         lng: userLng,
         radiusKm: hasUserLocation ? 10 : null,
@@ -60,7 +62,7 @@ class HomeViewModel extends ChangeNotifier {
       if (tenants.isEmpty && hasUserLocation) {
         tenants = await discoveryService.searchTenants(
           city: city,
-          category: cat,
+          categories: cats,
           lat: userLat,
           lng: userLng,
           limit: 50,
@@ -118,23 +120,29 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setSearchCategory(String v) {
-    searchCategory = v;
+
+  /// Toggle a category chip on/off. Deselecting the last one → show all.
+  void toggleCategory(String label) {
+    if (!selectedCategories.remove(label)) {
+      selectedCategories.add(label);
+    }
     notifyListeners();
   }
 
-  void setCategory(String? cat) {
-    selectedCategory = cat;
+  /// Clear all category selections (show all salons).
+  void clearCategories() {
+    if (selectedCategories.isEmpty) return;
+    selectedCategories.clear();
     notifyListeners();
   }
 
-  List<VenueItem> get filteredVenues {
-    if (selectedCategory == null || selectedCategory!.isEmpty) return venues;
-    final cat = selectedCategory!.toLowerCase();
-    return venues
-        .where((v) =>
-            v.category.toLowerCase().contains(cat) ||
-            cat.contains(v.category.toLowerCase()))
-        .toList();
+  String get searchCategory {
+    if (selectedCategories.isEmpty) return 'Prestations (coupe, barbier...)'; // default
+    if (selectedCategories.length == 1) return selectedCategories.first;
+    return '${selectedCategories.length} catégories'; // e.g. "3 catégories"
   }
+
+  /// The backend already applies the category filter (matching both the salon's
+  /// own category and its service categories), so the fetched list is final.
+  List<VenueItem> get filteredVenues => venues;
 }

@@ -12,6 +12,7 @@ import { clientAuthService } from './services/client-auth.service';
 import { favoritesService } from './services/favorites.service';
 import { clientAccountService } from './services/client-account.service';
 import { earlyAccessService } from './services/early-access.service';
+import { subscriptionService } from '../subscription/subscription.service';
 
 function handlePublicError(error: unknown, res: Response, next: NextFunction): boolean {
   if (error instanceof HttpError) {
@@ -89,6 +90,26 @@ export class PublicController {
   async getCategories(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await discoveryService.getCategories();
+      res.json(result);
+    } catch (error) {
+      if (handlePublicError(error, res, next)) return;
+      next(error);
+    }
+  }
+
+  async getFeaturedEmployees(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await tenantCatalogService.getFeaturedEmployees(req.query);
+      res.json(result);
+    } catch (error) {
+      if (handlePublicError(error, res, next)) return;
+      next(error);
+    }
+  }
+
+  async getPublicBillingConfig(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await subscriptionService.getPublicBillingConfig();
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;

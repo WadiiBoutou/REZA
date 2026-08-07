@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Star, Calendar, User, ArrowRight, Quote } from 'lucide-react';
 import { motion } from 'framer-motion';
 import api from '../lib/api';
-import { getRelativeDate, formatMoroccoDate, filterCompleteTenants } from '../lib/utils';
+import { getRelativeDate, formatMoroccoDate, filterCompleteTenants, getImageUrl } from '../lib/utils';
 
 const TestimonialsAndBlogs = () => {
   const [hoveredTestimonial, setHoveredTestimonial] = useState<number | null>(null);
@@ -36,7 +36,11 @@ const TestimonialsAndBlogs = () => {
                 city: tenant.city || '',
                 rating: review.rating || 5,
                 text: review.comment || '',
-                avatar: review.client ? (review.client.firstName?.[0] || 'C') : 'C',
+                // REAL client avatar from the review record (falls back to initials)
+                avatar: getImageUrl(review.client?.avatar || null),
+                initials: review.client
+                  ? `${(review.client.firstName?.[0] || '').toUpperCase()}${(review.client.lastName?.[0] || '').toUpperCase()}` || 'C'
+                  : 'C',
                 date: review.createdAt ? getRelativeDate(review.createdAt) : 'Récemment',
                 type: 'Client',
                 tenantName: tenant.name,
@@ -54,155 +58,11 @@ const TestimonialsAndBlogs = () => {
           .filter((t): t is any => t !== null)
           .slice(0, 6); // Limit to 6 testimonials
         
-        // If we don't have enough testimonials, add fallback static ones
-        const fallbackTestimonials = [
-          {
-            id: 1,
-            name: "Sara",
-            role: "Cliente régulière",
-            city: "",
-            rating: 5,
-            text: "L'application est intuitive et me permet de voir les disponibilités en temps réel. Je ne retournerai jamais aux réservations par téléphone !",
-            avatar: "S",
-            date: "Il y a 2 jours",
-            type: "Client"
-          },
-          {
-            id: 2,
-            name: "Aya",
-            role: "Prothésiste ongulaire à Rabat",
-            city: "Rabat",
-            rating: 5,
-            text: "Grâce à REZA, j'ai pu attirer une clientèle plus jeune et plus connectée. Mon institut a gagné en modernité !",
-            avatar: "A",
-            date: "Il y a 5 jours",
-            type: "Professionnel"
-          },
-          {
-            id: 3,
-            name: "Karim",
-            role: "Nouveau client",
-            city: "",
-            rating: 5,
-            text: "Je peux facilement comparer les services et les prix avant de réserver. C'est transparent et pratique !",
-            avatar: "K",
-            date: "Il y a 1 semaine",
-            type: "Client"
-          },
-          {
-            id: 4,
-            name: "Amina",
-            role: "Gérante d'un salon de coiffure à Marrakech",
-            city: "Marrakech",
-            rating: 5,
-            text: "REZA a transformé la façon dont je gère mon salon. Les réservations en ligne ont augmenté ma clientèle de 30% !",
-            avatar: "A",
-            date: "Il y a 1 semaine",
-            type: "Professionnel"
-          },
-          {
-            id: 5,
-            name: "Mohammed",
-            role: "Client fidèle",
-            city: "",
-            rating: 5,
-            text: "Service impeccable ! J'ai pu réserver mon rendez-vous en quelques clics, sans attente ni appel téléphonique.",
-            avatar: "M",
-            date: "Il y a 2 semaines",
-            type: "Client"
-          },
-          {
-            id: 6,
-            name: "Badr",
-            role: "Propriétaire d'un barber à Tanger",
-            city: "Tanger",
-            rating: 5,
-            text: "Les rappels automatiques ont réduit les rendez-vous manqués de 80%. Un vrai gain de temps et d'argent !",
-            avatar: "B",
-            date: "Il y a 2 semaines",
-            type: "Professionnel"
-          }
-        ];
-        
-        // Combine fetched testimonials with fallback ones to ensure we always have 6
-        const combinedTestimonials = [...fetchedTestimonials];
-        if (combinedTestimonials.length < 6) {
-          const needed = 6 - combinedTestimonials.length;
-          combinedTestimonials.push(...fallbackTestimonials.slice(0, needed));
-        }
-        
-        setTestimonials(combinedTestimonials.slice(0, 6));
+        // Only real reviews — never pad with static/fake testimonials.
+        setTestimonials(fetchedTestimonials.slice(0, 6));
       } catch (error) {
         console.error('Error fetching testimonials:', error);
-        // Fallback to static testimonials on error
-        setTestimonials([
-    {
-      id: 1,
-      name: "Sara",
-      role: "Cliente régulière",
-      city: "",
-      rating: 5,
-      text: "L'application est intuitive et me permet de voir les disponibilités en temps réel. Je ne retournerai jamais aux réservations par téléphone !",
-      avatar: "S",
-      date: "Il y a 2 jours",
-      type: "Client"
-    },
-    {
-      id: 2,
-      name: "Aya",
-      role: "Prothésiste angulaire à Rabat",
-      city: "Rabat",
-      rating: 5,
-      text: "Grâce à REZA, j'ai pu attirer une clientèle plus jeune et plus connectée. Mon institut a gagné en modernité !",
-      avatar: "A",
-      date: "Il y a 5 jours",
-      type: "Professionnel"
-    },
-    {
-      id: 3,
-      name: "Karim",
-      role: "Nouveau client",
-      city: "",
-      rating: 5,
-      text: "Je peux facilement comparer les services et les prix avant de réserver. C'est transparent et pratique !",
-      avatar: "K",
-      date: "Il y a 1 semaine",
-      type: "Client"
-    },
-    {
-      id: 4,
-      name: "Amina",
-      role: "Gérante d'un salon de coiffure à Marrakech",
-      city: "Marrakech",
-      rating: 5,
-      text: "REZA a transformé la façon dont je gère mon salon. Les réservations en ligne ont augmenté ma clientèle de 30% !",
-      avatar: "A",
-      date: "Il y a 1 semaine",
-      type: "Professionnel"
-    },
-    {
-      id: 5,
-      name: "Mohammed",
-      role: "Client fidèle",
-      city: "",
-      rating: 5,
-      text: "Service impeccable ! J'ai pu réserver mon rendez-vous en quelques clics, sans attente ni appel téléphonique.",
-      avatar: "M",
-      date: "Il y a 2 semaines",
-      type: "Client"
-    },
-    {
-      id: 6,
-      name: "Badr",
-      role: "Propriétaire d'un barber à Tanger",
-      city: "Tanger",
-      rating: 5,
-      text: "Les rappels automatiques ont réduit les rendez-vous manqués de 80%. Un vrai gain de temps et d'argent !",
-      avatar: "B",
-      date: "Il y a 2 semaines",
-      type: "Professionnel"
-    }
-        ]);
+        setTestimonials([]);
       } finally {
         setLoading(false);
       }
@@ -401,9 +261,9 @@ const TestimonialsAndBlogs = () => {
                     transition={{ duration: 0.3 }}
                     style={{ pointerEvents: hoveredTestimonial === testimonial.id ? 'auto' : 'none' }}
                   >
-                    {/* Profile Image from randomuser.me - gender matched */}
+                    {/* Profile Image — REAL client avatar (falls back to initials) */}
                     <motion.div
-                      className="w-24 h-24 rounded-full overflow-hidden mb-4 border-4 border-white/30"
+                      className="w-24 h-24 rounded-full overflow-hidden mb-4 border-4 border-white/30 bg-white/15 flex items-center justify-center"
                       initial={{ scale: 1, rotate: 0, opacity: 0 }}
                       animate={{
                         scale: hoveredTestimonial === testimonial.id ? 1.05 : 1,
@@ -412,21 +272,17 @@ const TestimonialsAndBlogs = () => {
                       }}
                       transition={{ delay: 0.1, duration: 0.4, ease: "easeOut" }}
                     >
-                      <img 
-                        src={(() => {
-                          const testimonialImages = {
-                            1: "https://images.pexels.com/photos/1649735/pexels-photo-1649735.jpeg?_gl=1*14hk24c*_ga*MTkyNzg5MTU2NC4xNzU5OTk3NzYy*_ga_8JE65Q40S6*czE3NjMwNTI5MjgkbzYkZzEkdDE3NjMwNTQ3MjgkajU3JGwwJGgw", // Sara (woman)
-                            2: "https://images.pexels.com/photos/18041953/pexels-photo-18041953.jpeg?_gl=1*zk2ewd*_ga*MTkyNzg5MTU2NC4xNzU5OTk3NzYy*_ga_8JE65Q40S6*czE3NjMwNTI5MjgkbzYkZzEkdDE3NjMwNTQ1OTckajQ5JGwwJGgw", // Sofia Mansouri (woman)
-                            3: "https://images.pexels.com/photos/926705/pexels-photo-926705.jpeg?_gl=1*14hk24c*_ga*MTkyNzg5MTU2NC4xNzU5OTk3NzYy*_ga_8JE65Q40S6*czE3NjMwNTI5MjgkbzYkZzEkdDE3NjMwNTQ3MjgkajU3JGwwJGgw", // Karim (man)
-                            4: "https://images.pexels.com/photos/8688968/pexels-photo-8688968.jpeg?_gl=1*zk2ewd*_ga*MTkyNzg5MTU2NC4xNzU5OTk3NzYy*_ga_8JE65Q40S6*czE3NjMwNTI5MjgkbzYkZzEkdDE3NjMwNTQ1OTckajQ5JGwwJGgw", // Amina (woman)
-                            5: "https://images.pexels.com/photos/27897903/pexels-photo-27897903.jpeg?_gl=1*1aw9geu*_ga*MTkyNzg5MTU2NC4xNzU5OTk3NzYy*_ga_8JE65Q40S6*czE3NjMwNTI5MjgkbzYkZzEkdDE3NjMwNTQ3MDkkajkkbDAkaDA.",    // Mohamed Tazi (man)
-                            6: "https://images.pexels.com/photos/4012427/pexels-photo-4012427.jpeg?_gl=1*14er2ne*_ga*MTkyNzg5MTU2NC4xNzU5OTk3NzYy*_ga_8JE65Q40S6*czE3NjMwNTI5MjgkbzYkZzEkdDE3NjMwNTQ3MjgkajU3JGwwJGgw", // Badr (man)
-                          };
-                          return testimonialImages[testimonial.id as keyof typeof testimonialImages];
-                        })()}
-                        alt={testimonial.name}
-                        className="w-full h-full object-cover"
-                      />
+                      {testimonial.avatar ? (
+                        <img
+                          src={testimonial.avatar}
+                          alt={testimonial.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-3xl font-bold text-white">
+                          {testimonial.initials || 'C'}
+                        </span>
+                      )}
                     </motion.div>
 
                     {/* User Info */}

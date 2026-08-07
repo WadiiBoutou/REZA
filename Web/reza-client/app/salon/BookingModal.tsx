@@ -1138,7 +1138,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
     if (bookingStep === 2) {
       // 2-phase employee choice:
       //   Phase 0 → 'Sans préférence': skip to date step
-      //   Phase 0 → 'Sélectionner par prestation': advance to phase 1
+      //   Phase 0 → 'Sélectionner par personnel': advance to phase 1
       //   Phase 1 → go to date step
       if (step2Phase === 0) {
         if (perServiceMode) {
@@ -1624,7 +1624,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
               <div className="space-y-6">
                 <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
                   <User className="w-5 h-5 text-gray-700" />
-                  {step2Phase === 0 ? 'Choix du professionnel' : 'Professionnel par prestation'}
+                  {step2Phase === 0 ? 'Choix du professionnel' : 'Professionnel par personnel'}
                 </h3>
 
                 {step2Phase === 0 && (
@@ -1662,7 +1662,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                         </p>
                       </div>
 
-                      {/* Option 2: Sélectionner par prestation */}
+                      {/* Option 2: Sélectionner par personnel */}
                       <div
                         onClick={() => {
                           setPerServiceMode(true);
@@ -1684,7 +1684,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                             </div>
                           )}
                         </div>
-                        <h4 className="font-bold text-sm text-gray-900 mb-1">Sélectionner un employé de choix</h4>
+                        <h4 className="font-bold text-sm text-gray-900 mb-1">Sélectionner par personnel</h4>
                         <p className="text-xs text-gray-500">
                           Choisissez un professionnel différent pour chaque prestation.
                         </p>

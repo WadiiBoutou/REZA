@@ -8,6 +8,19 @@ export interface EmployeeTier {
   price: number;
 }
 
+export interface SalonBill {
+  id: string;
+  name: string;
+  subscriptionActive: boolean;
+  salonCovered: boolean;
+  employeeCount: number;
+  employeesPaid: number;
+  billableEmployees: number;
+  salonFee: number; // one-time setup fee — only charged while the salon is NOT yet covered
+  employeeFee: number; // tiered monthly fee for the salon's billable employees
+  total: number;
+}
+
 export interface BillBreakdown {
   config: {
     pricePerSalon: number;
@@ -30,6 +43,8 @@ export interface BillBreakdown {
   status: string;
   subscribedAt: Date | null;
   currentPeriodEnd: Date | null;
+  /** Per-salon breakdown — used by the declaration selection UI. */
+  salons: SalonBill[];
 }
 
 /** A paid period is active when the subscription is ACTIVE and not past its end. */
@@ -42,12 +57,13 @@ export function isPeriodActive(sub: { status: string; currentPeriodEnd: Date | n
 
 export class SubscriptionService {
   private async getConfig() {
-    // Auto-create with hardcoded pricing on first use:
+    // Auto-create with hardcoded pricing on first use (fallback defaults):
     //   Salon: 1000 MAD one-time
-    //   Employees (monthly): 1→100, 2-5→90, 6+→80 MAD/employee, no free threshold
+    //   Employees (monthly): 1→250, 2-3→150, 4-5→100, 6+→80 MAD/employee
     const HARDCODED_TIERS = [
-      { min: 1, max: 1, price: 100 },
-      { min: 2, max: 5, price: 90 },
+      { min: 1, max: 1, price: 250 },
+      { min: 2, max: 3, price: 150 },
+      { min: 4, max: 5, price: 100 },
       { min: 6, max: null, price: 80 },
     ];
     const config = await prisma.billingConfig.upsert({
@@ -60,11 +76,10 @@ export class SubscriptionService {
         employeeTiers: HARDCODED_TIERS,
         currency: 'MAD',
       },
-      update: {
-        // Keep salon price as-is but enforce correct threshold and tiers
-        freeEmployeeThreshold: 0,
-        employeeTiers: HARDCODED_TIERS,
-      },
+      // Intentionally empty: the superadmin configures thresholds/tiers through
+      // PUT /superadmin/billing-config. Overwriting them here would silently
+      // revert those edits on every bill computation.
+      update: {},
     });
     return config;
   }
@@ -109,14 +124,21 @@ export class SubscriptionService {
   }
 
   /**
-   * Compute the live bill for an account under the virement model:
-   * - Salon fee: one-time per salon not yet covered (cumulative salonsPaid).
-   * - Employee fee: per employee beyond the free threshold and the covered
-   *   count, for the current paid period (per-salon Tenant.employeesPaid).
-   * When the current period has lapsed, employee coverage resets to 0
-   * (the admin must re-pay the employee fee for the new period).
+   * Compute the live bill for an account under the virement model.
+   *
+   * Per salon:
+   * - One-time salon fee (pricePerSalon) while the salon is NOT yet covered
+   *   (Tenant.salonCovered=false). Once covered it stays covered forever.
+   * - Monthly employee fee for the salon's employees beyond the free threshold
+   *   and the already-paid count, for the current paid period. When the period
+   *   has lapsed, employee coverage resets to 0 (the admin must re-pay it).
+   *
+   * The admin explicitly picks which salons a declaration covers (Q1/Q2): pass
+   * opts.salonIds to compute the bill for ONLY that selection. Without it, all
+   * active salons are included. The response always carries the full per-salon
+   * breakdown so the UI can render the selection list.
    */
-  async computeBill(accountId: string): Promise<BillBreakdown> {
+  async computeBill(accountId: string, opts?: { salonIds?: string[] }): Promise<BillBreakdown> {
     const config = await this.getConfig();
     const employeeTiers = SubscriptionService.parseEmployeeTiers(config.employeeTiers);
 
@@ -139,31 +161,45 @@ export class SubscriptionService {
     const periodActive = isPeriodActive(sub);
     const salons = account.tenants;
 
-    const salonsPaid = sub?.salonsPaid ?? 0;
-    const salonsDue = Math.max(0, salons.length - salonsPaid);
-    const salonFee = salonsDue * config.pricePerSalon;
+    // Explicit selection restricts which salons contribute to the bill.
+    const selected = new Set(opts?.salonIds ?? salons.map((t) => t.id));
 
-    let employeeCount = 0;
-    let employeesCovered = 0;
-    let employeesDue = 0;
-    let employeeFee = 0;
-    const employeesBySalon: Record<string, number> = {};
-
-    for (const t of salons) {
+    // Per-salon breakdown
+    const salonsBills: SalonBill[] = salons.map((t) => {
       const count = t._count.employees;
       const covered = periodActive ? (t.employeesPaid ?? 0) : 0;
       const billable = Math.max(0, count - config.freeEmployeeThreshold - covered);
-      employeeCount += count;
-      employeesCovered += Math.min(count, config.freeEmployeeThreshold + covered);
-      if (billable > 0) {
-        employeesBySalon[t.id] = billable;
-        employeesDue += billable;
-        // Progressive tiered rate per salon when configured, else the flat rate.
-        employeeFee += employeeTiers
-          ? SubscriptionService.computeTieredFee(billable, employeeTiers)
-          : billable * config.pricePerEmployee;
-      }
+      const salonFee = t.salonCovered ? 0 : config.pricePerSalon;
+      const employeeFee = employeeTiers
+        ? SubscriptionService.computeTieredFee(billable, employeeTiers)
+        : billable * config.pricePerEmployee;
+      return {
+        id: t.id,
+        name: t.name,
+        subscriptionActive: t.subscriptionActive,
+        salonCovered: t.salonCovered,
+        employeeCount: count,
+        employeesPaid: covered,
+        billableEmployees: billable,
+        salonFee,
+        employeeFee,
+        total: Math.round((salonFee + employeeFee) * 100) / 100,
+      };
+    });
+
+    // Aggregate over the selection only
+    const included = salonsBills.filter((s) => selected.has(s.id));
+    const salonsDue = included.filter((s) => !s.salonCovered).length;
+    const salonFee = included.reduce((sum, s) => sum + s.salonFee, 0);
+    const employeesDue = included.reduce((sum, s) => sum + s.billableEmployees, 0);
+    const employeeFee = included.reduce((sum, s) => sum + s.employeeFee, 0);
+
+    const employeesBySalon: Record<string, number> = {};
+    for (const s of included) {
+      if (s.billableEmployees > 0) employeesBySalon[s.id] = s.billableEmployees;
     }
+
+    const salonsPaid = salonsBills.filter((s) => s.salonCovered).length;
 
     return {
       config: {
@@ -177,8 +213,8 @@ export class SubscriptionService {
       salonsPaid,
       salonsDue,
       salonFee,
-      employeeCount,
-      employeesCovered,
+      employeeCount: included.reduce((sum, s) => sum + s.employeeCount, 0),
+      employeesCovered: included.reduce((sum, s) => sum + s.employeesPaid, 0),
       employeesDue,
       employeeFee,
       total: Math.round((salonFee + employeeFee) * 100) / 100,
@@ -187,6 +223,7 @@ export class SubscriptionService {
       status: sub?.status ?? 'NONE',
       subscribedAt: sub?.subscribedAt ?? null,
       currentPeriodEnd: sub?.currentPeriodEnd ?? null,
+      salons: salonsBills,
     };
   }
 
@@ -219,12 +256,7 @@ export class SubscriptionService {
         salonsPaid: bill.salonsPaid,
       },
       bill,
-      salons: ctx.salons.map((s) => ({
-        id: s.id,
-        name: s.name,
-        subscriptionActive: s.subscriptionActive,
-        employeesPaid: bill.periodActive ? (s.employeesPaid ?? 0) : 0,
-      })),
+      salons: bill.salons,
       payments: payments.map((p) => ({
         id: p.id,
         amount: p.amount,
@@ -242,17 +274,35 @@ export class SubscriptionService {
   }
 
   /**
-   * Declare a virement payment. The backend re-computes the live bill and
-   * records a coverage snapshot — the superadmin's approval applies exactly
-   * this snapshot, so the declared amount always matches what gets covered.
+   * Declare a virement payment for an EXPLICIT set of salons (the admin picks
+   * which salons to cover — Q1/Q2). The backend computes that selection's bill
+   * and records a per-salon coverage snapshot; the superadmin's approval applies
+   * exactly this snapshot, so the declared amount always matches what's covered.
    */
-  async declarePayment(userId: string, input: { amount?: number; reference?: string; payerName?: string }) {
+  async declarePayment(
+    userId: string,
+    input: { amount?: number; reference?: string; payerName?: string; salonIds?: string[] }
+  ) {
     const ctx = await accountService.getContextForUser(userId);
     if (!ctx.account) {
       throw { status: 404, error: 'No account', message: 'Aucun compte associé' };
     }
 
-    const bill = await this.computeBill(ctx.account.id);
+    // Validate the requested salons belong to this account before billing
+    const requested = input.salonIds?.length ? input.salonIds : undefined;
+    if (requested) {
+      const owned = new Set(ctx.salons.map((s) => s.id));
+      const invalid = requested.filter((id) => !owned.has(id));
+      if (invalid.length > 0) {
+        throw {
+          status: 400,
+          error: 'Invalid salons',
+          message: 'Certains salons sélectionnés ne font pas partie de votre compte.',
+        };
+      }
+    }
+
+    const bill = await this.computeBill(ctx.account.id, requested ? { salonIds: requested } : undefined);
     if (bill.total <= 0) {
       throw { status: 400, error: 'Nothing due', message: "Votre facturation est entièrement réglée. Aucun paiement à déclarer." };
     }
@@ -269,9 +319,9 @@ export class SubscriptionService {
       };
     }
 
-    // The declared amount must match the current bill exactly — approval applies
-    // the coverage snapshot, so under- or over-payments would silently grant the
-    // wrong coverage. The frontend prefills the exact bill.
+    // The declared amount must match the selection's bill exactly — approval
+    // applies the coverage snapshot, so under- or over-payments would silently
+    // grant the wrong coverage. The frontend prefills the exact total.
     const amount = input.amount !== undefined && input.amount > 0 ? input.amount : bill.total;
     if (amount <= 0) {
       throw { status: 400, error: 'Invalid amount', message: 'Montant invalide' };
@@ -283,6 +333,18 @@ export class SubscriptionService {
         message: `Le montant déclaré doit correspondre à votre facture (${bill.total} ${bill.config.currency}).`,
       };
     }
+
+    // Per-salon snapshot: exactly which salons get covered + how many employees
+    const salonsSnapshot = bill.salons
+      .filter((s) => (requested ? requested.includes(s.id) : !s.salonCovered || s.billableEmployees > 0))
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        salonCovered: s.salonCovered,
+        billableEmployees: s.billableEmployees,
+        salonFee: s.salonFee,
+        employeeFee: s.employeeFee,
+      }));
 
     const payment = await prisma.subscriptionPayment.create({
       data: {
@@ -296,11 +358,66 @@ export class SubscriptionService {
           salonsDue: bill.salonsDue,
           employeesDue: bill.employeesDue,
           employeesBySalon: bill.employeesBySalon,
+          salons: salonsSnapshot,
         } as object,
       },
     });
 
-    log.log(`[Billing] Payment ${payment.id} declared for account ${ctx.account.id} (${amount} ${bill.config.currency})`);
+    log.log(`[Billing] Payment ${payment.id} declared for account ${ctx.account.id} (${amount} ${bill.config.currency}, salons: ${salonsSnapshot.map((s) => s.name).join(', ')})`);
+
+    // Notify all global superadmins — they review virement declarations.
+    // Superadmins are tenant-less, so the notification carries the declaring
+    // account's first salon as tenantId and the superadmin's userId; a dedicated
+    // superadmin notifications endpoint (querying by userId only) surfaces it.
+    try {
+      const [superAdmins, owner] = await Promise.all([
+        prisma.user.findMany({
+          where: { role: 'SUPER_ADMIN', isActive: true, tenantId: null },
+          select: { id: true },
+        }),
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { firstName: true, lastName: true, email: true },
+        }),
+      ]);
+
+      const tenantId = ctx.salons[0]?.id;
+      if (superAdmins.length > 0 && tenantId) {
+        const ownerName =
+          [owner?.firstName, owner?.lastName].filter(Boolean).join(' ').trim() || owner?.email || 'Un administrateur';
+        const salonsLabel =
+          salonsSnapshot.map((s) => {
+            const parts = [s.name];
+            if (s.billableEmployees > 0) {
+              parts.push(`${s.billableEmployees} employé${s.billableEmployees > 1 ? 's' : ''}`);
+            }
+            return parts.join(' — ');
+          }).join(', ') || ctx.salons.map((s) => s.name).join(', ');
+        await Promise.all(
+          superAdmins.map((sa) =>
+            prisma.notification.create({
+              data: {
+                tenantId,
+                userId: sa.id,
+                type: 'PAYMENT_DECLARED',
+                title: 'Nouvelle déclaration de virement',
+                message: `${ownerName} (${salonsLabel}) a déclaré ${payment.amount.toLocaleString('fr-FR')} ${payment.currency}.`,
+                link: '/superadmin?tab=payments',
+                metadata: {
+                  paymentId: payment.id,
+                  accountId: ctx.account.id,
+                  amount: payment.amount,
+                } as object,
+              },
+            })
+          )
+        );
+        log.log(`[Billing] ${superAdmins.length} superadmin(s) notified of payment ${payment.id}`);
+      }
+    } catch (notificationError) {
+      // Notification must never block the declaration itself.
+      log.error('Error creating PAYMENT_DECLARED notification:', notificationError);
+    }
 
     return { payment: { id: payment.id, amount: payment.amount, status: payment.status, createdAt: payment.createdAt } };
   }
@@ -317,6 +434,21 @@ export class SubscriptionService {
       take: 50,
     });
     return { payments };
+  }
+
+  /**
+   * Public pricing info for the pro-info landing page: the one-time per-salon
+   * fee plus the marginal monthly employee tiers. No account/owner data.
+   */
+  async getPublicBillingConfig() {
+    const config = await this.getConfig();
+    return {
+      pricePerSalon: config.pricePerSalon,
+      pricePerEmployee: config.pricePerEmployee,
+      currency: config.currency || 'MAD',
+      freeEmployeeThreshold: config.freeEmployeeThreshold ?? 0,
+      employeeTiers: SubscriptionService.parseEmployeeTiers(config.employeeTiers),
+    };
   }
 }
 

@@ -787,6 +787,7 @@ async function fillTenant(prismaClient: PrismaClient, ctx: TenantCtx, v: FillVol
           lastName: 'Refill',
           email: `refill${i}@email.ma`,
           phone: `+2126${randInt(10000000, 99999999)}`,
+          avatar: avatarUrlFor(`Client${i}`, 'Refill', `refill${i}@email.ma`),
           status: 'ACTIVE',
         },
       });

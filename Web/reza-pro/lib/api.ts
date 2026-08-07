@@ -496,7 +496,7 @@ class ApiClient {
   }
 
   /** Declare a virement payment for the current bill. */
-  async declarePayment(input: { amount?: number; reference?: string; payerName?: string } = {}) {
+  async declarePayment(input: { amount?: number; reference?: string; payerName?: string; salonIds?: string[] } = {}) {
     return this.request<{ payment: { id: string; amount: number; status: string; createdAt: string } }>(
       '/subscription/declare-payment',
       { method: 'POST', body: JSON.stringify(input) }
@@ -574,6 +574,29 @@ class ApiClient {
     return this.request<{ success: boolean }>(`/superadmin/payments/${paymentId}/reject`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
+    });
+  }
+
+  /** Superadmin notifications (tenant-less; PAYMENT_DECLARED etc.). */
+  async superAdminGetNotifications(params?: { unreadOnly?: boolean; limit?: number }) {
+    const query = new URLSearchParams();
+    if (params?.unreadOnly) query.append('unreadOnly', 'true');
+    if (params?.limit) query.append('limit', String(params.limit));
+    const qs = query.toString();
+    return this.request<{ notifications: any[]; unreadCount: number }>(
+      `/superadmin/notifications${qs ? `?${qs}` : ''}`
+    );
+  }
+
+  async superAdminMarkNotificationRead(notificationId: string) {
+    return this.request<{ success: boolean }>(`/superadmin/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+    });
+  }
+
+  async superAdminMarkAllNotificationsRead() {
+    return this.request<{ success: boolean }>('/superadmin/notifications/read-all', {
+      method: 'PATCH',
     });
   }
 

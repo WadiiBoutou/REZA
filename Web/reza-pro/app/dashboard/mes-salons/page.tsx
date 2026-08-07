@@ -12,7 +12,6 @@ import {
   X,
   Pencil,
   Trash2,
-  Clock,
   Landmark,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -64,24 +63,19 @@ export default function MesSalonsPage() {
     setSalonFilter,
     effectiveSalonIds,
     createSalon,
-    updateSalon,
     deleteSalon,
   } = useAuth();
 
   const [showAddForm, setShowAddForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [coords, setCoords] = useState<LatLng | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
-  const [existingCover, setExistingCover] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Salon | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  const isEditing = !!editingId;
 
   useEffect(() => {
     return () => {
@@ -90,7 +84,7 @@ export default function MesSalonsPage() {
   }, [coverPreview]);
 
   const formComplete = useMemo(() => {
-    const hasCover = !!coverFile || (!!existingCover && isEditing);
+    const hasCover = !!coverFile;
     return (
       form.name.trim().length > 0 &&
       form.email.trim().length > 0 &&
@@ -101,7 +95,7 @@ export default function MesSalonsPage() {
       hasCover &&
       coords != null
     );
-  }, [form, coverFile, existingCover, isEditing, coords]);
+  }, [form, coverFile, coords]);
 
   const resetForm = () => {
     setForm(emptyForm);
@@ -109,8 +103,6 @@ export default function MesSalonsPage() {
     if (coverPreview?.startsWith('blob:')) URL.revokeObjectURL(coverPreview);
     setCoverFile(null);
     setCoverPreview(null);
-    setExistingCover(null);
-    setEditingId(null);
   };
 
   const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,32 +120,6 @@ export default function MesSalonsPage() {
     if (coverPreview?.startsWith('blob:')) URL.revokeObjectURL(coverPreview);
     setCoverFile(file);
     setCoverPreview(URL.createObjectURL(file));
-  };
-
-  const openEdit = (salon: Salon) => {
-    setShowAddForm(false);
-    setError(null);
-    setEditingId(salon.id);
-    setForm({
-      name: salon.name || '',
-      email: salon.email || '',
-      phone: salon.phone || '',
-      address: salon.address || '',
-      city: salon.city || '',
-      category: salon.category || '',
-      shortDescription: salon.shortDescription || '',
-    });
-    setCoords(
-      salon.latitude != null && salon.longitude != null
-        ? { lat: salon.latitude, lng: salon.longitude }
-        : null
-    );
-    if (coverPreview?.startsWith('blob:')) URL.revokeObjectURL(coverPreview);
-    setCoverFile(null);
-    const url = coverUrl(salon.coverImage);
-    setExistingCover(salon.coverImage || null);
-    setCoverPreview(url);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -185,35 +151,6 @@ export default function MesSalonsPage() {
     }
   };
 
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingId) return;
-    setError(null);
-    if (!formComplete || !coords) {
-      setError('Tous les champs obligatoires et la position sur la carte sont requis');
-      return;
-    }
-    setSubmitting(true);
-    const result = await updateSalon(editingId, {
-      name: form.name.trim(),
-      email: form.email.trim(),
-      phone: form.phone.trim(),
-      address: form.address.trim() || '',
-      city: form.city.trim(),
-      category: form.category.trim(),
-      shortDescription: form.shortDescription.trim(),
-      latitude: coords.lat,
-      longitude: coords.lng,
-      ...(coverFile ? { coverImage: coverFile } : {}),
-    });
-    setSubmitting(false);
-    if (result.success) {
-      resetForm();
-    } else {
-      setError(result.error || 'Impossible de mettre à jour le salon');
-    }
-  };
-
   const handleFocusSalon = (tenantId: string) => {
     setSwitching(tenantId);
     setSalonFilter([tenantId]);
@@ -227,7 +164,6 @@ export default function MesSalonsPage() {
     const result = await deleteSalon(deleteTarget.id);
     setDeleting(false);
     if (result.success) {
-      if (editingId === deleteTarget.id) resetForm();
       setDeleteTarget(null);
     } else {
       setError(result.error || 'Impossible de supprimer le salon');
@@ -235,16 +171,14 @@ export default function MesSalonsPage() {
     }
   };
 
-  const previewSrc = coverPreview || (existingCover ? coverUrl(existingCover) : null);
+  const previewSrc = coverPreview;
 
-  const renderSalonForm = (mode: 'create' | 'edit') => (
+  const renderSalonForm = () => (
     <form
-      onSubmit={mode === 'create' ? handleCreate : handleUpdate}
+      onSubmit={handleCreate}
       className="rounded-2xl border border-gray-200 bg-white p-6 mb-8"
     >
-      <h2 className="text-base font-semibold text-gray-900 mb-4">
-        {mode === 'create' ? 'Nouveau salon' : 'Modifier le salon'}
-      </h2>
+      <h2 className="text-base font-semibold text-gray-900 mb-4">Nouveau salon</h2>
       <p className="text-xs text-gray-500 mb-4">
         Tous les champs marqués * sont obligatoires pour que le salon puisse apparaître côté client.
       </p>
@@ -313,7 +247,7 @@ export default function MesSalonsPage() {
         </div>
         <div className="md:col-span-2">
           <SalonLocationPicker
-            key={mode === 'edit' ? `edit-${editingId}` : 'create'}
+            key="create"
             value={coords}
             onChange={setCoords}
             onAddressSuggest={(suggestion) => {
@@ -331,7 +265,7 @@ export default function MesSalonsPage() {
         </div>
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Image de couverture {mode === 'create' ? '*' : '(optionnel)'}
+            Image de couverture *
           </label>
           {!previewSrc ? (
             <label className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 px-4 py-8 cursor-pointer hover:border-[#002366] hover:bg-[#002366]/5 transition-all">
@@ -362,20 +296,18 @@ export default function MesSalonsPage() {
                     onChange={handleCoverChange}
                   />
                 </label>
-                {mode === 'create' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (coverPreview?.startsWith('blob:')) URL.revokeObjectURL(coverPreview);
-                      setCoverFile(null);
-                      setCoverPreview(null);
-                    }}
-                    className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/90 text-gray-700 hover:bg-white shadow"
-                    aria-label="Retirer l'image"
-                  >
-                    <X size={16} />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (coverPreview?.startsWith('blob:')) URL.revokeObjectURL(coverPreview);
+                    setCoverFile(null);
+                    setCoverPreview(null);
+                  }}
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/90 text-gray-700 hover:bg-white shadow"
+                  aria-label="Retirer l'image"
+                >
+                  <X size={16} />
+                </button>
               </div>
             </div>
           )}
@@ -402,7 +334,7 @@ export default function MesSalonsPage() {
           }`}
         >
           {submitting && <Loader2 size={16} className="animate-spin" />}
-          {mode === 'create' ? 'Créer le salon' : 'Enregistrer'}
+          Créer le salon
         </button>
       </div>
     </form>
@@ -422,7 +354,7 @@ export default function MesSalonsPage() {
           {salons.length > 1 && (
             <p className="text-xs text-gray-400 mt-2 max-w-lg">
               Le filtre ci-dessous s&apos;applique à l&apos;Agenda, Clients et Caisse.
-              Par défaut : tous les salons.
+              Sélectionnez un salon pour configurer ou consulter ses données.
             </p>
           )}
         </div>
@@ -484,8 +416,7 @@ export default function MesSalonsPage() {
         </div>
       )}
 
-      {showAddForm && !isEditing && renderSalonForm('create')}
-      {isEditing && renderSalonForm('edit')}
+      {showAddForm && renderSalonForm()}
 
       <div className="space-y-4">
         {salons.map((salon) => {
@@ -496,7 +427,7 @@ export default function MesSalonsPage() {
             <div
               key={salon.id}
               className={`rounded-2xl border bg-white p-5 flex items-center justify-between gap-4 transition-all ${
-                isFocused || editingId === salon.id
+                isFocused
                   ? 'border-[#002366] ring-1 ring-[#002366]/20'
                   : 'border-gray-200'
               }`}
@@ -530,26 +461,29 @@ export default function MesSalonsPage() {
                   <p className="text-xs text-gray-500 mt-0.5">
                     {salon.city || 'Ville non renseignée'}
                   </p>
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    {salon.subscriptionActive ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        <Check size={11} /> Visible aux clients
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                        Non visible aux clients
+                      </span>
+                    )}
+                    {!salon.subscriptionActive && (
+                      <Link
+                        href={`/dashboard/admin/mon-abonnement?salonId=${salon.id}`}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#002366] hover:underline"
+                      >
+                        <Landmark size={11} />
+                        À couvrir
+                      </Link>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <Link
-                  href={`/dashboard/admin/param-etablissement/gestion-horaires-delais?salonId=${salon.id}`}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-gray-200 text-gray-700 text-sm font-semibold hover:border-[#002366] hover:text-[#002366] transition-all"
-                  title="Horaires"
-                >
-                  <Clock size={14} />
-                  Horaires
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => openEdit(salon)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-gray-200 text-gray-700 text-sm font-semibold hover:border-[#002366] hover:text-[#002366] transition-all"
-                  title="Modifier"
-                >
-                  <Pencil size={14} />
-                  Modifier
-                </button>
                 <button
                   type="button"
                   onClick={() => setDeleteTarget(salon)}

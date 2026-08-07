@@ -114,4 +114,36 @@ router.post('/payments/:id/reject', async (req, res, next) => {
   }
 });
 
+/** GET /api/superadmin/notifications?unreadOnly=true&limit= */
+router.get('/notifications', async (req, res, next) => {
+  try {
+    const querySchema = z.object({
+      unreadOnly: z.enum(['true', 'false']).optional(),
+      limit: z.coerce.number().int().positive().max(100).optional(),
+    });
+    const { unreadOnly, limit } = querySchema.parse(req.query);
+    res.json(await superAdminService.listSuperAdminNotifications(req.userId!, unreadOnly === 'true', limit));
+  } catch (error: any) {
+    handleError(res, error, next);
+  }
+});
+
+/** PATCH /api/superadmin/notifications/read-all */
+router.patch('/notifications/read-all', async (req, res, next) => {
+  try {
+    res.json(await superAdminService.markAllSuperAdminNotificationsRead(req.userId!));
+  } catch (error: any) {
+    handleError(res, error, next);
+  }
+});
+
+/** PATCH /api/superadmin/notifications/:id/read */
+router.patch('/notifications/:id/read', async (req, res, next) => {
+  try {
+    res.json(await superAdminService.markSuperAdminNotificationRead(req.userId!, req.params.id));
+  } catch (error: any) {
+    handleError(res, error, next);
+  }
+});
+
 export default router;

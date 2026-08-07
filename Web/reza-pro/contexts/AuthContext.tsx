@@ -28,6 +28,7 @@ export interface Salon {
   shortDescription?: string | null;
   coverImage?: string | null;
   subscriptionActive: boolean;
+  salonCovered?: boolean;
   latitude?: number | null;
   longitude?: number | null;
 }
@@ -197,7 +198,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (salons.length === 0) return;
     if (salonFilter === 'all') {
-      api.setSalonFilter('all');
+      // Single-salon mode: "Tous les salons" was removed — default to the
+      // first salon so the admin always works on exactly one salon at a time.
+      const firstId = salons[0]?.id;
+      if (firstId) {
+        setSalonFilter([firstId]);
+      }
       return;
     }
     const valid = salonFilter.filter((id) => salons.some((s) => s.id === id));

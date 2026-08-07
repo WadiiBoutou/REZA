@@ -18,6 +18,7 @@ export interface SalonSummary {
   shortDescription: string | null;
   coverImage: string | null;
   subscriptionActive: boolean;
+  salonCovered: boolean;
   employeesPaid: number;
   latitude: number | null;
   longitude: number | null;
@@ -57,6 +58,7 @@ export class AccountService {
             shortDescription: true,
             coverImage: true,
             subscriptionActive: true,
+            salonCovered: true,
             employeesPaid: true,
             latitude: true,
             longitude: true,

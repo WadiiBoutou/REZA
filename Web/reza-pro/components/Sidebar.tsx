@@ -137,7 +137,7 @@ const RendezVousSidebar = () => {
 	const [monthAppointments, setMonthAppointments] = useState<any[]>([]);
 	const [loading, setLoading] = useState(false);
 
-	// Fetch employees from API (all salons — the filter also works with 'Tous les salons')
+	// Fetch employees from API (single-salon filter)
 	useEffect(() => {
 		if (!isAuthenticated) return;
 		
@@ -732,6 +732,7 @@ const AdminSidebar = () => {
 
 	const paramEtablissementLinks = [
 		{ label: 'Informations Landing Page', path: '/dashboard/admin/param-etablissement/informations-landing-page' },
+		{ label: 'Horaires', path: '/dashboard/admin/param-etablissement/gestion-horaires-delais' },
 		{ label: 'Notifications RDV Web', path: '/dashboard/admin/param-etablissement/notifications-rdv-web' },
 		{ label: 'Moyen de paiement', path: '/dashboard/admin/param-etablissement/moyen-de-paiement' },
 	];

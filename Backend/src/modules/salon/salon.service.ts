@@ -58,6 +58,7 @@ function toSalonSummary(tenant: {
   shortDescription: string | null;
   coverImage: string | null;
   subscriptionActive: boolean;
+  salonCovered: boolean;
   latitude?: number | null;
   longitude?: number | null;
 }) {
@@ -72,6 +73,7 @@ function toSalonSummary(tenant: {
     shortDescription: tenant.shortDescription,
     coverImage: tenant.coverImage,
     subscriptionActive: tenant.subscriptionActive,
+    salonCovered: tenant.salonCovered,
     latitude: tenant.latitude ?? null,
     longitude: tenant.longitude ?? null,
   };
@@ -111,9 +113,9 @@ export class SalonService {
   /**
    * Create a new salon for the owner's account.
    * Under the virement model there is no salon-cap limit — salons are paid for
-   * one-time each. A new salon is only visible to clients if it falls within
-   * the already-paid salon count (salonsPaid); otherwise it stays hidden until
-   * the owner pays the difference and the superadmin approves.
+   * one-time each. A new salon is NEVER auto-covered: it stays hidden from
+   * clients until the owner pays its one-time fee + employee fees and the
+   * superadmin approves the coverage.
    * Completeness fields required so incomplete salons never get created.
    */
   async createForOwner(userId: string, input: CreateSalonInput) {
@@ -141,12 +143,9 @@ export class SalonService {
       };
     }
 
-    const ctx = await accountService.getContextForUser(userId);
-    // New salon is appended last (ordered by createdAt): covered only if the
-    // account has already paid for more salons than currently exist.
-    const salonsPaid = ctx.subscription?.salonsPaid ?? 0;
-    const subscriptionActive = ctx.salons.length < salonsPaid;
-
+    // New salons are NEVER auto-covered: the one-time salon fee is paid per
+    // salon, so a freshly created salon stays hidden from clients until the
+    // owner declares + superadmin approves coverage for it specifically.
     const tenant = await prisma.tenant.create({
       data: {
         name: input.name.trim(),
@@ -160,7 +159,8 @@ export class SalonService {
         latitude: input.latitude,
         longitude: input.longitude,
         isActive: true,
-        subscriptionActive,
+        salonCovered: false,
+        subscriptionActive: false,
         accountId: account.id,
       },
     });
@@ -214,6 +214,7 @@ export class SalonService {
         shortDescription: true,
         coverImage: true,
         subscriptionActive: true,
+        salonCovered: true,
         isActive: true,
         accountId: true,
         latitude: true,

@@ -24,9 +24,12 @@ export class ReviewService {
               id: true,
               firstName: true,
               lastName: true,
-              email: true
+              email: true,
+              avatar: true
             }
           },
+          // The employee this review is about (tied at creation from the appointment)
+          employee: { select: { id: true, firstName: true, lastName: true, avatar: true } },
           appointment: {
             include: {
               service: { select: { name: true } },

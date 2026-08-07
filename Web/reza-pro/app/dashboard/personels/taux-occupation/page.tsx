@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { TrendingUp, TrendingDown, Users, Calendar, DollarSign, Download, ChevronLeft, ChevronRight, Loader2, RotateCcw, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, Users, Calendar, DollarSign, UserCheck, Clock, Search, Download, ChevronLeft, ChevronRight, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -256,14 +256,14 @@ export default function OccupancyCollaborateurs() {
   };
 
   const hasActiveState =
-    categoryId !== 'all' || serviceId !== 'all' || sortKey !== 'occupationRate' || sortDir !== 'desc';
+    sortKey !== 'occupationRate' || sortDir !== 'desc';
 
   const clearFilters = () => {
-    setCategoryId('all');
-    setServiceId('all');
     setSortKey('occupationRate');
     setSortDir('desc');
   };
+
+  const [employeeSearch, setEmployeeSearch] = useState('');
 
   const SortButton = ({ label, k, align = 'center' }: { label: string; k: SortKey; align?: 'left' | 'center' | 'right' }) => (
     <button
@@ -368,42 +368,6 @@ export default function OccupancyCollaborateurs() {
           </div>
         </div>
 
-        {/* Filters row */}
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Select value={categoryId} onValueChange={(v) => { setCategoryId(v); setServiceId('all'); }}>
-            <SelectTrigger className="px-4 py-2 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#002366] text-sm bg-white min-w-[180px]">
-              <SelectValue placeholder="Toutes les catégories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Toutes les catégories</SelectItem>
-              {categories.map((cat) => (
-                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={serviceId} onValueChange={setServiceId}>
-            <SelectTrigger className="px-4 py-2 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#002366] text-sm bg-white min-w-[180px]">
-              <SelectValue placeholder="Toutes les prestations" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Toutes les prestations</SelectItem>
-              {filteredServices.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {hasActiveState && (
-            <button
-              onClick={clearFilters}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors"
-            >
-              <RotateCcw size={14} />
-              Effacer filtres et tri
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Summary Cards */}
@@ -424,7 +388,7 @@ export default function OccupancyCollaborateurs() {
         <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all group">
           <div className="flex items-start justify-between mb-6">
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
-              <Users size={20} className="text-gray-400" />
+              <Clock size={20} className="text-gray-400" />
             </div>
             <DeltaBadge current={totals.workedHours} previous={prevStatsData.totals.workedHours} />
           </div>
@@ -437,7 +401,7 @@ export default function OccupancyCollaborateurs() {
         <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all group">
           <div className="flex items-start justify-between mb-6">
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
-              <TrendingUp size={20} className="text-gray-400" />
+              <DollarSign size={20} className="text-gray-400" />
             </div>
             <DeltaBadge current={totals.revenue} previous={prevStatsData.totals.revenue} />
           </div>
@@ -450,7 +414,7 @@ export default function OccupancyCollaborateurs() {
         <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all group">
           <div className="flex items-start justify-between mb-6">
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
-              <DollarSign size={20} className="text-gray-400" />
+              <UserCheck size={20} className="text-gray-400" />
             </div>
             <DeltaBadge current={activeCount} previous={prevActiveCount} />
           </div>
@@ -459,6 +423,18 @@ export default function OccupancyCollaborateurs() {
             <p className="text-3xl font-light text-gray-900">{activeCount}</p>
           </div>
         </div>
+      </div>
+
+      {/* Search bar */}
+      <div className="relative mb-4">
+        <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          type="text"
+          value={employeeSearch}
+          onChange={(e) => setEmployeeSearch(e.target.value)}
+          placeholder="Rechercher un employé…"
+          className="w-full pl-10 pr-4 py-2.5 rounded-full border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/30 bg-white"
+        />
       </div>
 
       {/* Main Table */}
@@ -482,8 +458,14 @@ export default function OccupancyCollaborateurs() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {collaborators.length > 0 ? (
-                collaborators.map((collab) => (
+              {collaborators.filter((c: any) => {
+                const q = employeeSearch.trim().toLowerCase();
+                return !q || c.name.toLowerCase().includes(q);
+              }).length > 0 ? (
+                collaborators.filter((c: any) => {
+                  const q = employeeSearch.trim().toLowerCase();
+                  return !q || c.name.toLowerCase().includes(q);
+                }).map((collab) => (
                   <tr key={collab.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">

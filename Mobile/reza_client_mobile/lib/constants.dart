@@ -40,6 +40,7 @@ class ServiceItem {
   final int durationMin;
   final double price;
   final String description;
+  final String category;
 
   const ServiceItem({
     this.id = '',
@@ -47,6 +48,7 @@ class ServiceItem {
     required this.durationMin,
     required this.price,
     required this.description,
+    this.category = '',
   });
 }
 
@@ -54,6 +56,7 @@ class VenueItem {
   final String id;
   final String name;
   final String image;
+  final List<String> images;
   final double rating;
   final int reviews;
   final String category;
@@ -68,6 +71,7 @@ class VenueItem {
     required this.id,
     required this.name,
     required this.image,
+    this.images = const [],
     required this.rating,
     required this.reviews,
     required this.category,
@@ -124,17 +128,22 @@ class ProfessionalItem {
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
 
+/// Canonical salon service categories — shared with the admin's
+/// gestion-de-prestations (same labels). Each category maps to an icon here so
+/// the home carousel can filter salons offering services in that category.
 final List<Map<String, dynamic>> serviceCategories = [
   {'icon': Icons.content_cut, 'label': 'Coiffeur'},
-  {'icon': Icons.face_retouching_natural, 'label': 'Manucure'},
-  {'icon': Icons.dry_cleaning_outlined, 'label': 'Spa et sauna'},
+  {'icon': Icons.palette_outlined, 'label': 'Couleur'},
   {'icon': Icons.chair_alt_outlined, 'label': 'Barbier'},
-  {'icon': Icons.person_outline_rounded, 'label': 'Corps'},
-  {'icon': Icons.vaccines_outlined, 'label': 'Esthétique'},
-  {'icon': Icons.monitor_weight_outlined, 'label': 'Nutrition'},
-  {'icon': Icons.volunteer_activism_outlined, 'label': 'Santé mentale'},
-  {'icon': Icons.spa_outlined, 'label': 'Santé holistique'},
-  {'icon': Icons.pets_outlined, 'label': 'Animaux'},
+  {'icon': Icons.face_retouching_natural, 'label': 'Manucure'},
+  {'icon': Icons.accessibility_new, 'label': 'Pédicure'},
+  {'icon': Icons.auto_fix_high, 'label': 'Épilation'},
+  {'icon': Icons.spa, 'label': 'Esthétique'},
+  {'icon': Icons.brush, 'label': 'Maquillage'},
+  {'icon': Icons.self_improvement, 'label': 'Massage'},
+  {'icon': Icons.hot_tub, 'label': 'Spa'},
+  {'icon': Icons.volunteer_activism, 'label': 'Hammam'},
+  {'icon': Icons.healing, 'label': 'Soin'},
 ];
 
 final List<VenueItem> allVenues = [

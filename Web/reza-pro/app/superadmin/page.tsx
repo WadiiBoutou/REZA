@@ -96,6 +96,14 @@ export default function SuperAdminPage() {
     return () => clearTimeout(t);
   }, [q]);
 
+  // Support ?tab=accounts|payments (used by PAYMENT_DECLARED notification links)
+  useEffect(() => {
+    const tabParam = new URLSearchParams(window.location.search).get('tab');
+    if (tabParam === 'payments' || tabParam === 'accounts') {
+      setTab(tabParam);
+    }
+  }, []);
+
   useEffect(() => { setPage(1); }, [qDebounced]);
 
   const loadAccounts = useCallback(async () => {
@@ -409,6 +417,26 @@ export default function SuperAdminPage() {
                       {p.reference && ` — réf. ${p.reference}`}
                       {p.approvedAt && ` — validé le ${new Date(p.approvedAt).toLocaleDateString('fr-FR')}`}
                     </p>
+                    {p.details?.salons?.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {p.details.salons.map((s: { id: string; name: string; salonCovered: boolean; billableEmployees: number; salonFee: number; employeeFee: number }) => (
+                          <div key={s.id} className="flex items-center justify-between text-[11px]">
+                            <span className="text-gray-600">
+                              {s.name}
+                              {!s.salonCovered && <span className="text-amber-600 ml-1.5">(nouveau)</span>}
+                              {s.billableEmployees > 0 && (
+                                <span className="text-gray-400 ml-1.5">
+                                  — {s.billableEmployees} employé{s.billableEmployees > 1 ? 's' : ''}
+                                </span>
+                              )}
+                            </span>
+                            <span className="font-semibold text-gray-700">
+                              {((s.salonFee || 0) + (s.employeeFee || 0)).toLocaleString('fr-FR')} {p.currency}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {p.status === 'REJECTED' && p.rejectedReason && (
                       <p className="text-[11px] text-red-600 mt-1">Raison : {p.rejectedReason}</p>
                     )}

@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Globe, MapPin, Tag, Image as ImageIcon, Check, Loader2, X, Plus, Instagram, Facebook, Phone, Mail, ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
+import { Globe, MapPin, Tag, Building, Image as ImageIcon, Check, Loader2, X, Plus, Star, BadgeCheck, Instagram, Facebook, Phone, Mail, ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { getImageUrl } from '@/lib/utils';
 import SalonScopeNotice from '@/components/SalonScopeNotice';
 import SalonLocationPicker from '@/components/SalonLocationPicker';
 import toast from 'react-hot-toast';
@@ -27,11 +28,6 @@ const TikTokBrandIcon = ({ size = 20, className }: { size?: number; className?: 
   </svg>
 );
 
-const toFullImageUrl = (url: string) =>
-  url.startsWith('http')
-    ? url
-    : `${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000'}${url}`;
-
 const InformationsLandingPage = () => {
   const { isAuthenticated, salonFilter, effectiveSalonIds, isSalonFilterMulti } = useAuth();
   const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
@@ -40,9 +36,14 @@ const InformationsLandingPage = () => {
   const [showSuccess, setShowSuccess] = useState(false);
 
   // Tenant fields
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
   const [category, setCategory] = useState('');
-  // Multiple cover images (up to 20); the first one is the primary cover.
+  // Multiple cover images (up to 20). One is explicitly designated as the
+  // primary cover (stored on tenant.coverImage); the rest live in
+  // settings.coverImages.
   const [coverImages, setCoverImages] = useState<string[]>([]);
+  const [primaryCover, setPrimaryCover] = useState<string>('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [shortDescription, setShortDescription] = useState('');
   const [website, setWebsite] = useState('');
@@ -57,6 +58,8 @@ const InformationsLandingPage = () => {
   // Settings fields
   const [amenities, setAmenities] = useState<string[]>([]);
   const [newAmenity, setNewAmenity] = useState('');
+  const [badges, setBadges] = useState<string[]>([]);
+  const [newBadge, setNewBadge] = useState('');
   const [socialMedia, setSocialMedia] = useState({
     instagram: '',
     facebook: '',
@@ -133,10 +136,14 @@ const InformationsLandingPage = () => {
       const settings = settingsRes.settings;
 
       // Set tenant fields
+      setName(tenant.name || '');
+      setAddress(tenant.address || '');
       setCategory(tenant.category || '');
       // Cover images: primary cover (tenant.coverImage) + additional cover images (settings.coverImages)
       const extraCovers = Array.isArray(settings.coverImages) ? settings.coverImages : [];
-      setCoverImages(tenant.coverImage ? [tenant.coverImage, ...extraCovers] : extraCovers);
+      const primary = tenant.coverImage || extraCovers[0] || '';
+      setPrimaryCover(primary);
+      setCoverImages(primary ? [primary, ...extraCovers.filter((c) => c !== primary)] : extraCovers);
       setShortDescription(tenant.shortDescription || '');
       setWebsite(tenant.website || '');
       setPhone(tenant.phone || '');
@@ -148,6 +155,7 @@ const InformationsLandingPage = () => {
 
       // Set settings fields
       setAmenities((settings.amenities as string[]) || []);
+      setBadges(((settings as any).badges as string[]) || []);
       // Legacy key 'twitter' is migrated to 'x' on load
       const sm = (settings.socialMedia as any) || {};
       setSocialMedia({
@@ -180,10 +188,12 @@ const InformationsLandingPage = () => {
       setSaving(true);
       const loadingToast = toast.loading('Enregistrement des informations...');
 
-      // Update tenant (primary cover = first cover image; coordinates come from the map picker)
+      // Update tenant (explicit primary cover; coordinates come from the map picker)
       await api.updateTenant({
+        name: name || undefined,
+        address: address || undefined,
         category: category || undefined,
-        coverImage: coverImages.length > 0 ? coverImages[0] : '',
+        coverImage: primaryCover || '',
         shortDescription: shortDescription || undefined,
         website: website || undefined,
         phone: phone || undefined,
@@ -197,7 +207,8 @@ const InformationsLandingPage = () => {
       // Update settings
       await api.updateTenantSettings({
         amenities: amenities.length > 0 ? amenities : undefined,
-        coverImages: coverImages.slice(1),
+        badges: badges.length > 0 ? badges : [],
+        coverImages: coverImages.filter((c) => c !== primaryCover),
         socialMedia: Object.values(socialMedia).some(v => v) ? socialMedia : undefined,
         featured,
         showMap,
@@ -240,6 +251,18 @@ const InformationsLandingPage = () => {
     setAmenities(amenities.filter(a => a !== amenity));
   };
 
+  const addBadge = () => {
+    const trimmed = newBadge.trim();
+    if (trimmed && !badges.includes(trimmed)) {
+      setBadges([...badges, trimmed]);
+      setNewBadge('');
+    }
+  };
+
+  const removeBadge = (badge: string) => {
+    setBadges(badges.filter(b => b !== badge));
+  };
+
   const addCustomAmenity = () => {
     if (newAmenity.trim() && !amenities.includes(newAmenity.trim())) {
       setAmenities([...amenities, newAmenity.trim()]);
@@ -249,6 +272,19 @@ const InformationsLandingPage = () => {
 
   const MAX_COVER_IMAGES = 20;
 
+  // Persist the current cover-image set (primary + extras) to the backend so
+  // uploads, deletions, reorders and primary changes survive a page refresh
+  // without requiring the full "SAUVEGARDER" click.
+  const persistCovers = async (nextCovers: string[], nextPrimary: string) => {
+    try {
+      await api.updateTenant({ coverImage: nextPrimary });
+      await api.updateTenantSettings({ coverImages: nextCovers.filter((c) => c !== nextPrimary) });
+    } catch (err: any) {
+      console.error('Error persisting cover images:', err);
+      toast.error(err.message || "Erreur lors de l'enregistrement des images");
+    }
+  };
+
   const handleUploadCoverImages = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     if (coverImages.length + files.length > MAX_COVER_IMAGES) {
@@ -257,13 +293,27 @@ const InformationsLandingPage = () => {
     }
     setUploadingImage(true);
     try {
+      // Upload every selected file (each one only stores the file + returns its
+      // URL — it never overwrites the current primary cover).
+      const uploaded: string[] = [];
       for (const file of Array.from(files)) {
         const result = await api.uploadCoverImage(file);
         const raw = result.coverImage;
-        if (raw) {
-          setCoverImages((prev) => (prev.includes(raw) ? prev : [...prev, raw]));
-        }
+        if (raw && !uploaded.includes(raw)) uploaded.push(raw);
       }
+      if (uploaded.length === 0) return;
+
+      // APPEND to the existing set (never replace it), and default the primary
+      // to the first image when none is set yet.
+      const nextCovers = [...coverImages];
+      let nextPrimary = primaryCover;
+      for (const u of uploaded) {
+        if (!nextCovers.includes(u)) nextCovers.push(u);
+        if (!nextPrimary) nextPrimary = u;
+      }
+      setCoverImages(nextCovers);
+      if (nextPrimary !== primaryCover) setPrimaryCover(nextPrimary);
+      await persistCovers(nextCovers, nextPrimary);
       toast.success('Images uploadées avec succès');
     } catch (err: any) {
       console.error('Error uploading images:', err);
@@ -273,18 +323,35 @@ const InformationsLandingPage = () => {
     }
   };
 
-  const moveCoverImage = (index: number, dir: -1 | 1) => {
-    setCoverImages((prev) => {
-      const next = [...prev];
-      const target = index + dir;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
+  // Explicitly designate an image as the primary one (star button on the
+  // thumbnail). Persists immediately so the choice survives a refresh.
+  const handleSetPrimaryCover = async (index: number) => {
+    const url = coverImages[index];
+    if (!url || url === primaryCover) return;
+    const nextPrimary = url;
+    setPrimaryCover(nextPrimary);
+    setCoverImages((prev) => [nextPrimary, ...prev.filter((c) => c !== nextPrimary)]);
+    await persistCovers(coverImages, nextPrimary);
   };
 
-  const removeCoverImage = (index: number) => {
-    setCoverImages((prev) => prev.filter((_, i) => i !== index));
+  const moveCoverImage = async (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= coverImages.length) return;
+    // Compute the reordered array from the current state so persistence uses
+    // the exact same list that gets rendered (no functional-updater race).
+    const next = [...coverImages];
+    [next[index], next[target]] = [next[target], next[index]];
+    setCoverImages(next);
+    await persistCovers(next, primaryCover);
+  };
+
+  const removeCoverImage = async (index: number) => {
+    const removed = coverImages[index];
+    const next = coverImages.filter((_, i) => i !== index);
+    const nextPrimary = removed === primaryCover ? next[0] || '' : primaryCover;
+    setCoverImages(next);
+    if (nextPrimary !== primaryCover) setPrimaryCover(nextPrimary);
+    await persistCovers(next, nextPrimary);
   };
 
   if (loading) {
@@ -347,6 +414,23 @@ const InformationsLandingPage = () => {
 
       {/* Form Sections */}
       <div className="space-y-6 animate-fadeIn">
+        {/* Name */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Nom du salon *
+          </label>
+          <div className="flex items-center gap-3">
+            <Building className="w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Nom de votre établissement"
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366]"
+            />
+          </div>
+        </div>
+
         {/* Category */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -367,7 +451,7 @@ const InformationsLandingPage = () => {
         {/* Short Description */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Description courte (pour les cartes de recherche)
+            Descriptioncon
           </label>
           <textarea
             value={shortDescription}
@@ -388,8 +472,8 @@ const InformationsLandingPage = () => {
             Images de couverture
           </label>
           <p className="text-xs text-gray-500 mb-3">
-            Jusqu'à {MAX_COVER_IMAGES} images. La première est l'image principale ; toutes sont
-            affichées en galerie sur votre page publique (portfolio et carrousel).
+            Jusqu'à {MAX_COVER_IMAGES} images. Cliquez sur l'étoile pour définir l'image
+            principale ; toutes sont affichées en galerie sur votre page publique (portfolio et carrousel).
           </p>
           <div className="flex items-center gap-3">
             <ImageIcon className="w-5 h-5 text-gray-400" />
@@ -416,22 +500,30 @@ const InformationsLandingPage = () => {
               <div className="text-xs text-gray-500 mb-2">
                 {coverImages.length} / {MAX_COVER_IMAGES} image{coverImages.length > 1 ? 's' : ''}
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {coverImages.map((img, idx) => (
                   <div
                     key={`${img}-${idx}`}
-                    className="relative group rounded-lg overflow-hidden border border-gray-200"
+                    className="relative group rounded-xl overflow-hidden border border-gray-200"
                   >
                     <img
-                      src={toFullImageUrl(img)}
+                      src={getImageUrl(img)}
                       alt={`Couverture ${idx + 1}`}
-                      className="w-full h-28 object-cover"
+                      className="w-full h-52 object-cover"
                     />
-                    {idx === 0 && (
-                      <span className="absolute top-1.5 left-1.5 px-2 py-0.5 bg-[#002366] text-white text-[10px] font-semibold rounded-full shadow">
-                        Couverture
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => void handleSetPrimaryCover(idx)}
+                      disabled={img === primaryCover}
+                      title={img === primaryCover ? 'Image principale' : 'Définir comme image principale'}
+                      className={`absolute top-1.5 left-1.5 p-1.5 rounded-full shadow transition-colors ${
+                        img === primaryCover
+                          ? 'bg-amber-400 text-white cursor-default'
+                          : 'bg-white/90 text-gray-400 hover:text-amber-500'
+                      }`}
+                    >
+                      <Star size={14} className={img === primaryCover ? 'fill-white' : ''} />
+                    </button>
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="flex gap-1">
                         <button
@@ -540,6 +632,23 @@ const InformationsLandingPage = () => {
           </div>
         </div>
 
+        {/* Address */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Adresse
+          </label>
+          <div className="flex items-center gap-3">
+            <MapPin className="w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="Rue, quartier, n° ..."
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366]"
+            />
+          </div>
+        </div>
+
         {/* Location — interactive map picker (OpenStreetMap). The Google Maps link
             is auto-generated from these coordinates on the public page, so the old
             manual "Lien Google Maps" field has been removed. */}
@@ -549,6 +658,14 @@ const InformationsLandingPage = () => {
             onChange={(c) => {
               setLatitude(String(c.lat));
               setLongitude(String(c.lng));
+            }}
+            onAddressSuggest={(suggestion) => {
+              if (suggestion.address && !address.trim()) {
+                setAddress(suggestion.address);
+              }
+              if (suggestion.city && !city) {
+                setCity(suggestion.city);
+              }
             }}
           />
         </div>
@@ -654,6 +771,50 @@ const InformationsLandingPage = () => {
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Badges / Certifications */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Badges &amp; Certifications
+          </label>
+          <p className="text-xs text-gray-400 mb-3">Ex. : &quot;Certifié bio&quot;, &quot;Prix qualité 2025&quot;, &quot;Agréé professionnel&quot;</p>
+          <div className="flex gap-2 mb-3">
+            <input
+              type="text"
+              value={newBadge}
+              onChange={(e) => setNewBadge(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addBadge())}
+              placeholder="Ajouter un badge..."
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366]"
+            />
+            <button
+              type="button"
+              onClick={addBadge}
+              className="px-4 py-2 bg-[#002366] text-white rounded-lg text-sm hover:bg-[#001a4d] transition-colors"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+          {badges.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {badges.map(badge => (
+                <span
+                  key={badge}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-sm font-medium"
+                >
+                  <BadgeCheck size={14} />
+                  {badge}
+                  <button
+                    onClick={() => removeBadge(badge)}
+                    className="text-amber-500 hover:text-red-500 transition-colors"
+                  >
+                    <X size={13} />
+                  </button>
+                </span>
+              ))}
             </div>
           )}
         </div>

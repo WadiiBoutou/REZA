@@ -354,6 +354,7 @@ async function seedOneSalon(
         lastName: c.lastName,
         email: c.email,
         phone: c.phone,
+        avatar: avatarUrlFor(c.firstName, c.lastName, c.email || c.phone),
         password: c.withPassword ? clientPassword : undefined,
         status: 'ACTIVE',
         // Deterministic birth date → the "Répartition par âge" stat has data

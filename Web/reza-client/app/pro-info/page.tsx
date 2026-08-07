@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowRight, Check, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { ArrowRight, Check, ArrowLeft, Eye, EyeOff, X } from 'lucide-react';
 import Loading from '../salon/Loading';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
@@ -11,9 +11,6 @@ export default function ProOnboardingPage() {
   const router = useRouter();
 
   const [step, setStep] = useState(0);
-  const [userType, setUserType] = useState('');
-  const [businessType, setBusinessType] = useState('');
-  const [hasCommercialLocal, setHasCommercialLocal] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     establishmentName: '',
     firstName: '',
@@ -30,6 +27,54 @@ export default function ProOnboardingPage() {
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Public billing config: one-time per-salon fee + monthly employee tiers.
+  const [billingConfig, setBillingConfig] = useState<{
+    pricePerSalon: number;
+    pricePerEmployee: number;
+    currency: string;
+    freeEmployeeThreshold: number;
+    employeeTiers: { min: number; max: number | null; price: number }[] | null;
+  } | null>(null);
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [calcSalons, setCalcSalons] = useState(1);
+  const [calcEmployees, setCalcEmployees] = useState(1);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getPublicBillingConfig()
+      .then((cfg) => {
+        if (!cancelled) setBillingConfig(cfg);
+      })
+      .catch((err) => console.error('Error fetching billing config:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Monthly employee fee — mirrors the backend marginal-tier calculation so the
+  // calculator always matches the real invoice (each employee is charged at the
+  // rate of the band their position falls into).
+  const calcEmployeeFee = (count: number): number => {
+    const tiers = billingConfig?.employeeTiers || [];
+    if (tiers.length === 0) {
+      return count * (billingConfig?.pricePerEmployee ?? 0);
+    }
+    let remaining = Math.max(0, count);
+    let fee = 0;
+    for (const t of tiers) {
+      if (remaining <= 0) break;
+      const bandSize = t.max === null ? remaining : Math.max(0, t.max - t.min + 1);
+      const take = Math.min(remaining, bandSize);
+      fee += take * t.price;
+      remaining -= take;
+    }
+    if (remaining > 0 && tiers.length > 0) {
+      fee += remaining * tiers[tiers.length - 1].price;
+    }
+    return fee;
+  };
 
   const cities = [
     { value: 'Agadir', label: 'Agadir', available: true },
@@ -83,23 +128,13 @@ export default function ProOnboardingPage() {
   ];
 
   const handleUserTypeSelection = (type: string) => {
-    setUserType(type);
     if (type === 'client') {
-      // Redirect to home page
-      window.location.href = '/';
+      // Not a professional → go to the client register page (signup mode).
+      window.location.href = '/login?mode=signup';
     } else {
-      setStep(2);
+      // Professional → straight to the establishment registration form.
+      setStep(4);
     }
-  };
-
-  const handleBusinessTypeSelection = (type: string) => {
-    setBusinessType(type);
-    setStep(3);
-  };
-
-  const handleCommercialLocalSelection = (value: string) => {
-    setHasCommercialLocal(value);
-    setStep(4);
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -124,14 +159,6 @@ export default function ProOnboardingPage() {
     setLoadingText("Création du compte...");
 
     try {
-      // Map business type to category
-      const categoryMap: { [key: string]: string } = {
-        'salon': 'Coiffeur',
-        'beauty': 'Institut de beauté',
-        'spa': 'Spa'
-      };
-      const category = categoryMap[businessType] || 'Établissement';
-
       // Prepare registration data matching the backend schema
       const registrationData = {
         email: formData.email.trim(),
@@ -148,10 +175,7 @@ export default function ProOnboardingPage() {
         tenantAddress: undefined,
         tenantCity: formData.city || null,
         tenantPostalCode: undefined,
-        tenantCategory: category,
-        // Onboarding step data
-        businessType: businessType, // 'salon', 'beauty', 'spa'
-        hasCommercialLocal: hasCommercialLocal // 'oui', 'non'
+        tenantCategory: 'Établissement'
       };
 
       setLoadingText("Envoi des données...");
@@ -225,9 +249,9 @@ export default function ProOnboardingPage() {
               <span className="text-xs font-bold tracking-[0.2em] text-[#C57B57] mt-1">PRO</span>
             </div>
           </a>
-          {step > 0 && (
+          {step > 0 && step < 5 && (
             <button
-              onClick={() => setStep(step - 1)}
+              onClick={() => setStep(step === 4 ? 1 : step - 1)}
               className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -242,8 +266,6 @@ export default function ProOnboardingPage() {
         <div className="bg-[#f5f7f3] border-b border-gray-200">
           <div className="max-w-4xl mx-auto px-6 py-4">
             <div className="flex gap-2">
-              <div className={`flex-1 h-1 rounded-full ${step >= 2 ? 'bg-black' : 'bg-gray-200'}`} />
-              <div className={`flex-1 h-1 rounded-full ${step >= 3 ? 'bg-black' : 'bg-gray-200'}`} />
               <div className={`flex-1 h-1 rounded-full ${step >= 4 ? 'bg-black' : 'bg-gray-200'}`} />
               <div className={`flex-1 h-1 rounded-full ${step >= 5 ? 'bg-black' : 'bg-gray-200'}`} />
             </div>
@@ -280,57 +302,60 @@ export default function ProOnboardingPage() {
                   </p>
                 </div>
 
-                {/* Pricing Cards */}
-                <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-                  {/* Free Plan */}
-                  <div className="bg-white border-2 border-gray-200 rounded-3xl p-8 space-y-6 hover:border-gray-300 transition-all">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Essai gratuit</p>
-                      <div className="flex items-end gap-2">
-                        <span className="text-5xl font-extrabold text-gray-900">0</span>
-                        <span className="text-2xl font-bold text-gray-400 mb-1">DH</span>
-                        <span className="text-gray-400 mb-1">/mois</span>
-                      </div>
-                      <p className="text-gray-500 text-sm mt-2">Pendant 30 jours, sans carte bancaire</p>
-                    </div>
-
-                    <ul className="space-y-3">
-                      {[
-                        'Jusqu\'à 50 réservations/mois',
-                        'Profil sur l\'application Reza',
-                        'Gestion des rendez-vous',
-                        'Support par email',
-                      ].map(f => (
-                        <li key={f} className="flex items-center gap-3 text-sm text-gray-700">
-                          <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-
-                    <button
-                      onClick={() => setStep(1)}
-                      className="w-full py-4 border-2 border-black rounded-2xl font-bold text-black hover:bg-black hover:text-white transition-all duration-200"
-                    >
-                      Commencer gratuitement
-                    </button>
-                  </div>
-
-                  {/* Pro Plan */}
+                {/* Pricing — one plan with the real fee structure (from the
+                    platform billing config, same source as the admin dashboard) */}
+                <div className="max-w-3xl mx-auto">
                   <div className="bg-black border-2 border-black rounded-3xl p-8 space-y-6 relative overflow-hidden shadow-2xl">
-                    {/* Recommended badge */}
-                    <div className="absolute top-6 right-6 bg-[#C57B57] text-white text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wider">
-                      Recommandé
-                    </div>
-
                     <div>
                       <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Reza Pro</p>
-                      <div className="flex items-end gap-2">
-                        <span className="text-5xl font-extrabold text-white">900</span>
-                        <span className="text-2xl font-bold text-gray-400 mb-1">DH</span>
-                        <span className="text-gray-400 mb-1">/mois</span>
+                      <p className="text-gray-300 text-sm">
+                        Un frais unique par salon, puis une redevance mensuelle par employé.
+                      </p>
+                    </div>
+
+                    {/* One-time per-salon fee */}
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Frais par salon — paiement unique</p>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-4xl font-extrabold text-white">
+                          {billingConfig ? billingConfig.pricePerSalon.toLocaleString('fr-FR') : '—'}
+                        </span>
+                        <span className="text-xl font-bold text-gray-400">{billingConfig?.currency || 'MAD'}</span>
+                        <span className="text-gray-400 text-sm">/ salon · une seule fois</span>
                       </div>
-                      <p className="text-gray-400 text-sm mt-2">Facturation mensuelle · Résiliable à tout moment</p>
+                      <p className="text-gray-400 text-xs mt-1">
+                        Le frais par salon est payé une seule fois, pour toujours.
+                      </p>
+                    </div>
+
+                    {/* Monthly per-employee tiers */}
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Employés — mensuel</p>
+                      <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-2">
+                        {billingConfig?.employeeTiers && billingConfig.employeeTiers.length > 0 ? (
+                          billingConfig.employeeTiers.map((t, i) => {
+                            const range =
+                              t.max === null || t.max === undefined
+                                ? `${t.min}+ employés`
+                                : t.min === t.max
+                                  ? `${t.min} employé${t.min > 1 ? 's' : ''}`
+                                  : `${t.min}–${t.max} employés`;
+                            return (
+                              <div key={i} className="flex items-center justify-between gap-4 text-sm">
+                                <span className="text-gray-300">{range}</span>
+                                <span className="font-bold text-white whitespace-nowrap">
+                                  {t.price} {billingConfig.currency}/employé/mois
+                                </span>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-sm text-gray-300">Chargement de la tarification...</p>
+                        )}
+                        <p className="text-[11px] text-gray-500 pt-2 border-t border-white/10">
+                          Tarif dégressif : chaque employé est facturé selon le palier de sa position.
+                        </p>
+                      </div>
                     </div>
 
                     <ul className="space-y-3">
@@ -349,30 +374,114 @@ export default function ProOnboardingPage() {
                       ))}
                     </ul>
 
-                    <button
-                      onClick={() => setStep(1)}
-                      className="w-full py-4 bg-white rounded-2xl font-bold text-black hover:bg-gray-100 transition-all duration-200 flex items-center justify-center gap-2"
-                    >
-                      S'inscrire — 900 DH/mois
-                      <ArrowRight className="w-5 h-5" />
-                    </button>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        onClick={() => setStep(1)}
+                        className="w-full py-4 bg-white rounded-2xl font-bold text-black hover:bg-gray-100 transition-all duration-200 flex items-center justify-center gap-2"
+                      >
+                        S'inscrire
+                        <ArrowRight className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => setShowCalculator(true)}
+                        className="w-full py-4 border-2 border-white/30 rounded-2xl font-bold text-white hover:bg-white/10 transition-all duration-200"
+                      >
+                        Calculer mes frais
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                {/* Trust badges */}
-                <div className="flex flex-wrap items-center justify-center gap-8 max-w-3xl mx-auto pt-4 pb-8 border-t border-gray-200">
-                  {[
-                    { icon: '🔒', text: 'Paiement sécurisé' },
-                    { icon: '📵', text: 'Sans engagement' },
-                    { icon: '🚫', text: 'Zéro commission' },
-                    { icon: '🌟', text: '+500 établissements partenaires' },
-                  ].map(b => (
-                    <div key={b.text} className="flex items-center gap-2 text-sm text-gray-600">
-                      <span>{b.icon}</span>
-                      <span>{b.text}</span>
+                {/* Fee calculator modal — first month vs following months */}
+                {showCalculator && billingConfig && (
+                  <div
+                    className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+                    onClick={() => setShowCalculator(false)}
+                  >
+                    <div
+                      className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl animate-in zoom-in-95 duration-200"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-xl font-bold text-gray-900">Estimer mes frais</h3>
+                        <button
+                          onClick={() => setShowCalculator(false)}
+                          className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center transition-colors"
+                          aria-label="Fermer"
+                        >
+                          <X className="w-5 h-5 text-gray-500" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-4 mb-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Nombre de salons
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={calcSalons}
+                            onChange={(e) => setCalcSalons(Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-gray-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Nombre d'employés (tous salons)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={calcEmployees}
+                            onChange={(e) => setCalcEmployees(Math.max(0, parseInt(e.target.value) || 0))}
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-gray-400"
+                          />
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const salonTotal = calcSalons * billingConfig.pricePerSalon;
+                        const empFee = calcEmployeeFee(calcEmployees);
+                        const firstMonth = salonTotal + empFee;
+                        return (
+                          <div className="rounded-2xl bg-gray-50 border border-gray-200 p-5 space-y-3">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">
+                                Salons ({calcSalons} × {billingConfig.pricePerSalon} {billingConfig.currency})
+                              </span>
+                              <span className="font-semibold text-gray-900">
+                                {salonTotal.toLocaleString('fr-FR')} {billingConfig.currency}
+                              </span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">Employés (mensuel)</span>
+                              <span className="font-semibold text-gray-900">
+                                {empFee.toLocaleString('fr-FR')} {billingConfig.currency}
+                              </span>
+                            </div>
+                            <div className="border-t border-gray-200 pt-3 flex justify-between items-baseline">
+                              <span className="text-sm font-semibold text-gray-900">1er mois</span>
+                              <span className="text-2xl font-extrabold text-gray-900">
+                                {firstMonth.toLocaleString('fr-FR')} {billingConfig.currency}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-baseline">
+                              <span className="text-sm text-gray-600">Mois suivants</span>
+                              <span className="text-xl font-bold text-gray-900">
+                                {empFee.toLocaleString('fr-FR')} {billingConfig.currency}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-400">
+                              Le frais par salon n'est payé qu'une seule fois — les mois suivants ne
+                              couvrent que les employés.
+                            </p>
+                          </div>
+                        );
+                      })()}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -449,111 +558,6 @@ export default function ProOnboardingPage() {
                       </div>
                       <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-gray-900 group-hover:translate-x-1 transition-all" />
                     </div>
-                  </button>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Step 2: Business Type Selection */}
-            {step === 2 && (
-              <motion.div
-                key="step2"
-                initial={{ opacity: 0, x: 40 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -40 }}
-                transition={{ duration: 0.35, ease: "easeInOut" }}
-                className="space-y-8 animate-in fade-in duration-500"
-              >
-                <div className="text-center space-y-4">
-                  <h1 className="text-4xl font-normal text-gray-900">
-                    Quel établissement souhaitez-vous équiper ?
-                  </h1>
-                </div>
-
-                <div className="space-y-4 pt-4">
-                  <button
-                    onClick={() => handleBusinessTypeSelection('salon')}
-                    className="w-full bg-[#f5f7f3] border-2 border-gray-200 rounded-2xl p-6 hover:border-black hover:bg-black/5 transition-all duration-200 group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-medium text-gray-900">
-                        Salon de coiffure ou barbershop
-                      </span>
-                      <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-gray-900 group-hover:translate-x-1 transition-all" />
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => handleBusinessTypeSelection('beauty')}
-                    className="w-full bg-[#f5f7f3] border-2 border-gray-200 rounded-2xl p-6 hover:border-black hover:bg-black/5 transition-all duration-200 group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-medium text-gray-900">
-                        Institut de beauté ou bar à ongles
-                      </span>
-                      <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-gray-900 group-hover:translate-x-1 transition-all" />
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => handleBusinessTypeSelection('spa')}
-                    className="w-full bg-[#f5f7f3] border-2 border-gray-200 rounded-2xl p-6 hover:border-black hover:bg-black/5 transition-all duration-200 group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-medium text-gray-900">
-                        Spa ou centre de bien-être
-                      </span>
-                      <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-gray-900 group-hover:translate-x-1 transition-all" />
-                    </div>
-                  </button>
-                </div>
-
-                <div className="text-center pt-8">
-                  <p className="text-sm text-gray-600">
-                    Je ne suis pas un professionnel de beauté, je souhaite prendre rendez-vous sur{' '}
-                    <a href="/" className="underline hover:no-underline font-medium">
-                      reza.com
-                    </a>
-                  </p>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Step 3: Commercial Local Question */}
-            {step === 3 && (
-              <motion.div
-                key="step3"
-                initial={{ opacity: 0, x: 40 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -40 }}
-                transition={{ duration: 0.35, ease: "easeInOut" }}
-                className="space-y-8 animate-in fade-in duration-500"
-              >
-                <div className="text-center space-y-4">
-                  <h1 className="text-4xl font-normal text-gray-900">
-                    Exercez-vous dans un local commercial ?
-                  </h1>
-                </div>
-                <div className="flex items-center justify-center gap-8 pt-8">
-                  <button
-                    onClick={() => handleCommercialLocalSelection('oui')}
-                    className={`px-8 py-4 rounded-2xl text-lg font-medium border-2 ${
-                      hasCommercialLocal === 'oui'
-                        ? 'bg-black text-white border-black'
-                        : 'bg-[#f5f7f3] text-gray-900 border-gray-200 hover:border-black hover:bg-black/5'
-                    } transition-all duration-200`}
-                  >
-                    Oui
-                  </button>
-                  <button
-                    onClick={() => handleCommercialLocalSelection('non')}
-                    className={`px-8 py-4 rounded-2xl text-lg font-medium border-2 ${
-                      hasCommercialLocal === 'non'
-                        ? 'bg-black text-white border-black'
-                        : 'bg-[#f5f7f3] text-gray-900 border-gray-200 hover:border-black hover:bg-black/5'
-                    } transition-all duration-200`}
-                  >
-                    Non
                   </button>
                 </div>
               </motion.div>
@@ -797,7 +801,7 @@ export default function ProOnboardingPage() {
                 <div className="flex justify-between items-center pt-4">
                   <button
                     onClick={() => {
-                      setStep(3);
+                      setStep(1);
                       setError(null);
                     }}
                     className="px-6 py-3 text-gray-600 hover:text-gray-900 transition-colors"

@@ -15,7 +15,7 @@ import Testimonials from "../components/Testimonials";
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen flex-col bg-white font-sans dark:bg-black overflow-x-hidden">
+    <div className="flex min-h-screen flex-col bg-white font-sans overflow-x-hidden">
       <Header />
       <Hero />
       <RecommendedSection />

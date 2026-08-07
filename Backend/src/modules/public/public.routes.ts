@@ -21,6 +21,12 @@ router.get('/categories', (req, res, next) => publicController.getCategories(req
 router.get('/services/featured', (req, res, next) =>
   publicController.getFeaturedServices(req, res, next)
 );
+router.get('/employees/featured', (req, res, next) =>
+  publicController.getFeaturedEmployees(req, res, next)
+);
+router.get('/billing-config', (req, res, next) =>
+  publicController.getPublicBillingConfig(req, res, next)
+);
 router.get('/reviews/featured', (req, res, next) =>
   publicController.getFeaturedReviews(req, res, next)
 );

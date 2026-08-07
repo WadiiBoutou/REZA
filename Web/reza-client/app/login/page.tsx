@@ -320,32 +320,9 @@ function LoginPageContent() {
     
     // Check for error in URL params
     const searchParams = new URLSearchParams(window.location.search);
-    const errorParam = searchParams.get('error');
-    const errorDetails = searchParams.get('details');
-    
-    if (errorParam === 'google_auth_failed') {
-      // Provide more specific error messages based on details
-      let errorMessage = 'La connexion avec Google a échoué. Veuillez réessayer.';
-      
-      if (errorDetails) {
-        const decodedDetails = decodeURIComponent(errorDetails);
-        console.error('[Login] Google OAuth error details:', decodedDetails);
-        
-        // Handle specific error cases
-        if (decodedDetails.includes('access_denied') || decodedDetails.includes('user_cancelled')) {
-          errorMessage = 'Connexion annulée. Vous pouvez réessayer en cliquant sur "Se connecter avec Google".';
-        } else if (decodedDetails.includes('no_code')) {
-          errorMessage = 'Erreur lors de la réception du code d\'autorisation. Veuillez réessayer.';
-        } else if (decodedDetails.includes('Le mot de passe est requis') || decodedDetails.includes('password') || decodedDetails.includes('oauth_configuration_error')) {
-          // This shouldn't happen with OAuth, but if it does, provide a helpful message
-          errorMessage = 'Erreur de configuration OAuth. Veuillez réessayer ou utiliser votre email et mot de passe pour vous connecter.';
-        } else {
-          // For other errors, show a generic but helpful message
-          errorMessage = 'Erreur lors de la connexion avec Google. Veuillez réessayer ou utiliser votre email et mot de passe.';
-        }
-      }
-      
-      setError(errorMessage);
+    // ?mode=signup opens the register form directly (e.g. from pro-info)
+    if (searchParams.get('mode') === 'signup') {
+      setMode('signup');
     }
   }, [isAuthenticated]);
 
@@ -746,106 +723,9 @@ function LoginPageContent() {
                 </motion.form>
               </AnimatePresence>
 
-            {/* Divider and Social Login */}
-            <>
-                <div className="flex items-center gap-4 my-8">
-                  <div className="flex-1 h-px bg-gray-200"></div>
-                  <span className="text-sm font-semibold text-gray-400">OU</span>
-                  <div className="flex-1 h-px bg-gray-200"></div>
-                </div>
-
-                {/* Social Login */}
-                <CurvySlideButton
-              onClick={async (e) => {
-                e?.preventDefault();
-                e?.stopPropagation();
-                
-                if (loading) return;
-                
-                setLoading(true);
-                setError('');
-                
-                try {
-                  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-                  // Pass the frontend URL so backend knows where to redirect after auth
-                  const frontendUrl = window.location.origin;
-                  const url = `${API_URL}/public/auth/google/url?frontend_url=${encodeURIComponent(frontendUrl)}`;
-                  const response = await fetch(url);
-                  
-                  if (!response.ok) {
-                    // Try to get error message from response
-                    let errorMessage = 'Erreur lors de la connexion avec Google';
-                    try {
-                      const errorData = await response.json();
-                      errorMessage = errorData.message || errorData.error || errorMessage;
-                      
-                      // If Google OAuth is not configured, show a helpful message
-                      if (errorData.error === 'Google OAuth not configured') {
-                        errorMessage = 'L\'authentification Google n\'est pas configurée sur le serveur. Veuillez contacter l\'administrateur.';
-                      }
-                    } catch (e) {
-                      // If JSON parsing fails, use default message
-                      console.error('Failed to parse error response:', e);
-                    }
-                    setError(errorMessage);
-                    setLoading(false);
-                    return;
-                  }
-                  
-                  const data = await response.json();
-                  
-                  if (data.url) {
-                    // Redirect to Google OAuth
-                    window.location.href = data.url;
-                  } else {
-                    setError('URL de connexion Google non disponible');
-                    setLoading(false);
-                    return;
-                  }
-                } catch (err: any) {
-                  console.error('Google login error:', err);
-                  // Only catch unexpected errors (network errors, etc.)
-                  setError(err.message || 'Erreur lors de la connexion avec Google. Veuillez réessayer.');
-                  setLoading(false);
-                }
-              }}
-              text={
-                <span className="flex items-center justify-center gap-3">
-                  <svg width="22" height="22" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <g clipPath="url(#clip0_17_40)">
-                      <path d="M47.532 24.552c0-1.636-.146-3.2-.418-4.704H24.48v9.02h13.02c-.56 3.02-2.24 5.58-4.78 7.3v6.06h7.74c4.54-4.18 7.07-10.34 7.07-17.676z" fill="#4285F4"/>
-                      <path d="M24.48 48c6.42 0 11.8-2.12 15.74-5.76l-7.74-6.06c-2.14 1.44-4.88 2.3-8 2.3-6.14 0-11.34-4.14-13.2-9.7H3.36v6.18C7.28 43.82 15.18 48 24.48 48z" fill="#34A853"/>
-                      <path d="M11.28 28.78A13.98 13.98 0 0 1 9.6 24c0-1.66.3-3.28.84-4.78v-6.18H3.36A23.98 23.98 0 0 0 0 24c0 3.98.96 7.74 2.64 11.02l8.64-6.24z" fill="#FBBC05"/>
-                      <path d="M24.48 9.54c3.5 0 6.62 1.2 9.08 3.56l6.8-6.8C36.28 2.12 30.9 0 24.48 0 15.18 0 7.28 4.18 3.36 10.04l8.64 6.18c1.86-5.56 7.06-9.7 13.2-9.7z" fill="#EA4335"/>
-                    </g>
-                    <defs>
-                      <clipPath id="clip0_17_40">
-                        <rect width="48" height="48" fill="white"/>
-                      </clipPath>
-                    </defs>
-                  </svg>
-                  {loading ? 'Connexion...' : 'Se connecter avec Google'}
-                </span>
-              }
-              color="#f6f6ef"
-              textColor="#374151"
-              borderColor="#e5e7eb"
-              hoverTextColor="#ffffff"
-              hoverColor="#000000"
-              styles={{
-                width: '100%',
-                padding: '14px 24px',
-                fontSize: '16px',
-                borderRadius: '30px',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.7 : 1,
-              }}
-              disabled={loading}
-            />
             <div className="w-full text-center mt-3">
               <span className="text-xs text-gray-400 font-medium">SSL Connexion sécurisée et privée</span>
             </div>
-            </>
 
           </div>
           )}

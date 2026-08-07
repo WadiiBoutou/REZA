@@ -24,7 +24,10 @@ export class TenantService {
               ...tenant.settings,
               photos: tenant.settings.photos && Array.isArray(tenant.settings.photos)
                 ? (tenant.settings.photos as any[]).map((photo: string) => transformImageUrl(photo))
-                : tenant.settings.photos
+                : tenant.settings.photos,
+              coverImages: tenant.settings.coverImages && Array.isArray(tenant.settings.coverImages)
+                ? (tenant.settings.coverImages as any[]).map((img: string) => transformImageUrl(img))
+                : tenant.settings.coverImages
             }
           : tenant.settings
       }
@@ -95,6 +98,7 @@ export class TenantService {
       coverImages,
       paymentMethods,
       amenities,
+      badges,
       socialMedia,
       featured,
       showMap,
@@ -118,6 +122,7 @@ export class TenantService {
     if (coverImages !== undefined) updateData.coverImages = coverImages;
     if (paymentMethods !== undefined) updateData.paymentMethods = paymentMethods;
     if (amenities !== undefined) updateData.amenities = amenities;
+    if (badges !== undefined) updateData.badges = badges;
     if (socialMedia !== undefined) updateData.socialMedia = socialMedia;
     if (featured !== undefined) updateData.featured = featured;
     if (showMap !== undefined) updateData.showMap = showMap;
@@ -617,22 +622,6 @@ export class TenantService {
       success: true,
       headerImage: fileUrl,
       message: 'Header image uploaded successfully'
-    };
-  }
-
-  async saveCoverImage(tenantId: string, fileUrl: string) {
-    await prisma.tenant.update({
-      where: { id: tenantId },
-      data: { coverImage: fileUrl }
-    });
-
-    const apiBase = process.env.BACKEND_URL || 'https://api.wellbe.ma';
-    const finalUrl = `${apiBase}${fileUrl.startsWith('/') ? fileUrl : '/' + fileUrl}`;
-
-    return {
-      success: true,
-      coverImage: finalUrl,
-      message: 'Cover image uploaded successfully'
     };
   }
 

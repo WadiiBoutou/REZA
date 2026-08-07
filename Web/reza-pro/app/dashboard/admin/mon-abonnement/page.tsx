@@ -43,8 +43,21 @@ interface Overview {
     subscribedAt: string | null;
     currentPeriodEnd: string | null;
   };
-  salons: { id: string; name: string; subscriptionActive: boolean; employeesPaid: number }[];
+  salons: SalonBill[];
   payments: any[];
+}
+
+interface SalonBill {
+  id: string;
+  name: string;
+  subscriptionActive: boolean;
+  salonCovered: boolean;
+  employeeCount: number;
+  employeesPaid: number;
+  billableEmployees: number;
+  salonFee: number;
+  employeeFee: number;
+  total: number;
 }
 
 const PAYMENT_STATUS: Record<string, { label: string; className: string }> = {
@@ -63,6 +76,8 @@ export default function MonAbonnementPage() {
   const [declarePayerName, setDeclarePayerName] = useState('');
   const [showDeclareForm, setShowDeclareForm] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  // Explicit salon selection: only the selected salons contribute to the bill.
+  const [selectedSalonIds, setSelectedSalonIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,7 +85,18 @@ export default function MonAbonnementPage() {
     try {
       const data = await api.getBillingOverview();
       setOverview(data as Overview);
-      setDeclareAmount(String(data?.bill?.total ?? 0));
+      // Default selection: salons with anything due. A ?salonId= query param
+      // (from mes-salons "Couvrir") pre-selects only that salon.
+      const prefocus =
+        typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('salonId')
+          : null;
+      const due = (data?.bill?.salons ?? []).filter((s: SalonBill) => s.total > 0);
+      const ids = prefocus
+        ? due.filter((s: SalonBill) => s.id === prefocus).map((s: SalonBill) => s.id)
+        : due.map((s: SalonBill) => s.id);
+      setSelectedSalonIds(ids);
+      setDeclareAmount(String(ids.reduce((sum, id) => sum + ((data?.bill?.salons ?? []).find((s: SalonBill) => s.id === id)?.total ?? 0), 0)));
     } catch (e: any) {
       setError(e.message || 'Erreur de chargement');
     } finally {
@@ -101,6 +127,7 @@ export default function MonAbonnementPage() {
         amount,
         reference: declareDate ? declareDate.toLocaleDateString('fr-FR') : undefined,
         payerName: declarePayerName.trim(),
+        salonIds: selectedSalonIds.length > 0 ? selectedSalonIds : undefined,
       });
       setSuccessMsg('Virement déclaré — en attente de validation par la plateforme dans 24h maximum.');
       setShowDeclareForm(false);
@@ -133,7 +160,45 @@ export default function MonAbonnementPage() {
   const { bill, payments, salons } = overview;
   const currency = bill.config.currency;
   const hasPending = payments.some((p) => p.status === 'PENDING');
-  const due = bill.total;
+  const selected = new Set(selectedSalonIds);
+  const selectedBills = salons.filter((s) => selected.has(s.id));
+  const due = Math.round(selectedBills.reduce((sum, s) => sum + s.total, 0) * 100) / 100;
+  const allSelectable = salons.filter((s) => s.total > 0);
+  const allSelected = allSelectable.length > 0 && allSelectable.every((s) => selected.has(s.id));
+
+  const toggleSalon = (id: string) => {
+    setSelectedSalonIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      setDeclareAmount(
+        String(
+          Math.round(
+            salons
+              .filter((s) => next.includes(s.id))
+              .reduce((sum, s) => sum + s.total, 0) * 100
+          ) / 100
+        )
+      );
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelectedSalonIds((prev) => {
+      const current = new Set(prev);
+      const all = allSelectable.every((s) => current.has(s.id));
+      const next = all ? [] : allSelectable.map((s) => s.id);
+      setDeclareAmount(
+        String(
+          Math.round(
+            salons
+              .filter((s) => next.includes(s.id))
+              .reduce((sum, s) => sum + s.total, 0) * 100
+          ) / 100
+        )
+      );
+      return next;
+    });
+  };
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -193,9 +258,26 @@ export default function MonAbonnementPage() {
                   <span className="text-xs font-semibold uppercase tracking-wide">Employés — mensuel</span>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-gray-700"><span className="font-semibold text-gray-900">1 employé</span> : 100 {currency}/mois</p>
-                  <p className="text-xs text-gray-700"><span className="font-semibold text-gray-900">2–5 employés</span> : 90 {currency}/employé/mois</p>
-                  <p className="text-xs text-gray-700"><span className="font-semibold text-gray-900">6+ employés</span> : 80 {currency}/employé/mois</p>
+                  {bill.config.employeeTiers && bill.config.employeeTiers.length > 0 ? (
+                    bill.config.employeeTiers.map((t, i) => {
+                      const range =
+                        t.max === null || t.max === undefined
+                          ? `${t.min}+ employés`
+                          : t.min === t.max
+                            ? `${t.min} employé${t.min > 1 ? 's' : ''}`
+                            : `${t.min}–${t.max} employés`;
+                      return (
+                        <p key={i} className="text-xs text-gray-700">
+                          <span className="font-semibold text-gray-900">{range}</span>
+                          {' : '}{t.price} {currency}/employé/mois
+                        </p>
+                      );
+                    })
+                  ) : (
+                    <p className="text-xs text-gray-700">
+                      <span className="font-semibold text-gray-900">Employé</span> : {bill.config.pricePerEmployee} {currency}/mois
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -213,40 +295,84 @@ export default function MonAbonnementPage() {
                 {due > 0 ? 'Montant dû' : 'Entièrement réglée'}
               </span>
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">
-                  {bill.salonsDue > 0
-                    ? `${bill.salonsDue} salon${bill.salonsDue > 1 ? 's' : ''} non couverts — frais unique`
-                    : `Salons — ${bill.salonsPaid}/${bill.salonCount} couverts`}
-                </span>
-                <span className={`font-semibold ${bill.salonFee > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-                  {bill.salonFee > 0 ? `${bill.salonFee.toLocaleString('fr-FR')} ${currency}` : '—'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">
-                  {bill.employeesDue > 0
-                    ? `${bill.employeesDue} employé${bill.employeesDue > 1 ? 's' : ''} — mensuel`
-                    : 'Employés — couverts'}
-                </span>
-                <span className={`font-semibold ${bill.employeeFee > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
-                  {bill.employeeFee > 0 ? `${bill.employeeFee.toLocaleString('fr-FR')} ${currency}` : '—'}
-                </span>
-              </div>
-              <div className="h-px bg-gray-100" />
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-gray-900">Total</span>
-                <span className="text-2xl font-bold text-[#002366]">
-                  {due.toLocaleString('fr-FR')} {currency}
-                </span>
-              </div>
-              {!bill.periodActive && bill.salonsPaid > 0 && (
-                <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-                  Votre période payée est terminée — les employés au-delà du seuil sont masqués jusqu'au règlement de la nouvelle période.
-                </p>
+            <p className="text-xs text-gray-500 mb-3">
+              Choisissez les salons que vous souhaitez couvrir — la facture correspond à la sélection.
+            </p>
+            {allSelectable.length > 1 && (
+              <button
+                type="button"
+                onClick={toggleAll}
+                className="text-xs font-semibold text-[#002366] hover:underline mb-3"
+              >
+                {allSelected ? 'Tout désélectionner' : 'Sélectionner tous les salons'}
+              </button>
+            )}
+            <div className="space-y-2">
+              {salons.map((s) => {
+                const isSelected = selected.has(s.id);
+                const selectable = s.total > 0;
+                const parts: string[] = [];
+                if (s.salonFee > 0) parts.push(`${s.salonFee.toLocaleString('fr-FR')} ${currency} unique`);
+                if (s.employeeFee > 0)
+                  parts.push(`${s.billableEmployees} employé${s.billableEmployees > 1 ? 's' : ''} — ${s.employeeFee.toLocaleString('fr-FR')} ${currency}/mois`);
+                return (
+                  <label
+                    key={s.id}
+                    className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-all cursor-pointer ${
+                      isSelected ? 'border-[#002366]/40 bg-[#002366]/5' : 'border-gray-200 bg-white hover:border-gray-300'
+                    } ${!selectable ? 'opacity-60' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      disabled={!selectable}
+                      onChange={() => toggleSalon(s.id)}
+                      className="w-4 h-4 accent-[#002366]"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-gray-900">{s.name}</span>
+                        {s.salonCovered && (
+                          <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                            Couvert
+                          </span>
+                        )}
+                        {!s.subscriptionActive && (
+                          <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                            Non visible aux clients
+                          </span>
+                        )}
+                      </div>
+                      {parts.length > 0 ? (
+                        <p className="text-[11px] text-gray-500 mt-0.5">{parts.join(' + ')}</p>
+                      ) : (
+                        <p className="text-[11px] text-gray-400 mt-0.5">Entièrement réglé — rien à payer</p>
+                      )}
+                    </div>
+                    <span className={`text-sm font-bold shrink-0 ${s.total > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
+                      {s.total > 0 ? `${s.total.toLocaleString('fr-FR')} ${currency}` : '0 ' + currency}
+                    </span>
+                  </label>
+                );
+              })}
+              {salons.length === 0 && (
+                <p className="text-sm text-gray-400">Aucun salon actif</p>
               )}
             </div>
+            <div className="h-px bg-gray-100" />
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-gray-900">
+                Total{selectedBills.length > 0 ? ` (${selectedBills.length} salon${selectedBills.length > 1 ? 's' : ''} sélectionné${selectedBills.length > 1 ? 's' : ''})` : ''}
+              </span>
+              <span className="text-2xl font-bold text-[#002366]">
+                {due.toLocaleString('fr-FR')} {currency}
+              </span>
+            </div>
+            {!bill.periodActive && bill.salonsPaid > 0 && (
+              <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+                Votre période payée est terminée — les employés au-delà du seuil sont masqués jusqu'au règlement de la nouvelle période.
+              </p>
+            )}
 
             {!hasPending && due > 0 && (
               <div className="mt-5">
@@ -331,27 +457,6 @@ export default function MonAbonnementPage() {
             </Link>
           </div>
 
-          {/* Couverture par salon */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">Couverture par salon</h2>
-            <div className="space-y-3">
-              {salons.map((s) => (
-                <div key={s.id} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${s.subscriptionActive ? 'bg-emerald-500' : 'bg-amber-400'}`} />
-                    <span className="font-medium text-gray-900">{s.name}</span>
-                    {!s.subscriptionActive && (
-                      <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
-                        Non visible aux clients
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs text-gray-500">{s.subscriptionActive ? 'Couvert' : 'À couvrir'}</span>
-                </div>
-              ))}
-              {salons.length === 0 && <p className="text-sm text-gray-400">Aucun salon</p>}
-            </div>
-          </div>
         </div>
 
         {/* Right column */}

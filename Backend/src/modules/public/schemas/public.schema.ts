@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const createPublicReviewSchema = z.object({
   tenantId: z.string(),
   appointmentId: z.string().optional(),
+  // Employee.id or User.id of the professional this review is about (resolved to the User.id stored on reviews).
+  employeeId: z.string().optional(),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   email: z.string().email(),

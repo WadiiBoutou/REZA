@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -46,12 +47,15 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   int _activeTab = 0;
   bool _loading = true;
   String? _error;
+  int _curImage = 0;
+  String _activeServiceCat = 'all';
 
   VenueItem? _venue;
   List<ServiceItem> _services = [];
   final Set<String> _stagedServiceIds = {};
   List<Map<String, dynamic>> _employees = [];
   List<Map<String, dynamic>> _reviews = [];
+  List<String> _badges = [];
   String _description = '';
   Map<String, dynamic>? _businessHours;
 
@@ -93,6 +97,11 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       if (tenantSettings is Map && tenantSettings['businessHours'] is Map) {
         businessHours = Map<String, dynamic>.from(tenantSettings['businessHours'] as Map);
       }
+      // Badges & certifications configured by the salon owner in Reza Pro.
+      final rawBadges = tenantSettings is Map ? tenantSettings['badges'] : null;
+      final badges = (rawBadges is List)
+          ? rawBadges.map((b) => b.toString()).where((b) => b.trim().isNotEmpty).toList()
+          : <String>[];
       var desc = (tenantSettings is Map ? (tenantSettings['description'] ?? '') : '').toString().trim();
       if (desc.isEmpty) desc = (tenant['shortDescription'] ?? '').toString().trim();
 
@@ -119,6 +128,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
         _services = services;
         _employees = employees;
         _reviews = reviews;
+        _badges = badges;
         _description = desc;
         if (_description.isEmpty) {
           _description =
@@ -138,6 +148,13 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
           // Safety: verify login (should already be verified by caller)
           final auth = context.read<AuthViewModel>();
           if (!auth.isAuthenticated) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Veuillez vous connecter d'abord", style: GoogleFonts.inter(fontSize: 13)),
+                backgroundColor: AppColors.primary,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
             final ok = await Navigator.push<bool>(
               context,
               MaterialPageRoute(
@@ -183,6 +200,18 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+
+  void _prevImage() {
+    final imgs = _venue?.images ?? const <String>[];
+    if (imgs.length <= 1) return;
+    setState(() => _curImage = (_curImage - 1 + imgs.length) % imgs.length);
+  }
+
+  void _nextImage() {
+    final imgs = _venue?.images ?? const <String>[];
+    if (imgs.length <= 1) return;
+    setState(() => _curImage = (_curImage + 1) % imgs.length);
   }
 
   void _scrollToSection(int index) {
@@ -247,6 +276,13 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                   // booking form, and resume the group flow once connected.
                   final auth = context.read<AuthViewModel>();
                   if (!auth.isAuthenticated) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text("Veuillez vous connecter d'abord", style: GoogleFonts.inter(fontSize: 13)),
+                        backgroundColor: AppColors.primary,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
                     final ok = await Navigator.push<bool>(
                       context,
                       MaterialPageRoute(
@@ -299,6 +335,51 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
     super.dispose();
   }
 
+  static double _parseReviewRating(Map<String, dynamic> r) {
+    final raw = r['rating'] ?? r['stars'] ?? r['score'] ?? r['note'] ?? 0;
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw.toString()) ?? 0;
+  }
+
+  static double _computeEffectiveRating(double venueRating, int venueReviewCount, List<Map<String, dynamic>> reviews) {
+    if (reviews.isNotEmpty) {
+      final total = reviews.fold<double>(0, (sum, r) => sum + _parseReviewRating(r));
+      final avg = total / reviews.length;
+      if (avg > 0) return avg;
+    }
+    if (venueRating > 0) return venueRating;
+    if (venueReviewCount > 0 && venueRating == 0) return 5.0;
+    return venueRating;
+  }
+
+  static String _formatRatingCeil(double value, int decimals) {
+    if (decimals <= 0) {
+      final c = value.ceil();
+      return '$c'.replaceAll('.', ',');
+    }
+    final shift = pow(10, decimals).toDouble();
+    final ceiled = (value * shift).ceil() / shift;
+    return ceiled.toStringAsFixed(decimals).replaceAll('.', ',');
+  }
+
+  static Widget _buildStarRow(double rating, double size) {
+    final clamped = rating.clamp(0.0, 5.0);
+    final fullStars = clamped.floor();
+    final hasHalf = (clamped - fullStars) >= 0.5;
+    final emptyStars = 5 - fullStars - (hasHalf ? 1 : 0);
+    final children = <Widget>[];
+    for (var i = 0; i < fullStars; i++) {
+      children.add(Icon(Icons.star_rounded, size: size, color: AppColors.starColor));
+    }
+    if (hasHalf) {
+      children.add(Icon(Icons.star_half_rounded, size: size, color: AppColors.starColor));
+    }
+    for (var i = 0; i < emptyStars; i++) {
+      children.add(Icon(Icons.star_border_rounded, size: size, color: AppColors.starColor));
+    }
+    return Row(children: children);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -342,11 +423,20 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(
-                    venue.image,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(color: AppColors.surface),
-                  ),
+                  // REAL salon image only — neutral placeholder when none uploaded.
+                  venue.image.startsWith('http')
+                      ? Image.network(
+                          venue.image,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: AppColors.surface,
+                            child: const Icon(Icons.image_rounded, color: AppColors.textLight, size: 48),
+                          ),
+                        )
+                      : Container(
+                          color: AppColors.surface,
+                          child: const Icon(Icons.image_rounded, color: AppColors.textLight, size: 48),
+                        ),
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -388,15 +478,47 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                   Text(venue.name, style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textDark)),
                   const SizedBox(height: 2),
                   Text(venue.category, style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray)),
+                  if (_badges.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: _badges.map((b) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF8E7),
+                          border: Border.all(color: const Color(0xFFF5E3B8)),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.verified_rounded, size: 14, color: Color(0xFF92610C)),
+                            const SizedBox(width: 4),
+                            Text(
+                              b,
+                              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: const Color(0xFF92610C)),
+                            ),
+                          ],
+                        ),
+                      )).toList(),
+                    ),
+                  ],
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      const Icon(Icons.star_rounded, size: 16, color: AppColors.starColor),
-                      const SizedBox(width: 4),
-                      Text(venue.rating.toStringAsFixed(1).replaceAll('.', ','),
-                          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700)),
-                      Text(' (${venue.reviews})', style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray)),
-                    ],
+                  Builder(
+                    builder: (context) {
+                      final effectiveRating = _computeEffectiveRating(venue.rating, venue.reviews, _reviews);
+                      final effectiveCount = _reviews.isNotEmpty ? _reviews.length : venue.reviews;
+                      return Row(
+                        children: [
+                          _buildStarRow(effectiveRating, 16),
+                          const SizedBox(width: 6),
+                          Text(_formatRatingCeil(effectiveRating, 1),
+                              style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700)),
+                          Text(' ($effectiveCount)', style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray)),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 10),
                   Container(
@@ -440,6 +562,10 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                   child: _PrestationsSection(
                     services: _services,
                     stagedIds: _stagedServiceIds,
+                    activeCategory: _activeServiceCat,
+                    onCategoryChanged: (cat) {
+                      setState(() => _activeServiceCat = cat);
+                    },
                     onToggle: (s) {
                       setState(() {
                         final id = s.id.isNotEmpty ? s.id : s.name;
@@ -453,10 +579,21 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                   ),
                 ),
                 const Divider(height: 32, indent: 20, endIndent: 20, color: AppColors.border),
-                Container(
-                  key: _keys[2],
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: _EquipeSection(employees: _employees, reviews: _reviews, rating: venue.rating, reviewCount: venue.reviews),
+                Builder(
+                  builder: (context) {
+                    final effectiveRating = _computeEffectiveRating(venue.rating, venue.reviews, _reviews);
+                    final effectiveCount = _reviews.isNotEmpty ? _reviews.length : venue.reviews;
+                    return Container(
+                      key: _keys[2],
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: _EquipeSection(
+                        employees: _employees,
+                        reviews: _reviews,
+                        rating: effectiveRating,
+                        reviewCount: effectiveCount,
+                      ),
+                    );
+                  },
                 ),
                 const Divider(height: 32, indent: 20, endIndent: 20, color: AppColors.border),
                 Container(
@@ -630,11 +767,28 @@ class _AProposSection extends StatelessWidget {
 class _PrestationsSection extends StatelessWidget {
   final List<ServiceItem> services;
   final Set<String> stagedIds;
+  final String activeCategory;
+  final void Function(String) onCategoryChanged;
   final void Function(ServiceItem) onToggle;
-  const _PrestationsSection({required this.services, required this.stagedIds, required this.onToggle});
+  const _PrestationsSection({
+    required this.services,
+    required this.stagedIds,
+    required this.activeCategory,
+    required this.onCategoryChanged,
+    required this.onToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final categories = <String>{
+      for (final s in services)
+        if (s.category.isNotEmpty) s.category,
+    }.toList();
+
+    final filtered = activeCategory == 'all'
+        ? services
+        : services.where((s) => s.category == activeCategory).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -642,13 +796,50 @@ class _PrestationsSection extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
           child: Text('Prestations', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textDark)),
         ),
-        if (services.isEmpty)
+        if (categories.isNotEmpty) ...[
+          SizedBox(
+            height: 36,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: categories.length + 1,
+              itemBuilder: (context, i) {
+                final isAll = i == 0;
+                final label = isAll ? 'Tous' : categories[i - 1];
+                final active = isAll ? activeCategory == 'all' : activeCategory == label;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () => onCategoryChanged(isAll ? 'all' : label),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: active ? AppColors.textDark : AppColors.chipBg,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        label,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: active ? Colors.white : AppColors.textDark,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (filtered.isEmpty)
           Padding(
             padding: const EdgeInsets.all(20),
             child: Text('Aucune prestation', style: GoogleFonts.inter(color: AppColors.textGray)),
           )
         else
-          ...services.map((s) {
+          ...filtered.map((s) {
             final id = s.id.isNotEmpty ? s.id : s.name;
             final added = stagedIds.contains(id);
             return Container(
@@ -718,6 +909,33 @@ class _EquipeSection extends StatelessWidget {
     required this.reviewCount,
   });
 
+  static Widget _buildStars(double rating, double size) {
+    final clamped = rating.clamp(0.0, 5.0);
+    final fullStars = clamped.floor();
+    final hasHalf = (clamped - fullStars) >= 0.5;
+    final emptyStars = 5 - fullStars - (hasHalf ? 1 : 0);
+    final children = <Widget>[];
+    for (var i = 0; i < fullStars; i++) {
+      children.add(Icon(Icons.star_rounded, size: size, color: AppColors.starColor));
+    }
+    if (hasHalf) {
+      children.add(Icon(Icons.star_half_rounded, size: size, color: AppColors.starColor));
+    }
+    for (var i = 0; i < emptyStars; i++) {
+      children.add(Icon(Icons.star_border_rounded, size: size, color: AppColors.starColor));
+    }
+    return Row(children: children);
+  }
+
+  static String _fmtCeil(double value, int decimals) {
+    if (decimals <= 0) {
+      return '${value.ceil()}'.replaceAll('.', ',');
+    }
+    final shift = pow(10, decimals).toDouble();
+    final ceiled = (value * shift).ceil() / shift;
+    return ceiled.toStringAsFixed(decimals).replaceAll('.', ',');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -775,18 +993,27 @@ class _EquipeSection extends StatelessWidget {
         const SizedBox(height: 28),
         Text('Avis', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
-        Row(children: List.generate(5, (_) => const Icon(Icons.star_rounded, size: 28, color: AppColors.starColor))),
+        _buildStars(rating, 28),
         const SizedBox(height: 4),
-        Text('${rating.toStringAsFixed(1).replaceAll('.', ',')} ($reviewCount)',
+        Text('${_fmtCeil(rating, 2)} ($reviewCount)',
             style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700)),
         const SizedBox(height: 16),
         if (reviews.isEmpty)
           Text('Pas encore d\'avis', style: GoogleFonts.inter(color: AppColors.textGray))
         else
           ...reviews.take(5).map((r) {
-            final name = (r['clientName'] ?? r['author'] ?? r['firstName'] ?? 'Client').toString();
+            // Real client data comes nested: { client: { firstName, lastName, avatar } }
+            final client = r['client'] is Map<String, dynamic> ? r['client'] as Map<String, dynamic> : null;
+            final cFirst = (client?['firstName'] ?? '').toString();
+            final cLast = (client?['lastName'] ?? '').toString();
+            final name = '$cFirst $cLast'.trim().isNotEmpty
+                ? '$cFirst $cLast'.trim()
+                : (r['clientName'] ?? r['author'] ?? 'Client').toString();
+            final avatar = (client?['avatar'] ?? '').toString();
             final text = (r['comment'] ?? r['text'] ?? r['content'] ?? '').toString();
             final initials = name.isNotEmpty ? name.substring(0, name.length >= 2 ? 2 : 1).toUpperCase() : 'CL';
+            final raw = r['rating'] ?? r['stars'] ?? r['score'] ?? r['note'] ?? 0;
+            final rRating = (raw is num ? raw.toDouble() : double.tryParse(raw.toString()) ?? 0).clamp(0.0, 5.0);
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -795,14 +1022,17 @@ class _EquipeSection extends StatelessWidget {
                     CircleAvatar(
                       radius: 20,
                       backgroundColor: AppColors.surface,
-                      child: Text(initials, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+                      backgroundImage: avatar.startsWith('http') ? NetworkImage(avatar) : null,
+                      child: avatar.startsWith('http')
+                          ? null
+                          : Text(initials, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textDark)),
                     ),
                     const SizedBox(width: 12),
                     Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Row(children: List.generate(5, (_) => const Icon(Icons.star_rounded, size: 16, color: AppColors.starColor))),
+                _buildStars(rRating, 16),
                 const SizedBox(height: 4),
                 Text(text, style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray, height: 1.5)),
                 const SizedBox(height: 16),

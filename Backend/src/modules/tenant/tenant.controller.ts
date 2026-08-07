@@ -232,8 +232,11 @@ export class TenantController {
       }
 
       const fileUrl = `/uploads/cover-images/${req.file.filename}`;
-      const result = await tenantService.saveCoverImage(req.tenantId!, fileUrl);
-      res.json(result);
+      // Note: upload only stores the file and returns its URL. Persisting into
+      // tenant.coverImage / settings.coverImages is done explicitly by the
+      // frontend (informations-landing-page), so uploading never silently
+      // overwrites the current primary cover image.
+      res.json({ coverImage: fileUrl });
     } catch (error) {
       next(error);
     }

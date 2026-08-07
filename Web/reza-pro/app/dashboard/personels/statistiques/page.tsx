@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Users, Calendar, DollarSign, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { TrendingUp, TrendingDown, Users, Calendar, DollarSign, Search, Download, ChevronLeft, ChevronRight, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
@@ -96,6 +96,48 @@ export default function CollaborateurStats() {
     revenue: 0,
     onlineRate: 0
   });
+
+  // Sorting
+  type SortKey = 'name' | 'totalServices' | 'inSalon' | 'online' | 'onlineRate' | 'revenue';
+  const [sortKey, setSortKey] = useState<SortKey>('totalServices');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  // Search
+  const [employeeSearch, setEmployeeSearch] = useState('');
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+  };
+
+  const SortButton = ({ label, k, align = 'center' }: { label: string; k: SortKey; align?: 'left' | 'center' | 'right' }) => {
+    const active = sortKey === k;
+    const Icon = active ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown;
+    return (
+      <button
+        onClick={() => toggleSort(k)}
+        className={`inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wider transition-colors ${active ? 'text-[#002366]' : 'text-gray-500 hover:text-gray-900'} ${align === 'right' ? 'ml-auto' : align === 'center' ? 'mx-auto' : ''}`}
+      >
+        {label}
+        <Icon size={12} />
+      </button>
+    );
+  };
+
+  const collaborators = useMemo(() => {
+    const raw = [...(statsData.collaborators || [])];
+    raw.sort((a, b) => {
+      const av = a[sortKey] ?? 0;
+      const bv = b[sortKey] ?? 0;
+      if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+      return sortDir === 'asc' ? av - bv : bv - av;
+    });
+    return raw;
+  }, [statsData.collaborators, sortKey, sortDir]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -195,7 +237,6 @@ export default function CollaborateurStats() {
     );
   }
 
-  const collaborators = statsData.collaborators;
   const totals = statsData.totals;
 
   return (
@@ -330,35 +371,53 @@ export default function CollaborateurStats() {
         </div>
       </div>
 
+      {/* Search bar */}
+      <div className="relative mb-4">
+        <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          type="text"
+          value={employeeSearch}
+          onChange={(e) => setEmployeeSearch(e.target.value)}
+          placeholder="Rechercher un employé…"
+          className="w-full pl-10 pr-4 py-2.5 rounded-full border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/30 bg-white"
+        />
+      </div>
+
       {/* Main Table */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden animate-fadeIn">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Employé
+                <th className="px-6 py-4 text-left">
+                  <SortButton label="Employé" k="name" align="left" />
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total Prestations
+                <th className="px-6 py-4 text-center">
+                  <SortButton label="Total Prestations" k="totalServices" />
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Pris en Salon
+                <th className="px-6 py-4 text-center">
+                  <SortButton label="Pris en Salon" k="inSalon" />
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Pris en Ligne
+                <th className="px-6 py-4 text-center">
+                  <SortButton label="Pris en Ligne" k="online" />
                 </th>
-                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Taux en Ligne
+                <th className="px-6 py-4 text-center">
+                  <SortButton label="Taux en Ligne" k="onlineRate" />
                 </th>
-                <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Chiffre d&apos;affaires
+                <th className="px-6 py-4 text-right">
+                  <SortButton label="Chiffre d'affaires" k="revenue" align="right" />
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {collaborators.length > 0 ? (
-                collaborators.map((collab, index) => (
+              {collaborators.filter((c: any) => {
+                const q = employeeSearch.trim().toLowerCase();
+                return !q || c.name.toLowerCase().includes(q);
+              }).length > 0 ? (
+                collaborators.filter((c: any) => {
+                  const q = employeeSearch.trim().toLowerCase();
+                  return !q || c.name.toLowerCase().includes(q);
+                }).map((collab: any, index: number) => (
                   <tr key={collab.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">

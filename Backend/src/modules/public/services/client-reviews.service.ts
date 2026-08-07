@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../../../lib/prisma';
 import { createPublicReviewSchema } from '../schemas/public.schema';
 import { transformImageUrl } from '../../../utils/imageUrl';
+import { resolveEmployeeUserId } from '../../../utils/resolveEmployeeUserId';
 import { fail } from '../utils/http';
 import * as log from '../../../utils/logger';
 
@@ -73,13 +74,15 @@ export class ClientReviewsService {
     }
 
     // Verify appointment if provided
+    let appointmentEmployeeUserId: string | null = null;
     if (data.appointmentId) {
       const appointment = await prisma.appointment.findFirst({
         where: {
           id: data.appointmentId,
           tenantId: tenant.id,
           clientId: client.id
-        }
+        },
+        include: { services: { orderBy: { sortOrder: 'asc' } } }
       });
 
       if (!appointment) {
@@ -88,7 +91,19 @@ export class ClientReviewsService {
           message: 'The appointment does not exist or does not belong to this client.'
         });
       }
+
+      // Per-service employee when the appointment has explicit service items,
+      // else the legacy top-level appointment employee.
+      appointmentEmployeeUserId =
+        appointment?.services?.[0]?.employeeId ?? appointment?.employeeId ?? null;
     }
+
+    // Resolve the review's employee: explicit employeeId wins, then the
+    // appointment's performing employee.
+    const resolvedEmployeeUserId =
+      (data.employeeId
+        ? await resolveEmployeeUserId(tenant.id, data.employeeId)
+        : null) ?? appointmentEmployeeUserId;
 
     // Create review
     const review = await prisma.review.create({
@@ -96,6 +111,7 @@ export class ClientReviewsService {
         tenantId: tenant.id,
         clientId: client.id,
         appointmentId: data.appointmentId || null,
+        employeeId: resolvedEmployeeUserId,
         rating: data.rating,
         comment: data.comment || null,
         status: 'PENDING' // Reviews need moderation
@@ -107,6 +123,9 @@ export class ClientReviewsService {
             firstName: true,
             lastName: true
           }
+        },
+        employee: {
+          select: { id: true, firstName: true, lastName: true }
         }
       }
     });
@@ -180,6 +199,9 @@ export class ClientReviewsService {
         comment: review.comment,
         status: review.status,
         createdAt: review.createdAt,
+        employee: review.employee
+          ? { id: review.employee.id, firstName: review.employee.firstName, lastName: review.employee.lastName }
+          : null,
         client: {
           firstName: review.client.firstName,
           lastName: review.client.lastName
@@ -245,7 +267,8 @@ export class ClientReviewsService {
             address: true,
             city: true
           }
-        }
+        },
+        employee: { select: { id: true, firstName: true, lastName: true } }
       }
     });
 
@@ -262,7 +285,8 @@ export class ClientReviewsService {
               select: {
                 name: true
               }
-            }
+            },
+            employee: { select: { firstName: true, lastName: true } }
           }
         })
       : [];
@@ -281,12 +305,22 @@ export class ClientReviewsService {
         ? new Date(appointment.startTime).toLocaleDateString('fr-FR')
         : null;
 
+      // Employee name: prefer the review's stored employee, then the appointment's
+      // legacy top-level employee.
+      const employee =
+        review.employee
+          ? { firstName: review.employee.firstName, lastName: review.employee.lastName }
+          : appointment?.employee
+            ? { firstName: appointment.employee.firstName, lastName: appointment.employee.lastName }
+            : null;
+
       return {
         id: review.id,
         salon: review.tenant?.name || 'Salon',
         salonImage: transformImageUrl(review.tenant?.coverImage || review.tenant?.logo || null),
         salonLocation: review.tenant?.address || review.tenant?.city || null,
         service: appointment?.service?.name || 'Service',
+        employeeName: employee ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim() : null,
         rating: review.rating,
         comment: review.comment || '',
         date: new Date(review.createdAt).toLocaleDateString('fr-FR'),

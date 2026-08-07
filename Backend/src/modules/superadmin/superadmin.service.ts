@@ -49,24 +49,25 @@ function mapAccount(a: {
   };
 }
 
-/** Set subscriptionActive per salon based on one-time salon coverage (first N salons by creation). */
+/**
+ * Sync subscriptionActive per salon: a salon is publicly visible while it is
+ * covered (Tenant.salonCovered — one-time fee paid forever) and the account is
+ * active. Called after approvals and on account reactivation.
+ */
 async function applySalonVisibility(accountId: string) {
   const account = await prisma.account.findUnique({
     where: { id: accountId },
     include: {
-      subscription: true,
-      tenants: { where: { isActive: true }, orderBy: { createdAt: 'asc' }, select: { id: true } },
+      tenants: { where: { isActive: true }, select: { id: true, salonCovered: true } },
     },
   });
   if (!account) return;
 
-  const coveredCount = Math.min(account.subscription?.salonsPaid ?? 0, account.tenants.length);
-
   await prisma.$transaction(
-    account.tenants.map((t, i) =>
+    account.tenants.map((t) =>
       prisma.tenant.update({
         where: { id: t.id },
-        data: { subscriptionActive: i < coveredCount },
+        data: { subscriptionActive: t.salonCovered },
       })
     )
   );
@@ -135,10 +136,10 @@ export class SuperAdminService {
       await prisma.account.update({ where: { id: accountId }, data: { isActive: data.isActive } });
       await prisma.tenant.updateMany({
         where: { accountId },
-        data: { isActive: data.isActive, subscriptionActive: data.isActive },
+        data: { isActive: data.isActive, subscriptionActive: false },
       });
       if (data.isActive) {
-        // Re-apply per-salon coverage visibility (only paid salons public)
+        // Re-apply per-salon coverage visibility (only covered salons public)
         await applySalonVisibility(accountId);
       }
     }
@@ -306,11 +307,11 @@ export class SuperAdminService {
   }
 
   /**
-   * Approve a PENDING payment: apply the declared coverage snapshot —
-   * salonsPaid += declared salons, each salon's employeesPaid += its declared
+   * Approve a PENDING payment: apply the declared per-salon coverage snapshot —
+   * exactly the salons the admin chose get salonCovered=true + subscriptionActive
+   * (one-time fee, forever), each of those salons' employeesPaid += its declared
    * count, subscription becomes ACTIVE, period = now + 1 month, subscribedAt =
-   * now (approval date = subscription start). Public visibility is recomputed
-   * per salon so only covered salons appear.
+   * now (approval date = subscription start).
    */
   async approvePayment(paymentId: string, approverUserId: string) {
     const payment = await prisma.subscriptionPayment.findUnique({
@@ -339,11 +340,25 @@ export class SuperAdminService {
       salonsDue?: number;
       employeesDue?: number;
       employeesBySalon?: Record<string, number>;
+      salons?: { id: string; name: string; salonCovered: boolean; billableEmployees: number; salonFee: number; employeeFee: number }[];
     };
-    const salonsDue = Math.max(0, details.salonsDue ?? 0);
-    const employeesBySalon = details.employeesBySalon ?? {};
     const account = payment.account;
     const sub = account.subscription;
+
+    // The admin's declared salon set (per-salon snapshot). Falls back to legacy
+    // count-based details for payments declared before the per-salon model.
+    const declaredSalons = details.salons?.length
+      ? details.salons
+      : account.tenants.map((t, i) => ({
+          id: t.id,
+          name: t.name,
+          salonCovered: false,
+          billableEmployees: 0,
+          salonFee: 0,
+          employeeFee: 0,
+        }));
+    const declaredIds = new Set(declaredSalons.map((s) => s.id));
+    const employeesBySalon = details.employeesBySalon ?? {};
 
     const now = new Date();
     const periodEnd = new Date(now);
@@ -365,33 +380,56 @@ export class SuperAdminService {
           accountId: account.id,
           planId: sub?.planId ?? (await this.ensureReferencePlanId()),
           status: 'ACTIVE',
-          salonsPaid: salonsDue,
+          salonsPaid: declaredIds.size,
           subscribedAt: now,
           currentPeriodEnd: periodEnd,
         },
         update: {
           status: 'ACTIVE',
-          salonsPaid: { increment: salonsDue },
           subscribedAt: sub?.subscribedAt ?? now,
           currentPeriodEnd: periodEnd,
         },
       }),
-      // Per-salon employee coverage
-      ...account.tenants.map((t) =>
-        prisma.tenant.update({
-          where: { id: t.id },
-          data: resetCoverage
-            ? { employeesPaid: employeesBySalon[t.id] ?? 0 }
-            : { employeesPaid: { increment: employeesBySalon[t.id] ?? 0 } },
-        })
-      ),
+      // Declared salons become covered forever + get their employees' coverage.
+      // Non-declared salons keep whatever coverage they already had (unchanged).
+      ...account.tenants.map((t) => {
+        const declared = declaredIds.has(t.id);
+        const employeeDelta = declared ? (employeesBySalon[t.id] ?? 0) : 0;
+        const data: any = {};
+        if (declared) {
+          data.salonCovered = true;
+          data.subscriptionActive = true;
+        }
+        if (resetCoverage) {
+          // Period lapsed: stored employeesPaid is stale (billing reads it as 0
+          // while inactive). SET the new period's coverage explicitly — declared
+          // salons get their declared count, and non-declared salons reset to 0
+          // so they can't inherit free employee coverage from the old period.
+          data.employeesPaid = declared ? employeeDelta : 0;
+        } else if (declared) {
+          data.employeesPaid = { increment: employeeDelta };
+        }
+        return prisma.tenant.update({ where: { id: t.id }, data });
+      }),
     ]);
 
-    // Salon visibility: the first `salonsPaid` salons become public
+    // Keep salonsPaid in sync with the actual covered count
+    const coveredCount = await prisma.tenant.count({
+      where: { accountId: account.id, isActive: true, salonCovered: true },
+    });
+    await prisma.subscription.update({
+      where: { accountId: account.id },
+      data: { salonsPaid: coveredCount },
+    });
+
+    // Salon visibility: exactly the covered salons become public
     await applySalonVisibility(account.id);
 
+    // Clear the PAYMENT_DECLARED notification(s) for this payment
+    await this.clearPaymentNotifications(payment.id);
+
     log.log(
-      `[Billing] Payment ${payment.id} approved by ${approverUserId} for account ${account.id} (salons +${salonsDue}, employees +${Object.values(employeesBySalon).reduce((a, b) => a + b, 0)})`
+      `[Billing] Payment ${payment.id} approved by ${approverUserId} for account ${account.id} (salons: ${declaredSalons.map((s) => s.name).join(', ')}; employees: +${declaredSalons.reduce((a, s) => a + (employeesBySalon[s.id] ?? 0), 0)})`
     );
 
     return { success: true };
@@ -412,7 +450,26 @@ export class SuperAdminService {
       data: { status: 'REJECTED', rejectedReason: reason?.trim() || null },
     });
 
+    // Clear the PAYMENT_DECLARED notification(s) for this payment
+    await this.clearPaymentNotifications(paymentId);
+
     return { success: true };
+  }
+
+  /** Mark PAYMENT_DECLARED notifications for a payment as read (handled). */
+  private async clearPaymentNotifications(paymentId: string) {
+    try {
+      await prisma.notification.updateMany({
+        where: {
+          type: 'PAYMENT_DECLARED',
+          metadata: { path: ['paymentId'], equals: paymentId },
+        },
+        data: { isRead: true, readAt: new Date() },
+      });
+    } catch (notificationError) {
+      // Never block the approve/reject itself
+      log.error('Error clearing PAYMENT_DECLARED notification:', notificationError);
+    }
   }
 
   private async ensureReferencePlanId(): Promise<string> {
@@ -422,6 +479,49 @@ export class SuperAdminService {
       data: { name: 'Standard', priceCents: 0, maxSalons: 999, isActive: true },
     });
     return created.id;
+  }
+
+  // ── Superadmin notifications ───────────────────────────────────────────
+  // Global superadmins are tenant-less, so the tenant-scoped /api/notifications
+  // endpoint can't serve them. These queries target the superadmin's userId
+  // directly (notifications created with the declaring salon's tenantId).
+
+  async listSuperAdminNotifications(userId: string, unreadOnly?: boolean, limit?: number) {
+    const where: Prisma.NotificationWhereInput = { userId };
+    if (unreadOnly) where.isRead = false;
+
+    const [notifications, unreadCount] = await Promise.all([
+      prisma.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit || 30,
+      }),
+      prisma.notification.count({ where: { ...where, isRead: false } }),
+    ]);
+
+    return { notifications, unreadCount };
+  }
+
+  async markSuperAdminNotificationRead(userId: string, notificationId: string) {
+    const notification = await prisma.notification.findFirst({
+      where: { id: notificationId, userId },
+    });
+    if (!notification) {
+      throw { status: 404, error: 'Notification not found', message: 'Notification introuvable' };
+    }
+    await prisma.notification.update({
+      where: { id: notificationId },
+      data: { isRead: true, readAt: new Date() },
+    });
+    return { success: true };
+  }
+
+  async markAllSuperAdminNotificationsRead(userId: string) {
+    await prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true, readAt: new Date() },
+    });
+    return { success: true };
   }
 }
 

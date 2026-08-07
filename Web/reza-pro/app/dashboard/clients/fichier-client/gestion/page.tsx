@@ -3,8 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Search, X, Phone, Mail, User as UserIcon, MapPin, Calendar, Loader2 } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { api } from '@/lib/api';
@@ -655,79 +653,9 @@ export default function ClientsGestionPage() {
 
               {/* Stats */}
               <div className="pt-4 border-t border-gray-100">
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-gray-400">Prochain RDV</span>
+                <div className="flex items-center justify-end text-xs mb-1">
                   <span className="text-gray-400">{client.totalVisits || 0} visites</span>
                 </div>
-                {editingAppointment === client.id ? (
-                  <div className="flex items-center gap-2">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button
-                          className="flex-1 px-2 py-1 text-xs rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900"
-                        >
-                          {client.nextAppointment
-                            ? format(new Date(client.nextAppointment), 'PPP', { locale: fr })
-                            : 'Choisir une date'}
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <CalendarComponent
-                          mode="single"
-                          selected={client.nextAppointment ? new Date(client.nextAppointment) : undefined}
-                          onSelect={(date) => {
-                            if (date) {
-                              // Create date with default time (9 AM) to avoid timezone issues at midnight
-                              const localDate = new Date(date);
-                              localDate.setHours(9, 0, 0, 0); // Set to 9 AM local time
-                              // Format as YYYY-MM-DDTHH:mm in local time
-                              const year = localDate.getFullYear();
-                              const month = String(localDate.getMonth() + 1).padStart(2, '0');
-                              const day = String(localDate.getDate()).padStart(2, '0');
-                              const hours = String(localDate.getHours()).padStart(2, '0');
-                              const minutes = String(localDate.getMinutes()).padStart(2, '0');
-                              const dateString = `${year}-${month}-${day}T${hours}:${minutes}`;
-                              handleUpdateAppointment(client.id, dateString);
-                            } else {
-                              handleUpdateAppointment(client.id, '');
-                            }
-                          }}
-                          initialFocus
-                          locale={fr}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <button
-                      onClick={() => setEditingAppointment(null)}
-                      className="p-1 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                      title="Annuler"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-gray-600">
-                      <Calendar size={12} />
-                      <span className="text-xs">
-                        {client.nextAppointment
-                          ? `${new Date(client.nextAppointment).toLocaleDateString('fr-FR', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric'
-                          })}${client.nextAppointmentTime ? ` à ${client.nextAppointmentTime}` : ''}`
-                          : 'Non planifié'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setEditingAppointment(client.id)}
-                      className="p-1 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                      title="Modifier RDV"
-                    >
-                      <Pencil size={12} />
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           ))}
@@ -744,7 +672,6 @@ export default function ClientsGestionPage() {
                   <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Client</th>
                   <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Contact</th>
                   <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap hidden xl:table-cell">Adresse</th>
-                  <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap hidden lg:table-cell">Prochain RDV</th>
                   <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap hidden md:table-cell">Visites</th>
                   <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Statut</th>
                   <th className="px-4 py-4 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
@@ -785,66 +712,6 @@ export default function ClientsGestionPage() {
                         </div>
                       ) : (
                         <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap hidden lg:table-cell">
-                      {editingAppointment === client.id ? (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-
-                              className="px-2 py-1 text-xs rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900"
-                            >
-                              {client.nextAppointment
-                                ? format(new Date(client.nextAppointment), 'PPP', { locale: fr })
-                                : 'Choisir une date'}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <CalendarComponent
-                              mode="single"
-                              selected={client.nextAppointment ? new Date(client.nextAppointment) : undefined}
-                              onSelect={(date) => {
-                                if (date) {
-                                  // Create date with default time (9 AM) to avoid timezone issues at midnight
-                                  const localDate = new Date(date);
-                                  localDate.setHours(9, 0, 0, 0); // Set to 9 AM local time
-                                  // Format as YYYY-MM-DDTHH:mm in local time
-                                  const year = localDate.getFullYear();
-                                  const month = String(localDate.getMonth() + 1).padStart(2, '0');
-                                  const day = String(localDate.getDate()).padStart(2, '0');
-                                  const hours = String(localDate.getHours()).padStart(2, '0');
-                                  const minutes = String(localDate.getMinutes()).padStart(2, '0');
-                                  const dateString = `${year}-${month}-${day}T${hours}:${minutes}`;
-                                  handleUpdateAppointment(client.id, dateString);
-                                } else {
-                                  handleUpdateAppointment(client.id, '');
-                                }
-                              }}
-                              initialFocus
-                              locale={fr}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span>
-                            {client.nextAppointment
-                              ? `${new Date(client.nextAppointment).toLocaleDateString('fr-FR', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric'
-                              })}${client.nextAppointmentTime ? ` à ${client.nextAppointmentTime}` : ''}`
-                              : 'Non planifié'}
-                          </span>
-                          <button
-                            onClick={() => setEditingAppointment(client.id)}
-                            className="p-1 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                            title="Modifier RDV"
-                          >
-                            <Pencil size={12} />
-                          </button>
-                        </div>
                       )}
                     </td>
                     <td className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap hidden md:table-cell">

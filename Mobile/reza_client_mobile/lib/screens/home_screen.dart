@@ -29,6 +29,33 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
+/// Renders a venue's cover photo — REAL salon image only. When the salon
+/// hasn't uploaded anything (or the URL fails), a neutral placeholder is shown
+/// instead of stock imagery.
+class _VenueCardImage extends StatelessWidget {
+  final String image;
+  final double height;
+  const _VenueCardImage({required this.image, required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = Container(
+      height: height,
+      width: double.infinity,
+      color: AppColors.surface,
+      child: const Icon(Icons.image_rounded, color: AppColors.textLight, size: 40),
+    );
+    if (!image.startsWith('http')) return placeholder;
+    return Image.network(
+      image,
+      height: height,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => placeholder,
+    );
+  }
+}
+
 class _HomeScreenBody extends StatefulWidget {
   const _HomeScreenBody();
 
@@ -41,17 +68,15 @@ class _HomeScreenState extends State<_HomeScreenBody> {
 
   HomeViewModel get _vm => context.watch<HomeViewModel>();
 
-  Future<void> _loadTenants({String? category}) =>
-      context.read<HomeViewModel>().loadTenants(category: category);
+  Future<void> _loadTenants({List<String>? categories}) =>
+      context.read<HomeViewModel>().loadTenants(categories: categories);
 
   List<VenueItem> get _filteredVenues => _vm.filteredVenues;
 
   String get _searchCityLabel => _vm.searchCityLabel;
 
-  String? get _selectedCategory => _vm.selectedCategory;
-  set _selectedCategory(String? v) => _vm.setCategory(v);
+  bool _isCategorySelected(String label) => _vm.selectedCategories.contains(label);
 
-  set _searchCategory(String v) => _vm.setSearchCategory(v);
   String get _searchCategory => _vm.searchCategory;
 
   bool get _loading => _vm.loading;
@@ -69,33 +94,86 @@ class _HomeScreenState extends State<_HomeScreenBody> {
     );
   }
 
-  void _showCategoryPicker() {
+  void _showCategoryPicker() async {
     final categories = ['Tous', ...serviceCategories.map((c) => c['label'] as String)];
-    showModalBottomSheet(
+    final vm = context.read<HomeViewModel>();
+    final Set<String> before = Set<String>.from(vm.selectedCategories);
+    await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) {
-        return ListView.builder(
-          shrinkWrap: true,
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          itemCount: categories.length,
-          itemBuilder: (context, index) {
-            return ListTile(
-              title: Text(categories[index], style: GoogleFonts.inter(fontSize: 16)),
-              onTap: () {
-                final label = categories[index];
-                final vm = context.read<HomeViewModel>();
-                vm.searchCategory = label;
-                vm.setCategory(label == 'Tous' ? null : label);
-                Navigator.pop(context);
-                vm.loadTenants(category: vm.selectedCategory);
-              },
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: SizedBox(
+                height: MediaQuery.of(ctx).size.height * 0.75,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Row(
+                        children: [
+                          Text(
+                            'Catégories',
+                            style: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: Text(
+                              'OK',
+                              style: GoogleFonts.inter(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(0, 4, 0, 12),
+                        itemCount: categories.length,
+                        itemBuilder: (context, index) {
+                          final label = categories[index];
+                          final isAll = label == 'Tous';
+                          bool isSelected = isAll
+                              ? vm.selectedCategories.isEmpty
+                              : vm.selectedCategories.contains(label);
+                          return ListTile(
+                            title: Text(label, style: GoogleFonts.inter(fontSize: 16)),
+                            trailing: isSelected
+                                ? const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 20)
+                                : const Icon(Icons.circle_outlined, color: AppColors.border, size: 20),
+                            onTap: () {
+                              if (isAll) {
+                                vm.clearCategories();
+                              } else {
+                                vm.toggleCategory(label);
+                              }
+                              setSheetState(() {});
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             );
           },
         );
       },
     );
+    final changed = before.length != vm.selectedCategories.length ||
+        before.any((c) => !vm.selectedCategories.contains(c));
+    if (changed) {
+      vm.loadTenants();
+    }
   }
 
   void _showCityPicker() {
@@ -118,7 +196,7 @@ class _HomeScreenState extends State<_HomeScreenBody> {
                 final label = cities[index];
                 vm.setSearchCity(label == 'Toutes les villes' ? '' : label);
                 Navigator.pop(context);
-                vm.loadTenants(category: vm.selectedCategory);
+                vm.loadTenants();
               },
             );
           },
@@ -241,12 +319,16 @@ class _HomeScreenState extends State<_HomeScreenBody> {
                             children: [
                               const Icon(Icons.search_rounded, color: AppColors.textGray, size: 20),
                               const SizedBox(width: 12),
-                              Text(
-                                _searchCategory,
-                                style: GoogleFonts.inter(
-                                  color: _searchCategory.startsWith('Prestations') ? AppColors.textGray : AppColors.textDark,
-                                  fontSize: 14,
-                                  fontWeight: _searchCategory.startsWith('Prestations') ? FontWeight.w400 : FontWeight.w600,
+                              Expanded(
+                                child: Text(
+                                  _searchCategory,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(
+                                    color: _searchCategory.startsWith('Prestations') ? AppColors.textGray : AppColors.textDark,
+                                    fontSize: 14,
+                                    fontWeight: _searchCategory.startsWith('Prestations') ? FontWeight.w400 : FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ],
@@ -268,9 +350,13 @@ class _HomeScreenState extends State<_HomeScreenBody> {
                             children: [
                               const Icon(Icons.location_on_outlined, color: AppColors.textGray, size: 20),
                               const SizedBox(width: 12),
-                              Text(
-                                _searchCityLabel,
-                                style: GoogleFonts.inter(color: AppColors.textDark, fontSize: 14, fontWeight: FontWeight.w600),
+                              Expanded(
+                                child: Text(
+                                  _searchCityLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.inter(color: AppColors.textDark, fontSize: 14, fontWeight: FontWeight.w600),
+                                ),
                               ),
                             ],
                           ),
@@ -345,15 +431,11 @@ class _HomeScreenState extends State<_HomeScreenBody> {
                   itemBuilder: (context, index) {
                     final cat = serviceCategories[index];
                     final label = cat['label'] as String;
-                    final selected = _selectedCategory == label;
+                    final selected = _isCategorySelected(label);
                     return GestureDetector(
                       onTap: () {
-                        final next = selected ? null : label;
-                        setState(() {
-                          _selectedCategory = next;
-                          _searchCategory = next ?? 'Prestations (coupe, barbier...)';
-                        });
-                        _loadTenants(category: next);
+                        context.read<HomeViewModel>().toggleCategory(label);
+                        _loadTenants();
                       },
                       child: Container(
                         margin: const EdgeInsets.only(right: 16),
@@ -467,17 +549,7 @@ class _HomeScreenState extends State<_HomeScreenBody> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.network(
-                venue.image,
-                height: 150,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  height: 150,
-                  color: AppColors.surface,
-                  child: const Icon(Icons.image_rounded, color: AppColors.textLight, size: 40),
-                ),
-              ),
+              child: _VenueCardImage(image: venue.image, height: 150),
             ),
             const SizedBox(height: 8),
             Row(
@@ -521,17 +593,7 @@ class _HomeScreenState extends State<_HomeScreenBody> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.network(
-                venue.image,
-                height: 150,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  height: 150,
-                  color: AppColors.surface,
-                  child: const Icon(Icons.image_rounded, color: AppColors.textLight, size: 40),
-                ),
-              ),
+              child: _VenueCardImage(image: venue.image, height: 150),
             ),
             const SizedBox(height: 8),
             Row(
@@ -577,17 +639,7 @@ class _HomeScreenState extends State<_HomeScreenBody> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.network(
-                venue.image,
-                height: 140,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  height: 140,
-                  color: AppColors.surface,
-                  child: const Icon(Icons.image_rounded, color: AppColors.textLight, size: 40),
-                ),
-              ),
+              child: _VenueCardImage(image: venue.image, height: 140),
             ),
             const SizedBox(height: 8),
             Row(

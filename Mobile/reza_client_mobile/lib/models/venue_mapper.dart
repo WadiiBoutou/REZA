@@ -1,4 +1,21 @@
+import '../config/api_config.dart';
 import '../constants.dart';
+
+/// Resolves an image URL (possibly relative `/uploads/...`) to an absolute URL
+/// that Flutter's `Image.network` can fetch. External `http(s)://` URLs are
+/// kept as-is. This fixes real uploaded salon covers (e.g. Spa Royal Casablanca)
+/// which the backend returns as relative paths in dev/proxy environments.
+String resolveImageUrl(String raw) {
+  final v = raw.trim();
+  if (v.isEmpty) return '';
+  if (v.startsWith('http://') || v.startsWith('https://')) return v;
+  final apiBase = ApiConfig.baseUrl;
+  final origin = apiBase.endsWith('/api')
+      ? apiBase.substring(0, apiBase.length - 4)
+      : apiBase;
+  if (v.startsWith('/')) return '$origin$v';
+  return '$origin/$v';
+}
 
 /// Map Backend tenant JSON → UI-friendly venue map used across screens.
 Map<String, dynamic> tenantToVenue(Map<String, dynamic> t) {
@@ -20,7 +37,7 @@ Map<String, dynamic> tenantToVenue(Map<String, dynamic> t) {
   return {
     'id': t['id']?.toString() ?? '',
     'name': t['name']?.toString() ?? '',
-    'image': (t['coverImage'] ?? t['logo'] ?? '').toString(),
+    'image': resolveImageUrl((t['coverImage'] ?? t['logo'] ?? '').toString()),
     'rating': rating,
     'reviews': reviewCount is int ? reviewCount : int.tryParse('$reviewCount') ?? 0,
     'category': t['category']?.toString() ?? '',
@@ -48,19 +65,29 @@ ServiceItem serviceFromApi(Map<String, dynamic> s) {
         30,
     price: (s['price'] as num?)?.toDouble() ?? 0,
     description: (s['description'] ?? '').toString(),
+    category: (s['category'] ?? '').toString().trim(),
   );
 }
 
 VenueItem venueMapToItem(
   Map<String, dynamic> m, {
   List<ServiceItem> services = const [],
+  List<String> images = const [],
 }) {
+  // Prefer caller-provided images list (populated by tenant-level photo fields).
+  // Otherwise fall back to the single cover image if the list is empty.
+  final cover = (m['image'] ?? '').toString().trim();
+  final resolvedImages = images.isNotEmpty
+      ? images
+      : (cover.isNotEmpty ? <String>[cover] : <String>[]);
   return VenueItem(
     id: m['id']?.toString() ?? '',
     name: m['name']?.toString() ?? '',
-    image: (m['image'] ?? '').toString().isNotEmpty
-        ? m['image'].toString()
-        : 'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=800&auto=format&fit=crop',
+    // REAL salon image only (cover uploaded by the salon owner). Empty when the
+    // salon hasn't uploaded anything — the UI shows a neutral placeholder instead
+    // of stock imagery.
+    image: cover,
+    images: resolvedImages,
     rating: (m['rating'] as num?)?.toDouble() ?? 0,
     reviews: m['reviews'] is int
         ? m['reviews'] as int
@@ -80,8 +107,46 @@ VenueItem venueMapToItem(
 VenueItem tenantToVenueItem(
   Map<String, dynamic> t, {
   List<ServiceItem> services = const [],
-}) =>
-    venueMapToItem(tenantToVenue(t), services: services);
+}) {
+  final Map<String, dynamic> venue = tenantToVenue(t);
+  // Collate the gallery images from the tenant's settings fields that the
+  // backend already exposes: coverImages (hero gallery), photos (portfolio),
+  // and finally coverImage as fallback. Deduplicate while preserving order
+  // so a salon uploading the same asset twice doesn't show duplicate slides.
+  final settings = t['settings'];
+  final gallery = <String>[];
+  final seen = <String>{};
+  void addPhoto(String? raw) {
+    if (raw == null) return;
+    final v = resolveImageUrl(raw).trim();
+    if (v.isEmpty) return;
+    if (!seen.add(v)) return;
+    gallery.add(v);
+  }
+
+  if (settings is Map) {
+    final cImgs = settings['coverImages'];
+    if (cImgs is List) {
+      for (final x in cImgs) {
+        addPhoto(x?.toString());
+      }
+    }
+    final photos = settings['photos'];
+    if (photos is List) {
+      for (final x in photos) {
+        addPhoto(x?.toString());
+      }
+    }
+  }
+  addPhoto((t['coverImage'] ?? '').toString().trim().isEmpty
+      ? null
+      : t['coverImage'].toString());
+  addPhoto((t['logo'] ?? '').toString().trim().isEmpty
+      ? null
+      : t['logo'].toString());
+
+  return venueMapToItem(venue, services: services, images: gallery);
+}
 
 /// Distance + location when GPS/API returned km; otherwise location only (no fake km).
 String venueMetaLine(VenueItem venue) {

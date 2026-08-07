@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
-import { MapPin, Star, ArrowLeft, Heart, Gift, Phone, Mail, X, ChevronLeft, ChevronRight, Check, User, Users, Clock, Calendar, Globe, Instagram, Facebook, Linkedin, Map } from 'lucide-react';
+import { MapPin, Star, ArrowLeft, Heart, Gift, Phone, Mail, X, ChevronLeft, ChevronRight, Check, User, Users, Clock, Calendar, Globe, Instagram, Facebook, Linkedin, Map, Plus, Minus, Search, BadgeCheck, Image as ImageIcon } from 'lucide-react';
 
 // Brand icons for X, TikTok and WhatsApp (not provided by lucide)
 const XBrandIcon = ({ size = 16, className }: { size?: number; className?: string }) => (
@@ -94,6 +94,12 @@ export default function SalonDetail() {
 
   const servicesRef = useRef<HTMLDivElement>(null);
 
+  // Prestations: category filter (hides other categories), search and per-category pagination
+  const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [categoryPage, setCategoryPage] = useState<Record<string, number>>({});
+  const SERVICES_PER_PAGE = 10;
+
   useEffect(() => {
     if (!salonId) return;
     
@@ -114,16 +120,22 @@ export default function SalonDetail() {
         // Pretty URL: replace CUID in address bar with subdomain when available
         const slug = getSalonSlug(tenantRes.tenant);
         if (slug && salonId && slug !== salonId && typeof window !== 'undefined') {
-          window.history.replaceState(null, '', `/salon/${slug}`);
+          // Keep the query string (e.g. ?employeeId=...&serviceId=...) so the
+          // preselect effect below can read it after the pretty-URL rewrite.
+          window.history.replaceState(null, '', `/salon/${slug}${window.location.search}`);
         }
         
         // Format reviews to match frontend expected format
         const formattedReviews = (reviewsRes.reviews || []).map((review: any) => ({
           id: review.id,
           name: review.client ? `${review.client.firstName || ''} ${review.client.lastName || ''}`.trim() : 'Client',
+          avatar: getImageUrl(review.client?.avatar || null),
           rating: review.rating || 0,
           text: review.comment || '',
-          date: review.createdAt ? formatMoroccoDate(review.createdAt, { day: 'numeric', month: 'long', year: 'numeric' }) : formatMoroccoDate(new Date())
+          date: review.createdAt ? formatMoroccoDate(review.createdAt, { day: 'numeric', month: 'long', year: 'numeric' }) : formatMoroccoDate(new Date()),
+          employeeName: review.employee
+            ? `${review.employee.firstName || ''} ${review.employee.lastName || ''}`.trim()
+            : undefined
         }));
         
         setReviews(formattedReviews);
@@ -138,6 +150,35 @@ export default function SalonDetail() {
 
     fetchSalonData();
   }, [salonId]);
+
+  // Preselect a service (+ optional employee) from the homepage "Réserver"
+  // links: /salon/:id?employeeId=...&serviceId=... — opens the booking flow
+  // directly for that service instead of just landing on the page.
+  useEffect(() => {
+    if (!salon?.id || services.length === 0 || loading || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const empId = params.get('employeeId');
+    const svcId = params.get('serviceId');
+    if (!svcId) return;
+    const service = services.find((s: any) => s.id === svcId);
+    if (!service) return;
+
+    setSelectedServices([
+      {
+        id: service.id,
+        name: service.name,
+        duration: formatDuration(service.duration || 30),
+        price: service.price || service.priceFrom || 0,
+        priceType: service.priceType,
+      },
+    ]);
+    setSlotServiceIds([service.id]);
+    if (empId) setBookingPreferredEmployeeId(empId);
+    setBookingStep(1);
+    setShowBookingModal(true);
+    // Clean the URL so a refresh doesn't re-trigger the booking modal.
+    window.history.replaceState(null, '', window.location.pathname);
+  }, [salon?.id, services.length, loading]);
 
   // Check if salon is in favorites when salon loads
   useEffect(() => {
@@ -277,22 +318,23 @@ export default function SalonDetail() {
     email: salon.email || '',
     description: salon.shortDescription || salon.settings?.description || null,
     images: (() => {
-      const defaultImage = 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&q=80';
+      // REAL salon images only (uploaded by the salon owner in Reza Pro):
+      // the explicit primary cover + the additional cover images. No stock
+      // fallbacks — if the salon hasn't uploaded anything, the list is empty
+      // and the UI shows a neutral placeholder instead of fake imagery.
       const coverImage = salon.coverImage;
       const coverImages = salon.settings?.coverImages || [];
       const allImages = coverImage
         ? [coverImage, ...coverImages]
         : [...coverImages];
-      // Filter out any null/undefined/empty strings and ensure we have at least one image
       const validImages = allImages
         .filter((img: any) => {
           if (!img) return false;
-          // Ensure img is a string before calling trim
           const imgStr = typeof img === 'string' ? img : String(img);
           return imgStr.trim() !== '';
         })
         .map((img: string) => getImageUrl(img)); // Convert all image paths to full URLs
-      return validImages.length > 0 ? validImages : [defaultImage];
+      return validImages;
     })(),
     hours: formatHours(salon.settings?.businessHours),
     services: formatServices(services),
@@ -303,8 +345,24 @@ export default function SalonDetail() {
     coordinates: salon.coordinates,
     googleMapsLink: salon.googleMapsLink,
     amenities: salon.settings?.amenities || [],
+    badges: salon.settings?.badges || [],
     onlineBooking: salon.settings?.onlineBooking || 'open'
   } : null;
+
+  // Prestations filtered by the active category + search term (each category
+  // paginated independently below).
+  const visibleCategories = salonData
+    ? salonData.services
+        .map((cat: any) => ({
+          ...cat,
+          items: (cat.items as Service[]).filter((s) =>
+            !serviceSearch.trim() ||
+            s.name.toLowerCase().includes(serviceSearch.trim().toLowerCase())
+          )
+        }))
+        .filter((cat: any) => cat.items.length > 0)
+        .filter((cat: any) => activeCategory === 'all' || cat.category === activeCategory)
+    : [];
 
   // Use real-time availability hook
   const serviceIds =
@@ -505,6 +563,21 @@ export default function SalonDetail() {
                   </>
                 )}
               </div>
+
+              {/* Badges & Certifications */}
+              {salonData.badges && salonData.badges.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mt-4">
+                  {salonData.badges.map((badge: string, i: number) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-xs font-medium"
+                    >
+                      <BadgeCheck className="w-3.5 h-3.5" />
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Actions on the right */}
@@ -517,8 +590,9 @@ export default function SalonDetail() {
                 className="w-11 h-11 border border-gray-200 hover:bg-gray-50 rounded-full transition-all flex items-center justify-center bg-white shadow-sm"
                 title="Partager"
               >
-                <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 10.748a3.001 3.001 0 110-3.66l7.662-3.832a3 3 0 11.124 5.378l-7.662 3.832a3.001 3.001 0 11-.124 5.378L16 18H8.684a3 3 0 110-3.66l7.662-3.832a3 3 0 11-.124-5.378z" />
+                <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                 </svg>
               </button>
               
@@ -569,16 +643,111 @@ export default function SalonDetail() {
       </header>
 
       <div className="pt-0 pb-12 sm:pb-20">
-        {/* Hero Image Gallery */}
+        {/* Hero Image Carousel — REAL salon images only. Shows at most 3 at once:
+            the highlighted (primary) image large in the center, with the previous
+            and next ones dangling smaller on the sides. Arrows navigate; clicking
+            a side image promotes it. If the salon uploaded nothing, a neutral
+            placeholder is shown instead of stock imagery. */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8 sm:mb-12 lg:mb-16">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 h-[300px] sm:h-[400px] lg:h-[500px]">
-            <div className="relative rounded-2xl overflow-hidden cursor-pointer group" onClick={() => { setSelectedImage(0); setShowLightbox(true); }}>
-              <img src={salonData.images[0] || 'https://images.unsplash.com/photo-1585747860715-2ba37e788b70?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1774&q=80'} alt={salonData.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+          {salonData.images.length === 0 ? (
+            <div className="h-[340px] sm:h-[520px] lg:h-[640px] rounded-2xl bg-gray-100 border border-gray-200 flex flex-col items-center justify-center gap-3">
+              <ImageIcon className="w-10 h-10 text-gray-300" />
+              <p className="text-sm text-gray-400">Aucune photo publiée pour le moment</p>
             </div>
-            <div className="hidden sm:block relative rounded-2xl overflow-hidden cursor-pointer group" onClick={() => { setSelectedImage(1); setShowLightbox(true); }}>
-              <img src={salonData.images[1] || 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1770&q=80'} alt={`${salonData.name} 2`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+          ) : (
+            <div className="relative">
+              {/* Clamp the index defensively so a shrunken image list (e.g. an
+                  admin removed photos) never renders an out-of-range image. */}
+              {(() => {
+                const total = salonData.images.length;
+                const cur = Math.min(selectedImage, total - 1);
+                const prev = (cur - 1 + total) % total;
+                const next = (cur + 1) % total;
+                // With exactly 2 images, prev and next are the SAME photo — show
+                // only one side (the next) so the same image isn't duplicated.
+                const showPrev = total > 2;
+                const showNext = total > 1;
+                return (
+                  <div className="flex items-center justify-center gap-2 sm:gap-4 h-[340px] sm:h-[520px] lg:h-[640px]">
+                    {/* Previous image — dangling on the left, smaller */}
+                    {showPrev && (
+                      <button
+                        onClick={prevImage}
+                        className="relative w-1/4 sm:w-[28%] h-[82%] rounded-2xl overflow-hidden shrink-0 cursor-pointer group opacity-60 hover:opacity-100 transition-all duration-300 translate-x-3 sm:translate-x-5 z-10 hidden sm:block"
+                        aria-label="Image précédente"
+                      >
+                        <img
+                          src={salonData.images[prev]}
+                          alt={`${salonData.name} précédente`}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                      </button>
+                    )}
+                    {/* Highlighted (primary) image — big, center-front. object-cover fills the hero area so no letterbox bars appear when image aspect differs from container. */}
+                    <button
+                      onClick={() => setShowLightbox(true)}
+                      className="relative flex-1 max-w-[62%] h-full rounded-2xl overflow-hidden cursor-pointer z-20 shadow-xl group bg-gray-100"
+                      aria-label="Agrandir la photo"
+                    >
+                      <img
+                        src={salonData.images[cur]}
+                        alt={`${salonData.name} principale`}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                      />
+                    </button>
+                    {/* Next image — dangling on the right, smaller */}
+                    {showNext && (
+                      <button
+                        onClick={nextImage}
+                        className="relative w-1/4 sm:w-[28%] h-[82%] rounded-2xl overflow-hidden shrink-0 cursor-pointer group opacity-60 hover:opacity-100 transition-all duration-300 -translate-x-3 sm:-translate-x-5 z-10 hidden sm:block"
+                        aria-label="Image suivante"
+                      >
+                        <img
+                          src={salonData.images[next]}
+                          alt={`${salonData.name} suivante`}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Prev / Next arrows */}
+              {salonData.images.length > 1 && (
+                <>
+                  <button
+                    onClick={prevImage}
+                    className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-700 shadow-md flex items-center justify-center transition-all z-30 hover:scale-110"
+                    aria-label="Précédente"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={nextImage}
+                    className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-700 shadow-md flex items-center justify-center transition-all z-30 hover:scale-110"
+                    aria-label="Suivante"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </>
+              )}
+
+              {/* Dots indicator */}
+              {salonData.images.length > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-4">
+                  {salonData.images.map((_: string, i: number) => (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedImage(i)}
+                      className={`h-2 rounded-full transition-all duration-300 ${i === Math.min(selectedImage, salonData.images.length - 1) ? 'w-6 bg-gray-900' : 'w-2 bg-gray-300 hover:bg-gray-400'}`}
+                      aria-label={`Photo ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
 
         {/* Content */}
@@ -625,17 +794,44 @@ export default function SalonDetail() {
               <div id="prestations" className="scroll-mt-32">
                 <h2 className="text-3xl font-bold text-gray-900 mb-6">Prestations</h2>
 
-                {/* Category Pills Filter */}
+                {/* Search bar — filters services by name within the current view */}
+                <div className="relative mb-5">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={serviceSearch}
+                    onChange={(e) => {
+                      setServiceSearch(e.target.value);
+                      setCategoryPage({});
+                    }}
+                    placeholder="Rechercher une prestation..."
+                    className="w-full pl-11 pr-4 py-2.5 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-gray-400 transition-colors"
+                  />
+                </div>
+
+                {/* Category Pills Filter — selecting one HIDES the other categories */}
                 <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide mb-8 pb-1">
-                  {salonData.services.map((cat: any, idx: number) => (
+                  <button
+                    onClick={() => { setActiveCategory('all'); setCategoryPage({}); }}
+                    className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap border ${
+                      activeCategory === 'all'
+                        ? 'bg-black text-white border-black'
+                        : 'bg-white text-gray-800 border-gray-300 hover:border-gray-400'
+                    }`}
+                  >
+                    Tous
+                  </button>
+                  {salonData.services.map((cat: any) => (
                     <button
-                      key={idx}
+                      key={cat.category}
                       onClick={() => {
-                        const catEl = document.getElementById(`cat-${idx}`);
-                        if (catEl) catEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        setActiveCategory((prev) => (prev === cat.category ? 'all' : cat.category));
+                        setCategoryPage({});
+                        const el = document.getElementById('prestations');
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
                       }}
                       className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap border ${
-                        idx === 0
+                        activeCategory === cat.category
                           ? 'bg-black text-white border-black'
                           : 'bg-white text-gray-800 border-gray-300 hover:border-gray-400'
                       }`}
@@ -645,40 +841,85 @@ export default function SalonDetail() {
                   ))}
                 </div>
 
-                {/* Service Categories & Cards */}
+                {/* Service Categories & Cards (paginated 10 per category) */}
                 <div className="space-y-10">
-                  {salonData.services.map((category: any, idx: number) => (
-                    <div key={idx} id={`cat-${idx}`} className="scroll-mt-36">
-                      <h3 className="text-xl font-bold text-gray-900 mb-4">{category.category}</h3>
-                      <div className="space-y-4">
-                        {category.items.map((service: Service, serviceIdx: number) => {
-                          const isSelected = selectedServices.some(s => s.name === service.name);
-                          return (
-                            <div
-                              key={serviceIdx}
-                              className="flex items-center justify-between p-6 rounded-2xl bg-white border border-gray-200 shadow-sm hover:border-gray-300 transition-all"
-                            >
-                              <div className="flex-1 pr-6">
-                                <h4 className="text-base font-semibold text-gray-900 mb-1">{service.name}</h4>
-                                <p className="text-sm text-gray-500 mb-3">{service.duration}</p>
-                                <p className="text-base font-bold text-gray-900">{service.price} MAD</p>
-                              </div>
-                              <button
-                                onClick={() => selectService(service)}
-                                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all border ${
-                                  isSelected
-                                    ? 'bg-black text-white border-black'
-                                    : 'bg-white text-gray-900 border-gray-300 hover:bg-gray-50'
-                                }`}
+                  {visibleCategories.map((category: any, idx: number) => {
+                    const pageCount = Math.max(1, Math.ceil(category.items.length / SERVICES_PER_PAGE));
+                    // Clamp the page so a shrunken category (search/filter) never
+                    // lands past the last page and shows an empty list.
+                    const page = Math.min(categoryPage[category.category] ?? 1, pageCount);
+                    const items = category.items.slice((page - 1) * SERVICES_PER_PAGE, page * SERVICES_PER_PAGE);
+                    return (
+                      <div key={category.category} id={`cat-${idx}`} className="scroll-mt-36">
+                        <h3 className="text-xl font-bold text-gray-900 mb-4">
+                          {category.category}
+                          {category.items.length > SERVICES_PER_PAGE && (
+                            <span className="ml-2 text-sm font-normal text-gray-400">
+                              {category.items.length} prestations
+                            </span>
+                          )}
+                        </h3>
+                        <div className="space-y-4">
+                          {items.map((service: Service) => {
+                            const isSelected = selectedServices.some(s => s.name === service.name);
+                            return (
+                              <div
+                                key={service.name}
+                                className="flex items-center justify-between p-6 rounded-2xl bg-white border border-gray-200 shadow-sm hover:border-gray-300 transition-all"
                               >
-                                {isSelected ? 'Sélectionné' : 'Réserver'}
-                              </button>
-                            </div>
-                          );
-                        })}
+                                <div className="flex-1 pr-6">
+                                  <h4 className="text-base font-semibold text-gray-900 mb-1">{service.name}</h4>
+                                  <p className="text-sm text-gray-500 mb-3">{service.duration}</p>
+                                  <p className="text-base font-bold text-gray-900">{service.price} MAD</p>
+                                </div>
+                                <button
+                                  onClick={() => selectService(service)}
+                                  aria-label={isSelected ? `Retirer ${service.name}` : `Ajouter ${service.name}`}
+                                  title={isSelected ? 'Retirer la prestation' : 'Ajouter la prestation'}
+                                  className={`w-11 h-11 rounded-full flex items-center justify-center transition-all border shrink-0 ${
+                                    isSelected
+                                      ? 'bg-black text-white border-black hover:bg-gray-800'
+                                      : 'bg-white text-gray-900 border-gray-300 hover:border-gray-900 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {isSelected ? <Minus size={18} /> : <Plus size={18} />}
+                                </button>
+                              </div>
+                            );
+                          })}
+                          {items.length === 0 && (
+                            <p className="text-sm text-gray-500 text-center py-6">
+                              Aucune prestation trouvée
+                            </p>
+                          )}
+                        </div>
+                        {pageCount > 1 && (
+                          <div className="flex items-center justify-center gap-3 mt-5">
+                            <button
+                              onClick={() => setCategoryPage({ ...categoryPage, [category.category]: page - 1 })}
+                              disabled={page <= 1}
+                              className="px-4 py-2 rounded-full border border-gray-300 text-sm font-medium disabled:opacity-40 hover:border-gray-400 transition-colors"
+                            >
+                              Précédent
+                            </button>
+                            <span className="text-sm text-gray-500">Page {page} / {pageCount}</span>
+                            <button
+                              onClick={() => setCategoryPage({ ...categoryPage, [category.category]: page + 1 })}
+                              disabled={page >= pageCount}
+                              className="px-4 py-2 rounded-full border border-gray-300 text-sm font-medium disabled:opacity-40 hover:border-gray-400 transition-colors"
+                            >
+                              Suivant
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
+                  {visibleCategories.length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-10">
+                      Aucune prestation trouvée
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -686,14 +927,9 @@ export default function SalonDetail() {
               <div id="equipe" className="scroll-mt-32 pt-8 border-t border-gray-200">
                 <h2 className="text-3xl font-bold text-gray-900 mb-6">Équipe</h2>
                 {(() => {
-                  const displayEmployees = salonData.team && salonData.team.length > 0 ? salonData.team : [
-                    { name: 'Youssef', specialty: 'Maître Barbier', initials: 'Y', avatar: 'https://images.unsplash.com/photo-1618077360395-f3068be8e001?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' },
-                    { name: 'Amine', specialty: 'Barbier', initials: 'A', avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' },
-                    { name: 'Karim', specialty: 'Coiffeur', initials: 'K', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' },
-                    { name: 'Driss', specialty: 'Spécialiste Soins', initials: 'D', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80' }
-                  ];
+                  const displayEmployees = salonData.team && salonData.team.length > 0 ? salonData.team : [];
                   
-                  return (
+                  return displayEmployees.length > 0 ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
                       {displayEmployees.map((member: any, idx: number) => (
                         <div 
@@ -718,6 +954,10 @@ export default function SalonDetail() {
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 text-center py-8">
+                      Aucun membre de l'équipe pour le moment.
+                    </p>
                   );
                 })()}
               </div>
@@ -742,15 +982,20 @@ export default function SalonDetail() {
                     <ReviewForm 
                       tenantId={salon?.id}
                       user={user}
+                      employees={employees}
                       onReviewSubmitted={async () => {
                         try {
                           const reviewsRes = await api.getTenantReviews(salonId, 1, 10);
                           const formattedReviews = (reviewsRes.reviews || []).map((review: any) => ({
                             id: review.id,
                             name: review.client ? `${review.client.firstName || ''} ${review.client.lastName || ''}`.trim() : 'Client',
+                            avatar: getImageUrl(review.client?.avatar || null),
                             rating: review.rating || 0,
                             text: review.comment || '',
-                            date: review.createdAt ? formatMoroccoDate(review.createdAt, { day: 'numeric', month: 'long', year: 'numeric' }) : formatMoroccoDate(new Date())
+                            date: review.createdAt ? formatMoroccoDate(review.createdAt, { day: 'numeric', month: 'long', year: 'numeric' }) : formatMoroccoDate(new Date()),
+                            employeeName: review.employee
+                              ? `${review.employee.firstName || ''} ${review.employee.lastName || ''}`.trim()
+                              : undefined
                           }));
                           setReviews(formattedReviews);
                           setReviewStats(reviewsRes.stats || { averageRating: 0, totalReviews: 0 });
@@ -768,8 +1013,12 @@ export default function SalonDetail() {
                     {reviews.map((review: any, idx: number) => (
                       <div key={idx} className="bg-white border border-gray-200 rounded-2xl p-5">
                         <div className="flex items-center gap-3 mb-3">
-                          <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
-                            {review.name?.charAt(0) || 'C'}
+                          <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm overflow-hidden shrink-0">
+                            {review.avatar ? (
+                              <img src={review.avatar} alt={review.name || 'Client'} className="w-full h-full object-cover" />
+                            ) : (
+                              review.name?.charAt(0) || 'C'
+                            )}
                           </div>
                           <div>
                             <p className="text-sm font-semibold text-gray-900">{review.name || 'Client'}</p>
@@ -788,6 +1037,12 @@ export default function SalonDetail() {
                             />
                           ))}
                         </div>
+                        {review.employeeName && (
+                          <p className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                            <User className="w-3.5 h-3.5" />
+                            Avis sur {review.employeeName}
+                          </p>
+                        )}
                         {review.text && (
                           <p className="text-sm text-gray-700 leading-relaxed">{review.text}</p>
                         )}
@@ -843,15 +1098,30 @@ export default function SalonDetail() {
                 <div className="bg-white border border-gray-200 rounded-3xl p-8 shadow-sm space-y-6">
                   <div>
                     <h1 className="text-3xl font-extrabold text-gray-900 leading-tight mb-3">{salonData.name}</h1>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-gray-900">{salonData.rating ? salonData.rating.toFixed(1) : '5,0'}</span>
-                      <div className="flex items-center gap-0.5">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Star key={star} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                        ))}
+                    {salonData.reviewCount > 0 ? (
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-900">{salonData.rating.toFixed(1)}</span>
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              className={`w-4 h-4 ${star <= Math.round(salonData.rating) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-indigo-600 font-medium text-sm">({salonData.reviewCount})</span>
                       </div>
-                      <span className="text-indigo-600 font-medium text-sm">({salonData.reviewCount || 197})</span>
-                    </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-900">Nouveau</span>
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star key={star} className="w-4 h-4 text-gray-200" />
+                          ))}
+                        </div>
+                        <span className="text-indigo-600 font-medium text-sm">(0 avis)</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Main Action Button */}
@@ -1227,8 +1497,9 @@ export default function SalonDetail() {
                   className="w-10 h-10 hover:bg-gray-50 rounded-full transition-all flex items-center justify-center border border-gray-100"
                   title="Partager le profil"
                 >
-                  <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 10.748a3.001 3.001 0 110-3.66l7.662-3.832a3 3 0 11.124 5.378l-7.662 3.832a3.001 3.001 0 11-.124 5.378L16 18H8.684a3 3 0 110-3.66l7.662-3.832a3 3 0 11-.124-5.378z" />
+                  <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                   </svg>
                 </button>
                 
@@ -1328,7 +1599,7 @@ export default function SalonDetail() {
                           <div>
                             <h4 className="font-bold text-gray-900 text-base mb-0.5">{service.name}</h4>
                             <p className="text-xs text-gray-500">{service.duration} min</p>
-                            <p className="text-sm font-extrabold text-gray-900 mt-2">{service.price || 0} MAD</p>
+                            <p className="text-sm font-extrabold text-gray-900 mt-2">{service.price || service.priceFrom || 0} MAD</p>
                           </div>
                           <button
                             onClick={() => handleBookForEmployee(service)}
@@ -1366,8 +1637,12 @@ export default function SalonDetail() {
                       displayReviews.map((review: any, i: number) => (
                         <div key={i} className="border-b border-gray-100 pb-4 last:border-0">
                           <div className="flex items-center gap-3 mb-2">
-                            <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
-                              {review.name?.charAt(0) || 'C'}
+                            <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs overflow-hidden shrink-0">
+                              {review.avatar ? (
+                                <img src={review.avatar} alt={review.name || 'Client'} className="w-full h-full object-cover" />
+                              ) : (
+                                review.name?.charAt(0) || 'C'
+                              )}
                             </div>
                             <div>
                               <p className="text-xs font-semibold text-gray-900">{review.name}</p>
@@ -1476,10 +1751,11 @@ export default function SalonDetail() {
 }
 
 // Review Form Component
-function ReviewForm({ tenantId, user, onReviewSubmitted }: { tenantId?: string; user: any; onReviewSubmitted: () => void }) {
+function ReviewForm({ tenantId, user, employees, onReviewSubmitted }: { tenantId?: string; user: any; employees?: any[]; onReviewSubmitted: () => void }) {
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1514,11 +1790,13 @@ function ReviewForm({ tenantId, user, onReviewSubmitted }: { tenantId?: string; 
         phone: user.phone || '',
         rating,
         comment: comment.trim() || undefined,
+        ...(employeeId ? { employeeId } : {}),
       });
 
       toast.success('Votre avis a été soumis avec succès');
       setRating(0);
       setComment('');
+      setEmployeeId('');
       onReviewSubmitted();
     } catch (error: any) {
       console.error('Error submitting review:', error);
@@ -1528,6 +1806,8 @@ function ReviewForm({ tenantId, user, onReviewSubmitted }: { tenantId?: string; 
       setIsSubmitting(false);
     }
   };
+
+  const selectableEmployees = (employees || []).filter((emp: any) => emp.isActive !== false);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -1556,6 +1836,30 @@ function ReviewForm({ tenantId, user, onReviewSubmitted }: { tenantId?: string; 
           ))}
         </div>
       </div>
+
+      {selectableEmployees.length > 0 && (
+        <div>
+          <label htmlFor="review-employee" className="block text-sm font-medium text-gray-900 mb-3">
+            Employé concerné (optionnel)
+          </label>
+          <select
+            id="review-employee"
+            value={employeeId}
+            onChange={(e) => setEmployeeId(e.target.value)}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#111827] focus:border-transparent text-gray-900 bg-white"
+          >
+            <option value="">— Sélectionner un employé —</option>
+            {selectableEmployees.map((emp: any) => {
+              const empName = `${emp.firstName || ''} ${emp.lastName || ''}`.trim();
+              return (
+                <option key={emp.id} value={emp.id}>
+                  {empName || 'Employé'}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+      )}
 
       <div>
         <label htmlFor="comment" className="block text-sm font-medium text-gray-900 mb-3">

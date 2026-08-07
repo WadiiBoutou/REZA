@@ -3,7 +3,7 @@ import 'api_client.dart';
 class DiscoveryService {
   Future<List<Map<String, dynamic>>> searchTenants({
     String? search,
-    String? category,
+    List<String>? categories,
     String? city,
     double? lat,
     double? lng,
@@ -12,7 +12,12 @@ class DiscoveryService {
   }) async {
     final q = <String, String>{'limit': '$limit'};
     if (search != null && search.isNotEmpty) q['search'] = search;
-    if (category != null && category.isNotEmpty) q['category'] = category;
+    // Multiple categories → comma-separated list consumed by the backend's
+    // `categories` param (OR semantics). Single category kept for the
+    // search-results modal which still passes one label.
+    if (categories != null && categories.isNotEmpty) {
+      q['categories'] = categories.join(',');
+    }
     if (city != null && city.isNotEmpty) q['city'] = city;
     if (lat != null) q['lat'] = '$lat';
     if (lng != null) q['lng'] = '$lng';

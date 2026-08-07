@@ -12,6 +12,7 @@ interface RejectedReview {
   id: string;
   clientName: string;
   clientEmail: string;
+  clientAvatar?: string;
   rating: number;
   comment: string;
   service?: string;
@@ -52,6 +53,7 @@ export default function AvisRefusesPage() {
           ? `${review.client.firstName || ''} ${review.client.lastName || ''}`.trim() 
           : review.clientName || 'Client',
         clientEmail: review.client?.email || review.clientEmail || '',
+        clientAvatar: review.client?.avatar || review.clientAvatar || '',
         rating: review.rating || 0,
         comment: review.comment || review.text || '',
         service: review.service?.name || review.serviceName || review.service,
@@ -273,11 +275,13 @@ export default function AvisRefusesPage() {
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                    <span className="text-red-700 font-medium text-sm">
-                      {review.clientName.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  <div className="w-10 h-10 rounded-full overflow-hidden bg-red-100 flex items-center justify-center shrink-0">
+                        {review.clientAvatar ? (
+                          <img src={review.clientAvatar} alt={review.clientName} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-red-700 font-medium text-sm">{review.clientName.charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-medium text-gray-900 truncate text-sm">{review.clientName}</h3>
                     <div className="flex items-center gap-2 mt-1">
@@ -376,11 +380,13 @@ export default function AvisRefusesPage() {
                   <tr key={review.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                          <span className="text-red-700 font-medium text-xs">
-                            {review.clientName.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
+                        <div className="w-8 h-8 rounded-full overflow-hidden bg-red-100 flex items-center justify-center flex-shrink-0">
+                        {review.clientAvatar ? (
+                          <img src={review.clientAvatar} alt={review.clientName} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-red-700 font-medium text-xs">{review.clientName.charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
                         <div className="min-w-0">
                           <div className="font-medium text-gray-900 text-sm truncate">{review.clientName}</div>
                           <div className="text-[10px] text-gray-400 truncate">{format(new Date(review.date), 'dd MMM yyyy', { locale: fr })}</div>
@@ -504,11 +510,13 @@ export default function AvisRefusesPage() {
             <div className="px-8 py-6">
               <div className="bg-gray-50 rounded-lg p-6 mb-6">
                 <div className="flex items-start gap-4 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                    <span className="text-red-700 font-medium text-lg">
-                      {selectedReview.clientName.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-red-100 flex items-center justify-center shrink-0">
+                        {selectedReview.clientAvatar ? (
+                          <img src={selectedReview.clientAvatar} alt={selectedReview.clientName} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-red-700 font-medium text-lg">{selectedReview.clientName.charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-medium text-gray-900 mb-1">{selectedReview.clientName}</h3>
                     <p className="text-sm text-gray-600 mb-2">{selectedReview.clientEmail}</p>
