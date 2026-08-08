@@ -160,6 +160,7 @@ type Client = {
   phone: string | null;
   status?: string;
   address?: string;
+  avatar?: string | null;
 };
 
 // Transform API appointment to frontend format
@@ -734,7 +735,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
           name: `${c.firstName} ${c.lastName}`,
           email: c.email,
           phone: c.phone,
-          status: c.status
+          status: c.status,
+          avatar: c.avatar
         }));
         setClients(clientsData);
         
@@ -1025,11 +1027,20 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
             <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-gray-900 flex items-center justify-center">
-                    <span className="text-white font-medium text-lg">
-                      {selectedClient.name.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  {selectedClient.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={selectedClient.avatar}
+                      alt={selectedClient.name}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-gray-900 flex items-center justify-center">
+                      <span className="text-white font-medium text-lg">
+                        {selectedClient.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                   <div>
                     <h4 className="font-medium text-gray-900">{selectedClient.name}</h4>
                     <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium mt-1 ${

@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
-import { Building, ChevronDown, ExternalLink } from 'lucide-react';
+import { Building, ChevronDown } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAuth, type Salon } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -91,15 +90,6 @@ export function SalonFilterControl({
             );
           })}
         </div>
-        <div className="my-1 h-px bg-gray-100" />
-        <Link
-          href="/dashboard/mes-salons"
-          onClick={() => setOpen(false)}
-          className="w-full flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-[#002366] hover:bg-[#002366]/5 font-medium"
-        >
-          <ExternalLink size={14} />
-          <span>Modifier</span>
-        </Link>
       </PopoverContent>
     </Popover>
   );

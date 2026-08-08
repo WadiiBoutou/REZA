@@ -383,7 +383,12 @@ class _ProchesScreenState extends State<_ProchesBody> {
                                   CircleAvatar(
                                     radius: 24,
                                     backgroundColor: AppColors.primary,
-                                    child: Text(m.initials, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
+                                    backgroundImage: (m.avatar ?? '').trim().isNotEmpty
+                                        ? NetworkImage(m.avatar!)
+                                        : null,
+                                    child: (m.avatar ?? '').trim().isNotEmpty
+                                        ? null
+                                        : Text(m.initials, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(

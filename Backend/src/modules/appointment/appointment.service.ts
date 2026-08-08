@@ -33,7 +33,7 @@ const serviceSelect = {
 };
 
 const appointmentListInclude = {
-  client: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+  client: { select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatar: true } },
   service: { select: serviceSelect },
   services: {
     orderBy: { sortOrder: 'asc' as const },

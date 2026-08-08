@@ -380,15 +380,32 @@ class _AdminScreenState extends State<AdminScreen>
                     color: color.withOpacity(0.15),
                     shape: BoxShape.circle,
                   ),
-                  child: Center(
-                    child: Text(
-                      initials.isEmpty ? '?' : initials,
-                      style: GoogleFonts.outfit(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: color,
-                      ),
-                    ),
+                  child: ClipOval(
+                    child: (s['avatar']?.toString() ?? '').trim().isNotEmpty
+                        ? Image.network(
+                            s['avatar'].toString(),
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Center(
+                              child: Text(
+                                initials.isEmpty ? '?' : initials,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: color,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Center(
+                            child: Text(
+                              initials.isEmpty ? '?' : initials,
+                              style: GoogleFonts.outfit(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: color,
+                              ),
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 14),

@@ -216,7 +216,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 return ListTile(
                   leading: CircleAvatar(
                     backgroundColor: AppColors.primary.withOpacity(0.1),
-                    child: Icon(Icons.star, color: AppColors.primary),
+                    backgroundImage: (c.avatar ?? '').trim().isNotEmpty
+                        ? NetworkImage(c.avatar!)
+                        : null,
+                    child: (c.avatar ?? '').trim().isNotEmpty
+                        ? null
+                        : Icon(Icons.star, color: AppColors.primary),
                   ),
                   title: Text(c.name, style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
                   subtitle: Text('Fidélité $tier - ${c.totalVisits} visites',

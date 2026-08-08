@@ -19,6 +19,7 @@ interface BackendClient {
   email: string | null;
   phone: string;
   address: string | null;
+  avatar: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
   notes: string | null;
   createdAt: string;
@@ -38,6 +39,7 @@ interface Client {
   email: string;
   phone: string;
   address?: string;
+  avatar?: string;
   lastVisit?: Date;
   lastVisitTime?: string;
   nextAppointment?: Date;
@@ -88,6 +90,7 @@ const mapBackendToFrontend = (backendClient: BackendClient, appointments?: any[]
     email: backendClient.email || '',
     phone: backendClient.phone,
     address: backendClient.address || undefined,
+    avatar: backendClient.avatar || undefined,
     status: backendClient.status === 'ACTIVE' ? 'Active' : 'Inactive',
     notes: backendClient.notes || undefined,
     nextAppointment,
@@ -600,11 +603,20 @@ export default function ClientsGestionPage() {
               {/* Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-[#002366] flex items-center justify-center">
-                    <span className="text-white font-medium text-lg">
-                      {client.name.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  {client.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={client.avatar}
+                      alt={client.name}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-[#002366] flex items-center justify-center">
+                      <span className="text-white font-medium text-lg">
+                        {client.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                   <div>
                     <h3 className="font-medium text-gray-900">{client.name}</h3>
                     <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium mt-1 ${client.status === 'Active'
@@ -682,11 +694,20 @@ export default function ClientsGestionPage() {
                   <tr key={client.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-3 min-w-[160px]">
-                        <div className="w-10 h-10 rounded-full bg-[#002366] flex items-center justify-center flex-shrink-0">
-                          <span className="text-white font-medium text-sm">
-                            {client.name.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
+                        {client.avatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={client.avatar}
+                            alt={client.name}
+                            className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-[#002366] flex items-center justify-center flex-shrink-0">
+                            <span className="text-white font-medium text-sm">
+                              {client.name.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                        )}
                         <div className="font-medium text-gray-900 truncate">{client.name}</div>
                       </div>
                     </td>

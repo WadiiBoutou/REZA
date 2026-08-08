@@ -68,7 +68,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
       final cityFilter = city ?? _city;
       final cityArg = cityFilter.isNotEmpty ? cityFilter : null;
       // Nearby radius first; if empty (emulator GPS far from salons), retry
-      // without radius. Never fall back to mock allVenues (fake ids → 404).
+      // without radius. Always use real API data — never reintroduce mock salons.
       final cats = category != null ? [category] : null;
       var tenants = await discoveryService.searchTenants(
         search: search,

@@ -209,7 +209,7 @@ const GestionHoraires = () => {
     // Wait for account salons to load before deciding redirect
     if (salons.length === 0) return;
     if (!scopedSalonId) {
-      router.replace('/dashboard/mes-salons');
+      router.replace('/dashboard/admin/salons/mes-salons');
       return;
     }
     if (!querySalonId || querySalonId !== scopedSalonId) {
@@ -368,7 +368,7 @@ const GestionHoraires = () => {
           <div className="flex items-center gap-8">
             <div className="flex flex-col gap-2">
               <Link
-                href="/dashboard/mes-salons"
+                href="/dashboard/admin/salons/mes-salons"
                 className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#002366] transition-colors w-fit"
               >
                 <ChevronLeft size={16} />

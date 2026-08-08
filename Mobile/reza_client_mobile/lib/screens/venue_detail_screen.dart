@@ -47,7 +47,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   int _activeTab = 0;
   bool _loading = true;
   String? _error;
-  int _curImage = 0;
   String _activeServiceCat = 'all';
 
   VenueItem? _venue;
@@ -200,18 +199,6 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
-  }
-
-  void _prevImage() {
-    final imgs = _venue?.images ?? const <String>[];
-    if (imgs.length <= 1) return;
-    setState(() => _curImage = (_curImage - 1 + imgs.length) % imgs.length);
-  }
-
-  void _nextImage() {
-    final imgs = _venue?.images ?? const <String>[];
-    if (imgs.length <= 1) return;
-    setState(() => _curImage = (_curImage + 1) % imgs.length);
   }
 
   void _scrollToSection(int index) {

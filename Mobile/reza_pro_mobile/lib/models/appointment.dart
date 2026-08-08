@@ -18,6 +18,7 @@ class Appointment {
   final String id;
   final String clientId;
   final String clientName;
+  final String? clientAvatar;
   final String serviceId;
   final String service;
   final double? servicePrice;
@@ -43,6 +44,7 @@ class Appointment {
     required this.id,
     this.clientId = '',
     required this.clientName,
+    this.clientAvatar,
     this.serviceId = '',
     required this.service,
     this.servicePrice,
@@ -67,6 +69,7 @@ class Appointment {
     String? id,
     String? clientId,
     String? clientName,
+    String? clientAvatar,
     String? serviceId,
     String? service,
     double? servicePrice,
@@ -90,6 +93,7 @@ class Appointment {
       id: id ?? this.id,
       clientId: clientId ?? this.clientId,
       clientName: clientName ?? this.clientName,
+      clientAvatar: clientAvatar ?? this.clientAvatar,
       serviceId: serviceId ?? this.serviceId,
       service: service ?? this.service,
       servicePrice: servicePrice ?? this.servicePrice,
@@ -186,6 +190,7 @@ class Appointment {
     final clientName = client != null
         ? '${client['firstName'] ?? ''} ${client['lastName'] ?? ''}'.trim()
         : 'Client';
+    final clientAvatar = client?['avatar']?.toString();
     final employeeName = employee != null
         ? '${employee['firstName'] ?? ''} ${employee['lastName'] ?? ''}'.trim()
         : '—';
@@ -210,6 +215,7 @@ class Appointment {
       id: json['id']?.toString() ?? '',
       clientId: client?['id']?.toString() ?? json['clientId']?.toString() ?? '',
       clientName: clientName.isEmpty ? 'Client' : clientName,
+      clientAvatar: clientAvatar,
       serviceId: primaryServiceId,
       service: serviceLines.isNotEmpty
           ? serviceLines.first.name

@@ -50,7 +50,7 @@ class HomeViewModel extends ChangeNotifier {
       final city = searchCity.isNotEmpty ? searchCity : null;
       // Radius filter first when GPS on (nearby). Emulator GPS (e.g. Mountain
       // View) often yields 0 Casablanca salons — fall back to all, still sorted
-      // by distance. Never use mock allVenues (fake ids 1/2 → detail 404).
+      // by distance. Always use real API data — never reintroduce mock salons.
       var tenants = await discoveryService.searchTenants(
         city: city,
         categories: cats,

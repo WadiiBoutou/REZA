@@ -783,6 +783,20 @@ const AdminSidebar = () => {
 	return (
 		<div className="flex-1 overflow-y-auto p-6">
 			<div className="space-y-6">
+				{/* Mes salons */}
+				<div className="space-y-3">
+					<Link
+						href="/dashboard/admin/salons/mes-salons"
+						className={`block w-full px-3 py-2 text-left text-sm rounded-full transition-all ${
+							pathname?.startsWith('/dashboard/admin/salons/mes-salons')
+								? 'bg-[#002366] text-white'
+								: 'text-gray-700 hover:bg-gray-100'
+						}`}
+					>
+						Mes salons
+					</Link>
+				</div>
+
 				{/* Paramétrage Agenda */}
 				<div className="space-y-3">
 					<button
@@ -1239,24 +1253,7 @@ export default function Sidebar() {
 	};
 
 	const getSidebarContent = () => {
-		if (
-			pathname?.startsWith('/dashboard/mes-salons') ||
-			pathname?.startsWith('/dashboard/admin/param-etablissement/gestion-horaires-delais')
-		) {
-			return (
-				<div className="flex-1 px-4 py-2">
-					<div className="px-3 py-2">
-						<h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-							<Building size={16} className="text-[#002366]" />
-							Salons
-						</h2>
-						<p className="text-xs text-gray-500 mt-2 leading-relaxed">
-							Filtrez les salons affichés dans Agenda, Clients et Caisse, ou gérez chaque établissement.
-							Les horaires se règlent par salon depuis Mes salons.
-						</p>
-					</div>
-				</div>
-			);			} else if (pathname?.startsWith('/dashboard/personels')) {
+		if (pathname?.startsWith('/dashboard/personels')) {
 				return <PersonnelsSidebar />;
 			} else if (pathname?.startsWith('/dashboard/admin')) {
 				return <AdminSidebar />;
@@ -1289,12 +1286,8 @@ export default function Sidebar() {
 						{menuItems.map((item) => {
 							const Icon = item.icon;
 							// Make 'Clients' active for all /dashboard/clients routes
-							// Make 'Salons' active for horaires (nested under Mes salons)
 							const isActive = item.href === '/dashboard/clients/fichier-client/gestion'
 							  ? pathname?.startsWith('/dashboard/clients')
-							  : item.href === '/dashboard/mes-salons'
-							  ? pathname === item.href ||
-							    pathname?.startsWith('/dashboard/admin/param-etablissement/gestion-horaires-delais')
 							  : pathname === item.href;
 							return (
 								<Link

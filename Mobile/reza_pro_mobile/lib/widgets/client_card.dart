@@ -58,15 +58,32 @@ class ClientCard extends StatelessWidget {
                     color: _avatarColor.withOpacity(0.15),
                     shape: BoxShape.circle,
                   ),
-                  child: Center(
-                    child: Text(
-                      client.initials,
-                      style: GoogleFonts.outfit(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: _avatarColor,
-                      ),
-                    ),
+                  child: ClipOval(
+                    child: (client.avatar ?? '').trim().isNotEmpty
+                        ? Image.network(
+                            client.avatar!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Center(
+                              child: Text(
+                                client.initials,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: _avatarColor,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Center(
+                            child: Text(
+                              client.initials,
+                              style: GoogleFonts.outfit(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: _avatarColor,
+                              ),
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -266,15 +283,32 @@ class _ClientDetailsSheet extends StatelessWidget {
                     color: avatarColor.withOpacity(0.15),
                     shape: BoxShape.circle,
                   ),
-                  child: Center(
-                    child: Text(
-                      client.initials,
-                      style: GoogleFonts.outfit(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: avatarColor,
-                      ),
-                    ),
+                  child: ClipOval(
+                    child: (client.avatar ?? '').trim().isNotEmpty
+                        ? Image.network(
+                            client.avatar!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Center(
+                              child: Text(
+                                client.initials,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: avatarColor,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Center(
+                            child: Text(
+                              client.initials,
+                              style: GoogleFonts.outfit(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                color: avatarColor,
+                              ),
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 16),
