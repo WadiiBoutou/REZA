@@ -1,36 +1,16 @@
 import express from 'express';
 import multer from 'multer';
-import path from 'path';
 import fs from 'fs';
 import { z } from 'zod';
 import { authMiddleware } from '../../middleware/authenticateRequest';
 import { salonService } from './salon.service';
+import { uploadImage } from '../../utils/cloudinary';
 
 const router = express.Router();
 
-const uploadsDir = path.resolve(__dirname, '..', '..', '..', 'public', 'uploads');
-const salonsDir = path.join(uploadsDir, 'salons');
-
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-if (!fs.existsSync(salonsDir)) {
-  fs.mkdirSync(salonsDir, { recursive: true });
-}
-
-const salonsStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    if (!fs.existsSync(salonsDir)) {
-      fs.mkdirSync(salonsDir, { recursive: true });
-    }
-    cb(null, salonsDir);
-  },
-  filename: (req: any, file, cb) => {
-    const uniqueSuffix = `${req.userId || 'salon'}-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `${uniqueSuffix}${ext}`);
-  },
-});
+// Salon cover images are uploaded to Cloudinary (secure URL stored in DB).
+// Multer only buffers the file in memory — nothing is written to local disk.
+const salonsStorage = multer.memoryStorage();
 
 const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   if (file.mimetype.startsWith('image/')) {
@@ -88,13 +68,9 @@ const updateSalonSchema = z.object({
   { message: 'Latitude et longitude doivent être fournies ensemble', path: ['latitude'] }
 );
 
-function removeUploadedFile(file?: Express.Multer.File) {
-  if (!file?.path) return;
-  try {
-    if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-  } catch {
-    // ignore cleanup errors
-  }
+function removeUploadedFile(_file?: Express.Multer.File) {
+  // Memory storage — nothing to clean up on disk. Kept as a no-op so the
+  // existing error paths stay untouched.
 }
 
 /**
@@ -138,6 +114,7 @@ router.post('/', authMiddleware, (req, res, next) => {
     }
 
     const parsed = createSalonSchema.parse(req.body);
+    const coverImage = await uploadImage(req.file, 'salons');
     const data: import('./salon.service').CreateSalonInput = {
       name: parsed.name,
       email: parsed.email,
@@ -146,7 +123,7 @@ router.post('/', authMiddleware, (req, res, next) => {
       city: parsed.city,
       category: parsed.category,
       shortDescription: parsed.shortDescription,
-      coverImage: `/uploads/salons/${req.file.filename}`,
+      coverImage,
       latitude: parsed.latitude,
       longitude: parsed.longitude,
     };
@@ -188,7 +165,7 @@ router.patch('/:id', authMiddleware, (req, res, next) => {
     const parsed = updateSalonSchema.parse(req.body);
     const data: import('./salon.service').UpdateSalonInput = { ...parsed };
     if (req.file) {
-      data.coverImage = `/uploads/salons/${req.file.filename}`;
+      data.coverImage = await uploadImage(req.file, 'salons');
     }
 
     if (Object.keys(data).length === 0) {

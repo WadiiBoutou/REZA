@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "postbuild": "node -e \"const fs=require('fs'); const path=require('path'); const distPath=path.join(process.cwd(),'dist','src','server.js'); console.log('Checking:', distPath); console.log('Exists:', fs.existsSync(distPath)); console.log('CWD:', process.cwd()); console.log('Files in dist:', fs.existsSync('dist') ? fs.readdirSync('dist').join(', ') : 'dist folder not found');\"",
-    "build:render": "npm run db:generate && npm run build",
+    "build:render": "npm run db:generate && npm run db:migrate:deploy && npm run build",
     "start": "node dist/src/server.js",
     "prestart": "node -e \"const fs=require('fs'); const path=require('path'); console.log('CWD:', process.cwd()); const distPath=path.join(process.cwd(),'dist','src','server.js'); console.log('Looking for:', distPath); if (!fs.existsSync(distPath)) { console.error('ERROR: dist/src/server.js not found at', distPath); console.error('Files in current dir:', fs.readdirSync('.').join(', ')); if (fs.existsSync('dist')) { console.error('Files in dist:', fs.readdirSync('dist').join(', ')); } process.exit(1); }\"",
     "db:migrate": "prisma migrate dev",
@@ -26,6 +26,9 @@
     "appointment",
     "booking"
   ],
+  "engines": {
+    "node": ">=20"
+  },
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -33,6 +36,7 @@
     "@prisma/client": "^7.8.0",
     "@types/multer": "^2.0.0",
     "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.10.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",

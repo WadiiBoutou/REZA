@@ -36,7 +36,7 @@ export default function LocationAutocomplete({
       : CITY_LIST;
     // Priority cities first when empty query
     if (!q) {
-      const priority = ['Casablanca', 'Marrakech', 'Rabat', 'Tanger', 'Fès', 'Agadir'];
+      const priority = ['Casablanca', 'Marrakech', 'Rabat', 'Tanger', 'Fès', 'Agadir'] as const;
       const top = priority.filter((p) => CITY_LIST.includes(p));
       const rest = CITY_LIST.filter(
         (c) => !priority.some((p) => p.toLowerCase() === c.toLowerCase())

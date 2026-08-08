@@ -46,7 +46,7 @@ export default function PaginatedCityCards({
   return (
     <div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {(loading ? Array.from({ length: Math.min(pageSize, 4) }) : pageCities).map(
+        {(loading ? Array.from<CityCard | undefined>({ length: Math.min(pageSize, 4) }) : pageCities).map(
           (city, index) => {
             if (loading || !city) {
               return (

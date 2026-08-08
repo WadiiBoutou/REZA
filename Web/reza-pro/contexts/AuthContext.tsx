@@ -226,10 +226,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      console.log('[AuthContext] Login attempt for:', email);
       const response = await api.login(email, password);
-      console.log('[AuthContext] Login successful, response:', { hasToken: !!response.token, hasUser: !!response.user });
-      console.log('[AuthContext] Checking localStorage after login:', localStorage.getItem('token') ? 'Token exists' : 'Token missing');
       setUser(response.user);
       applyAccountContext(response);
       setIsAuthenticated(true);

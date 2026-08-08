@@ -10,42 +10,14 @@ import * as log from '../../utils/logger';
 
 const router = express.Router();
 
-// Configure multer
+// Images are uploaded to Cloudinary (secure URL stored in DB). Multer only
+// buffers the file in memory — nothing is written to local disk.
+const memoryStorage = multer.memoryStorage();
+
+// Legacy local path used only by GET /header-image-file for pre-Cloudinary
+// files that may still exist on disk. New uploads never write here.
 const uploadsDir = path.resolve(__dirname, '..', '..', '..', 'public', 'uploads');
-const coverImagesDir = path.join(uploadsDir, 'cover-images');
 const headerImagesDir = path.join(uploadsDir, 'header-images');
-
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-if (!fs.existsSync(coverImagesDir)) {
-  fs.mkdirSync(coverImagesDir, { recursive: true });
-}
-if (!fs.existsSync(headerImagesDir)) {
-  fs.mkdirSync(headerImagesDir, { recursive: true });
-}
-
-const coverImageStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, coverImagesDir);
-  },
-  filename: (req: any, file, cb) => {
-    const uniqueSuffix = `${req.tenantId}-${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-    const ext = path.extname(file.originalname);
-    cb(null, `${uniqueSuffix}${ext}`);
-  }
-});
-
-const headerImageStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, headerImagesDir);
-  },
-  filename: (req: any, file, cb) => {
-    const uniqueSuffix = `${req.tenantId}-${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-    const ext = path.extname(file.originalname);
-    cb(null, `${uniqueSuffix}${ext}`);
-  }
-});
 
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   if (file.mimetype.startsWith('image/')) {
@@ -56,13 +28,13 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
 };
 
 const upload = multer({
-  storage: coverImageStorage,
+  storage: memoryStorage,
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 }
 });
 
 const uploadHeaderImage = multer({
-  storage: headerImageStorage,
+  storage: memoryStorage,
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 }
 });
@@ -166,6 +138,12 @@ router.get('/header-image-file', async (req, res, next) => {
 
     if (!headerImage) {
       return res.status(404).json({ error: 'Header image not found' });
+    }
+
+    // Cloudinary-stored images are absolute URLs — redirect the client there
+    // instead of reading the (now unused) local uploads directory.
+    if (headerImage.startsWith('http://') || headerImage.startsWith('https://')) {
+      return res.redirect(302, headerImage);
     }
 
     const filename = path.basename(headerImage);

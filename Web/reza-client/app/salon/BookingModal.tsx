@@ -487,7 +487,6 @@ const BookingModal: React.FC<BookingModalProps> = ({
       if (p.salonId !== cur.salonId) changed.push('salonId');
       if (p.currentMonthMs !== cur.currentMonthMs) changed.push('currentMonth');
       if (p.servicesRef !== cur.servicesRef) changed.push('selectedServices');
-      if (changed.length > 0) console.log('[AvailableDays] REFIRE cause:', changed.join(','));
     }
     prevAvailableDaysDeps.current = cur;
     if (!salonId) return;
@@ -506,10 +505,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
     const toStr = fmt(to);
 
     let cancelled = false;
-    console.log('[AvailableDays] Fetching:', { salonId, fromStr, toStr, serviceIds, currentMonth: currentMonth.toISOString() });
     api.getAvailableDays(salonId, fromStr, toStr, serviceIds)
       .then(res => {
-        console.log('[AvailableDays] Response:', res);
         if (!cancelled) setAvailableDays(res.days || []);
       })
       .catch(err => {
@@ -1728,7 +1725,6 @@ const BookingModal: React.FC<BookingModalProps> = ({
                             value={selectedEmp}
                             onChange={(val) => {
                               const empName = val === 'any' ? 'Sans préférence' : getEmployeeName(val, employees);
-                              console.log('[Step2] Employee selected:', { service: svc.name, selectedName: empName });
                               setPerServiceEmployeeSelections((prev) => ({
                                 ...prev,
                                 [svcKey]: val,
@@ -2630,7 +2626,6 @@ function RecapParticipantSection({
   useEffect(() => {
     if (timeWindowsLogKey === '[]') return;
     const windows = JSON.parse(timeWindowsLogKey) as Array<{ name: string; window: string; empName: string | null }>;
-    console.log('[Recap]', name, '-', windows.map(w => `${w.name} ${w.window}${w.empName ? ` (${w.empName})` : ''}`).join(' | '));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeWindowsLogKey]);
 

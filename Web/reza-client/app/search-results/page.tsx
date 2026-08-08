@@ -530,7 +530,6 @@ function LuxurySearchResultsContent() {
 		(async () => {
 			if (!mapRef.current) return;
 			const L = (await import('leaflet')).default;
-			// @ts-expect-error leaflet CSS side-effect import
 			await import('leaflet/dist/leaflet.css');
 			if (disposed || !mapRef.current) return;
 

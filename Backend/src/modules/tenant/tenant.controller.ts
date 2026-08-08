@@ -4,6 +4,7 @@ import { tenantService } from './tenant.service';
 import { createTenantSchema } from './tenant.schema';
 import { isSalonRequiredError, resolveWriteTenantId } from '../../utils/salonScope';
 import { subscriptionInvoiceService } from '../subscription/subscription-invoice.service';
+import { uploadImage } from '../../utils/cloudinary';
 
 export class TenantController {
   async getTenant(req: Request, res: Response, next: NextFunction) {
@@ -214,7 +215,7 @@ export class TenantController {
         });
       }
 
-      const fileUrl = `/uploads/header-images/${req.file.filename}`;
+      const fileUrl = await uploadImage(req.file, 'header-images');
       const result = await tenantService.saveHeaderImage(req.tenantId!, fileUrl);
       res.json(result);
     } catch (error) {
@@ -231,7 +232,7 @@ export class TenantController {
         });
       }
 
-      const fileUrl = `/uploads/cover-images/${req.file.filename}`;
+      const fileUrl = await uploadImage(req.file, 'cover-images');
       // Note: upload only stores the file and returns its URL. Persisting into
       // tenant.coverImage / settings.coverImages is done explicitly by the
       // frontend (informations-landing-page), so uploading never silently
