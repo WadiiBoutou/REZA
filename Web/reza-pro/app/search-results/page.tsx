@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
-import { Search, MapPin, Star, Clock, ArrowRight, SlidersHorizontal, Heart, Navigation, ListFilter } from 'lucide-react';
+import { useState } from 'react';
+import { Search, MapPin, Star, Clock, ArrowRight, SlidersHorizontal, Heart } from 'lucide-react';
 import ModalFilters from '../../components/ModalFilters';
 import RezaNavbar from '../../components/Header';
 import Footer from '../../components/Footer';
@@ -20,7 +20,6 @@ const mockResults = [
 		price: '$$',
 		services: ['Coupe', 'Coloration', 'Brushing'],
 		nextAvailable: "Aujourd'hui à 15h",
-		coordinates: { lat: 33.5731, lng: -7.6298 }
 	},
 	{
 		id: 2,
@@ -34,7 +33,6 @@ const mockResults = [
 		price: '$',
 		services: ['Rasage', 'Taille barbe', 'Coupe'],
 		nextAvailable: 'Demain à 10h',
-		coordinates: { lat: 33.5831, lng: -7.6398 }
 	},
 	{
 		id: 3,
@@ -48,7 +46,6 @@ const mockResults = [
 		price: '$$$',
 		services: ['Hammam', 'Massage', 'Gommage'],
 		nextAvailable: "Aujourd'hui à 18h",
-		coordinates: { lat: 33.5631, lng: -7.6198 }
 	},
 	{
 		id: 4,
@@ -63,7 +60,6 @@ const mockResults = [
 		price: '$$',
 		services: ['Manucure', 'Pédicure', 'Épilation'],
 		nextAvailable: "Aujourd'hui à 14h",
-		coordinates: { lat: 33.5931, lng: -7.6098 }
 	}
 ];
 
@@ -77,11 +73,9 @@ const sortOptions = [
 export default function LuxurySearchResults() {
 	const [query, setQuery] = useState('');
 	const [location, setLocation] = useState('');
-	const [selectedSalon, setSelectedSalon] = useState<number | null>(null);
 	const [showFilters, setShowFilters] = useState(false);
 	const [sortBy, setSortBy] = useState('recommended');
 	const [likedSalons, setLikedSalons] = useState(new Set<number>());
-	const [showMobileMap, setShowMobileMap] = useState(false);
 	const [filterValues, setFilterValues] = useState({
 		availability: '',
 		selectedDate: null as Date | null,
@@ -93,206 +87,7 @@ export default function LuxurySearchResults() {
 		bestPro: false,
 	});
 
-	const mapRef = useRef<HTMLDivElement | null>(null);
-	const googleMapRef = useRef<any>(null);
-	const markersRef = useRef<any[]>([]);
 	const router = useRouter();
-
-	const loadGoogleMaps = (apiKey?: string) =>
-		new Promise<void>((resolve, reject) => {
-			if (!apiKey) {
-				reject(new Error('Missing Google Maps API key'));
-				return;
-			}
-			if ((window as any).google && (window as any).google.maps) {
-				resolve();
-				return;
-			}
-			if (document.querySelector(`script[data-google-maps]`)) {
-				const checkInterval = setInterval(() => {
-					if ((window as any).google && (window as any).google.maps) {
-						clearInterval(checkInterval);
-						resolve();
-					}
-				}, 100);
-				return;
-			}
-			const script = document.createElement('script');
-			script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-			script.async = true;
-			script.defer = true;
-			script.setAttribute('data-google-maps', 'true');
-			script.onload = () => resolve();
-			script.onerror = (err) => reject(err);
-			document.head.appendChild(script);
-		});
-
-	useEffect(() => {
-		let mounted = true;
-		const apiKey = 'AIzaSyDMaqTH_mzDvuxbxd7vxeRUFbc_8Y1Meto';
-
-		if (!mapRef.current) return;
-
-		loadGoogleMaps(apiKey)
-			.then(() => {
-				if (!mounted) return;
-				const google = (window as any).google;
-				const center = { lat: 33.5731, lng: -7.6298 };
-				
-				googleMapRef.current = new google.maps.Map(mapRef.current, {
-					center,
-					zoom: 13,
-					disableDefaultUI: true,
-					styles: [
-						{ elementType: "geometry", stylers: [{ color: "#f5f5f5" }] },
-						{ elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-						{ elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
-						{ elementType: "labels.text.stroke", stylers: [{ color: "#f5f5f5" }] },
-						{ featureType: "administrative.land_parcel", elementType: "labels.text.fill", stylers: [{ color: "#bdbdbd" }] },
-						{ featureType: "poi", elementType: "geometry", stylers: [{ color: "#eeeeee" }] },
-						{ featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-						{ featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#e5e5e5" }] },
-						{ featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
-						{ featureType: "road", elementType: "geometry", stylers: [{ color: "#ffffff" }] },
-						{ featureType: "road.arterial", elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-						{ featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#dadada" }] },
-						{ featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#616161" }] },
-						{ featureType: "road.local", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] },
-						{ featureType: "transit.line", elementType: "geometry", stylers: [{ color: "#e5e5e5" }] },
-						{ featureType: "transit.station", elementType: "geometry", stylers: [{ color: "#eeeeee" }] },
-						{ featureType: "water", elementType: "geometry", stylers: [{ color: "#c9c9c9" }] },
-						{ featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#9e9e9e" }] }
-					],
-				});
-
-				markersRef.current = mockResults.map((salon) => {
-					const marker = new google.maps.Marker({
-						position: salon.coordinates,
-						map: googleMapRef.current,
-						title: salon.name,
-						icon: {
-							path: google.maps.SymbolPath.CIRCLE,
-							scale: 10,
-							fillColor: "#8b7260",
-							fillOpacity: 1,
-							strokeWeight: 3,
-							strokeColor: "#ffffff",
-						}
-					});
-
-					const content = `
-						<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; width: 280px; overflow: hidden; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,0.12);">
-							<div style="position: relative; width: 100%; height: 80px; overflow: hidden;">
-								<img src="${salon.image}" alt="${salon.name}" style="width: 100%; height: 100%; object-fit: cover;" />
-								<div style="position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,0.95); backdrop-filter: blur(8px); padding: 4px 10px; border-radius: 12px;">
-									<span style="font-size: 11px; font-weight: 600; color: #1a1a1a;">${salon.category}</span>
-								</div>
-							</div>
-							<div style="padding: 14px; background: white;">
-								<div style="font-size: 16px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px; line-height: 1.3;">${salon.name}</div>
-								<div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-									<div style="display: flex; align-items: center; gap: 3px; background: #fef3e7; padding: 3px 8px; border-radius: 10px;">
-										<span style="color: #8b7260; font-weight: 700; font-size: 13px;">★ ${salon.rating}</span>
-									</div>
-									<span style="color: #999; font-size: 12px;">(${salon.reviews})</span>
-									<div style="width: 2px; height: 2px; background: #ddd; border-radius: 50%;"></div>
-									<span style="color: #666; font-size: 12px; font-weight: 600;">${salon.price}</span>
-								</div>
-								<div style="display: flex; align-items: center; gap: 5px; color: #666; font-size: 12px; margin-bottom: 10px;">
-									<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-									<span>${salon.location} • <span style="color: #8b7260; font-weight: 600;">${salon.distance}</span></span>
-								</div>
-								<div style="display: inline-block; width: 100%; padding: 10px 0; background: linear-gradient(135deg, #8b7260 0%, #6d5a4d 100%); color: white; border-radius: 12px; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; box-shadow: 0 3px 10px rgba(139,114,96,0.3);" id="gm-btn-${salon.id}">
-									Réserver
-								</div>
-							</div>
-						</div>
-					`;
-					const infowindow = new google.maps.InfoWindow({ 
-						content,
-						maxWidth: 280,
-						pixelOffset: new google.maps.Size(0, -10)
-					});
-
-					// Replace InfoWindow-driven click handling: set selection and pan only.
-					marker.addListener('click', () => {
-						// close other info windows (keep them for cleanup) but DO NOT open them;
-						markersRef.current.forEach(m => m.infowindow.close());
-						// ensure external UI updates
-						setSelectedSalon(salon.id);
-						// pan to marker
-						try {
-							const pos = marker.getPosition();
-							if (pos && googleMapRef.current) {
-								googleMapRef.current.panTo(pos);
-								googleMapRef.current.setZoom?.(14);
-							}
-						} catch (e) {}
-						// attach button handler in the DOM if present (keeps reservation button behavior)
-						setTimeout(() => {
-							const btn = document.getElementById(`gm-btn-${salon.id}`);
-							if (btn) {
-								btn.onclick = (e) => {
-									e.stopPropagation();
-									// Navigate to salon detail page
-									router.push(`/salon/${salon.id}`);
-								};
-							}
-						}, 100);
-					});
-
-					return { marker, infowindow, id: salon.id };
-				});
-			})
-			.catch(() => {});
-
-		return () => {
-			mounted = false;
-			if (markersRef.current.length) {
-				markersRef.current.forEach((m) => {
-					if (m.marker) m.marker.setMap(null);
-					if (m.infowindow) m.infowindow.close();
-				});
-				markersRef.current = [];
-			}
-			googleMapRef.current = null;
-		};
-	}, []);
-
-	useEffect(() => {
-		const google = (window as any).google;
-		if (!google || !markersRef.current) return;
-		markersRef.current.forEach((m) => {
-			if (!m.marker) return;
-			if (m.id === selectedSalon) {
-				// highlight selected marker only (no InfoWindow opening)
-				m.marker.setIcon({
-					path: google.maps.SymbolPath.CIRCLE,
-					scale: 14,
-					fillColor: "#8b7260",
-					fillOpacity: 1,
-					strokeWeight: 4,
-					strokeColor: "#ffffff",
-				});
-				const pos = m.marker.getPosition();
-				if (pos && googleMapRef.current) {
-					try {
-						googleMapRef.current.panTo(pos);
-					} catch (e) {}
-				}
-			} else {
-				m.marker.setIcon({
-					path: google.maps.SymbolPath.CIRCLE,
-					scale: 10,
-					fillColor: "#8b7260",
-					fillOpacity: 1,
-					strokeWeight: 3,
-					strokeColor: "#ffffff",
-				});
-			}
-		});
-	}, [selectedSalon]);
-
 	const toggleLike = (id: number) => {
 		setLikedSalons(prev => {
 			const newLiked = new Set(prev);
@@ -352,7 +147,7 @@ export default function LuxurySearchResults() {
 			{/* Main Content */}
 			<div className="flex pt-20"> {/* restore padding for header-only layout */}
 				{/* Left Side - Results */}
-				<div className={`w-full lg:w-[55%] ${showMobileMap ? 'hidden lg:block' : 'block'}`}>
+				<div className="w-full">
 					<div className="max-w-4xl mx-auto px-6 py-8">
 						{/* Header with search pills and sort pills on the right */}
 						<div className="mb-10">
@@ -420,8 +215,6 @@ export default function LuxurySearchResults() {
 									key={salon.id}
 									className="group cursor-pointer animate-fadeInUp"
 									style={{ animationDelay: `${index * 100}ms` }}
-									onMouseEnter={() => setSelectedSalon(salon.id)}
-									onMouseLeave={() => setSelectedSalon(null)}
 								>
 									<div className="flex gap-6 p-6 rounded-3xl bg-[#f5f7f3] border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all duration-300">
 										{/* Image */}
@@ -505,29 +298,6 @@ export default function LuxurySearchResults() {
 					</div>
 				</div>
 
-				{/* Right Side - Map */}
-				<div className={`w-full lg:w-[45%] fixed right-0 top-20 bottom-0 ${showMobileMap ? 'block' : 'hidden lg:block'}`}> {/* align with header height */}
-					{/* map container */}
-					<div ref={mapRef} className="w-full h-full" />
-				</div>
-
-				{/* Mobile Map Toggle */}
-				<button
-					onClick={() => setShowMobileMap(!showMobileMap)}
-					className="lg:hidden fixed bottom-8 right-6 z-50 px-6 py-4 rounded-full bg-[#8b7260] text-white shadow-2xl flex items-center gap-3 font-medium hover:bg-[#6d5a4d] transition-all"
-				>
-					{showMobileMap ? (
-						<>
-							<ListFilter className="w-5 h-5" />
-							<span>Liste</span>
-						</>
-					) : (
-						<>
-							<Navigation className="w-5 h-5" />
-							<span>Carte</span>
-						</>
-					)}
-				</button>
 			</div>
 
 			{/* External Filter Modal */}

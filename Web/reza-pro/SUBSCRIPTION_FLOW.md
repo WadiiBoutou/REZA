@@ -173,7 +173,6 @@ Set in `Web/reza-pro/.env.local`:
 NEXT_PUBLIC_PLATFORM_BANK_NAME=Banque Populaire
 NEXT_PUBLIC_PLATFORM_BANK_HOLDER=Reza Platform
 NEXT_PUBLIC_PLATFORM_BANK_IBAN=MA76 0000 0000 0000 0000 0000 000
-NEXT_PUBLIC_PLATFORM_BANK_SWIFT=
 ```
 
 Before production, configure with real bank details in your deployment environment.

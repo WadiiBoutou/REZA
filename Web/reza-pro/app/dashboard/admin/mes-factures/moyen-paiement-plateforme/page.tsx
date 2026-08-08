@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Landmark, Copy, Check, Building2, UserRound, Hash } from 'lucide-react';
+import { Landmark, Copy, Check, Building2, UserRound } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 /**
@@ -18,7 +18,6 @@ const PLATFORM_BANK = {
   iban:
     process.env.NEXT_PUBLIC_PLATFORM_BANK_IBAN ||
     'MA76 0000 0000 0000 0000 0000 000',
-  swift: process.env.NEXT_PUBLIC_PLATFORM_BANK_SWIFT || '',
 };
 
 function CopyField({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
@@ -101,16 +100,6 @@ export default function BillingPaymentMethodPage() {
             </div>
 
             <CopyField label="RIB / IBAN" value={PLATFORM_BANK.iban} />
-
-            {PLATFORM_BANK.swift && (
-              <div className="flex items-center gap-3 rounded-xl border border-gray-200 px-5 py-4">
-                <Hash size={18} className="text-gray-400 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs text-gray-500 mb-0.5">Code SWIFT / BIC</p>
-                  <p className="text-sm font-medium text-gray-900 font-mono">{PLATFORM_BANK.swift}</p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
