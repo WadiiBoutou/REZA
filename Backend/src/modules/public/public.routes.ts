@@ -81,6 +81,12 @@ router.post('/auth/client-register', (req, res, next) =>
 router.post('/auth/client-login', (req, res, next) =>
   publicController.loginClient(req, res, next)
 );
+router.post('/auth/client-forgot-password', (req, res, next) =>
+  publicController.forgotClientPassword(req, res, next)
+);
+router.post('/auth/client-reset-password', (req, res, next) =>
+  publicController.resetClientPassword(req, res, next)
+);
 router.get('/client/:email/favorites', (req, res, next) =>
   publicController.getClientFavorites(req, res, next)
 );

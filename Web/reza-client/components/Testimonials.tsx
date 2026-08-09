@@ -1,75 +1,83 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Star, Calendar, User, ArrowRight, Quote } from 'lucide-react';
+import React, { useState } from 'react';
+import { Star, Calendar, ArrowRight, Quote } from 'lucide-react';
 import { motion } from 'framer-motion';
-import api from '../lib/api';
-import { getRelativeDate, formatMoroccoDate, filterCompleteTenants, getImageUrl } from '../lib/utils';
 
 const TestimonialsAndBlogs = () => {
-  const [hoveredTestimonial, setHoveredTestimonial] = useState<number | null>(null);
+  const [hoveredTestimonial, setHoveredTestimonial] = useState<string | null>(null);
   const [hoveredBlog, setHoveredBlog] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'testimonials' | 'blog'>('testimonials');
-  const [testimonials, setTestimonials] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  // Fetch reviews from API
-  useEffect(() => {
-    const fetchTestimonials = async () => {
-      try {
-        setLoading(true);
-        // Fetch tenants first
-        const tenantsResponse = await api.searchTenants(undefined, undefined, undefined, 20);
-        // Filter to only show tenants with complete information (all required fields from landing page)
-        const completeTenants = filterCompleteTenants(tenantsResponse.tenants || []);
-        
-        // Fetch reviews for each tenant (limit to first 6 complete tenants for performance)
-        const reviewPromises = completeTenants.slice(0, 6).map(async (tenant: any) => {
-          try {
-            const reviewsRes = await api.getTenantReviews(tenant.id, 1, 1);
-            if (reviewsRes.reviews && reviewsRes.reviews.length > 0) {
-              const review = reviewsRes.reviews[0];
-              return {
-                id: review.id,
-                name: review.client ? `${review.client.firstName || ''} ${review.client.lastName || ''}`.trim() || 'Client' : 'Client',
-                role: tenant.category || 'Client',
-                city: tenant.city || '',
-                rating: review.rating || 5,
-                text: review.comment || '',
-                // REAL client avatar from the review record (falls back to initials)
-                avatar: getImageUrl(review.client?.avatar || null),
-                initials: review.client
-                  ? `${(review.client.firstName?.[0] || '').toUpperCase()}${(review.client.lastName?.[0] || '').toUpperCase()}` || 'C'
-                  : 'C',
-                date: review.createdAt ? getRelativeDate(review.createdAt) : 'Récemment',
-                type: 'Client',
-                tenantName: tenant.name,
-                tenantCategory: tenant.category
-              };
-            }
-            return null;
-          } catch (error) {
-            console.error(`Error fetching reviews for tenant ${tenant.id}:`, error);
-            return null;
-          }
-        });
-        
-        const fetchedTestimonials = (await Promise.all(reviewPromises))
-          .filter((t): t is any => t !== null)
-          .slice(0, 6); // Limit to 6 testimonials
-        
-        // Only real reviews — never pad with static/fake testimonials.
-        setTestimonials(fetchedTestimonials.slice(0, 6));
-      } catch (error) {
-        console.error('Error fetching testimonials:', error);
-        setTestimonials([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTestimonials();
-  }, []);
+  // Static testimonials — curated showcase content, not live DB reviews.
+  const testimonials = [
+    {
+      id: 't1',
+      name: 'Salma Bennani',
+      role: 'Institut de beauté',
+      city: 'Casablanca',
+      rating: 5,
+      text: 'J\'ai réservé un soin du visage en deux minutes depuis mon téléphone. Le salon m\'a confirmé immédiatement, c\'est simple et fiable.',
+      avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
+      initials: 'SB',
+      date: 'Il y a 3 jours',
+    },
+    {
+      id: 't2',
+      name: 'Yassine El Amrani',
+      role: 'Barbier',
+      city: 'Rabat',
+      rating: 5,
+      text: 'Fini l\'attente au salon. Je choisis mon barbier, mon créneau, et je suis sûr d\'être pris à l\'heure. Je recommande à 100%.',
+      avatar: 'https://randomuser.me/api/portraits/men/32.jpg',
+      initials: 'YE',
+      date: 'Il y a 1 semaine',
+    },
+    {
+      id: 't3',
+      name: 'Nadia Tazi',
+      role: 'Coiffure',
+      city: 'Marrakech',
+      rating: 5,
+      text: 'Enfin une plateforme qui regroupe les meilleurs salons de la ville. Les avis des autres clients m\'ont vraiment aidée à choisir.',
+      avatar: 'https://randomuser.me/api/portraits/women/68.jpg',
+      initials: 'NT',
+      date: 'Il y a 2 semaines',
+    },
+    {
+      id: 't4',
+      name: 'Karim Idrissi',
+      role: 'Massage & Spa',
+      city: 'Tanger',
+      rating: 4,
+      text: 'Très pratique pour réserver un hammam en groupe. La confirmation arrive vite et on peut tout gérer depuis le site.',
+      avatar: 'https://randomuser.me/api/portraits/men/75.jpg',
+      initials: 'KI',
+      date: 'Il y a 2 semaines',
+    },
+    {
+      id: 't5',
+      name: 'Imane Cherkaoui',
+      role: 'Manucure',
+      city: 'Casablanca',
+      rating: 5,
+      text: 'Je réserve toutes mes séances manucure ici. Le rappel avant le rendez-vous est un vrai plus, je n\'oublie plus jamais.',
+      avatar: 'https://randomuser.me/api/portraits/women/26.jpg',
+      initials: 'IC',
+      date: 'Il y a 3 semaines',
+    },
+    {
+      id: 't6',
+      name: 'Mehdi Benjelloun',
+      role: 'Coiffure homme',
+      city: 'Fès',
+      rating: 5,
+      text: 'Mon salon habituel est sur la plateforme, je peux même payer en ligne. Le professionnalisme est au rendez-vous à chaque visite.',
+      avatar: 'https://randomuser.me/api/portraits/men/85.jpg',
+      initials: 'MB',
+      date: 'Le mois dernier',
+    },
+  ];
 
 
   const blogPosts = [
@@ -194,18 +202,7 @@ const TestimonialsAndBlogs = () => {
             </div>
 
             {/* Testimonials Grid */}
-            {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 border border-gray-200 rounded-lg overflow-hidden">
-                {[1, 2, 3, 4, 5, 6].map((idx) => (
-                  <div key={idx} className="bg-white p-8 min-h-[320px] animate-pulse">
-                    <div className="h-12 w-12 bg-gray-200 rounded mb-6" />
-                    <div className="h-20 bg-gray-200 rounded mb-6" />
-                    <div className="h-6 w-24 bg-gray-200 rounded" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 border border-gray-200 rounded-lg overflow-hidden">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 border border-gray-200 rounded-lg overflow-hidden">
                 {testimonials.map((testimonial, index) => (
                 <motion.div
                   key={testimonial.id}
@@ -318,7 +315,6 @@ const TestimonialsAndBlogs = () => {
                 </motion.div>
               ))}
               </div>
-            )}
           </>
         ) : (
           <>

@@ -264,6 +264,10 @@ model User {
   role      UserRole @default(STAFF)
   isActive  Boolean  @default(true)
   avatar    String?
+  // Password reset / email verification (hashed tokens)
+  resetPasswordToken String?  @db.VarChar(255)
+  resetPasswordExpires DateTime?
+  verifyEmailToken    String?  @db.VarChar(255)
 
   // Relations
   appointments            Appointment[]            @relation("AppointmentEmployee")
@@ -306,6 +310,9 @@ model Client {
   dateOfBirth DateTime?
   notes       String?
   status      ClientStatus @default(ACTIVE)
+  // Password reset (hashed token)
+  resetPasswordToken   String?  @db.VarChar(255)
+  resetPasswordExpires DateTime?
 
   // Relations
   appointments          Appointment[]

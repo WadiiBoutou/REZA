@@ -348,6 +348,26 @@ export class PublicController {
     }
   }
 
+  async forgotClientPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await clientAuthService.forgotClientPassword(req.body, req);
+      res.json(result);
+    } catch (error) {
+      if (handlePublicError(error, res, next)) return;
+      next(error);
+    }
+  }
+
+  async resetClientPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await clientAuthService.resetClientPassword(req.body);
+      res.json(result);
+    } catch (error) {
+      if (handlePublicError(error, res, next)) return;
+      next(error);
+    }
+  }
+
   async getClientFavorites(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await favoritesService.getClientFavorites(req.params.email);

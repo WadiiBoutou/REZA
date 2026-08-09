@@ -1,9 +1,31 @@
+import crypto from 'crypto';
 import { prisma } from '../../lib/prisma';
 import { hashPassword, comparePassword } from '../../utils/password';
 import { generateToken } from '../../utils/jwt';
-import { LoginInput, RegisterInput } from './auth.schema';
+import { sendMail } from '../../utils/mailer';
+import { LoginInput, RegisterInput, ForgotPasswordInput, ResetPasswordInput } from './auth.schema';
 import { accountService } from '../account/account.service';
 import * as log from '../../utils/logger';
+
+/**
+ * Base URL for links included in emails (password reset link).
+ * Uses the deployed reza-pro frontend URL when available (set on Render),
+ * falls back to the request's origin, then to localhost:3001.
+ */
+function getFrontendBaseUrl(req?: any): string {
+  const envUrl = process.env.PRO_APP_URL || process.env.FRONTEND_URL;
+  if (envUrl) {
+    return envUrl.split(',')[0].trim().replace(/\/$/, '');
+  }
+  if (req && req.headers && req.headers.origin) {
+    return String(req.headers.origin).replace(/\/$/, '');
+  }
+  return 'http://localhost:3001';
+}
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
 export class AuthService {
   async login(input: LoginInput) {
@@ -253,6 +275,102 @@ export class AuthService {
           : null
       }
     };
+  }
+
+  /**
+   * Forgot password: generate a reset token, store its hash on the user and
+   * email a reset link. Always returns the same message whether or not the
+   * email exists (no account enumeration).
+   */
+  async forgotPassword(input: ForgotPasswordInput, req?: any) {
+    const email = input.email.trim().toLowerCase();
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: { id: true, email: true, firstName: true, isActive: true },
+    });
+
+    if (user && user.isActive) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          resetPasswordToken: hashToken(token),
+          resetPasswordExpires: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+        },
+      });
+
+      const resetUrl = `${getFrontendBaseUrl(req)}/reset-password?token=${token}`;
+      const firstName = user.firstName || '';
+      try {
+        await sendMail({
+          to: user.email,
+          subject: 'Réinitialisation de votre mot de passe — Reza Pro',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+              <h2 style="color: #002366;">Réinitialisation de votre mot de passe</h2>
+              <p>Bonjour ${firstName},</p>
+              <p>Vous avez demandé la réinitialisation de votre mot de passe Reza Pro.</p>
+              <p>Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe. Ce lien expire dans <strong>1 heure</strong>.</p>
+              <p style="text-align: center; margin: 28px 0;">
+                <a href="${resetUrl}" style="background: #002366; color: #ffffff; padding: 12px 28px; border-radius: 30px; text-decoration: none; font-weight: bold; display: inline-block;">Réinitialiser mon mot de passe</a>
+              </p>
+              <p style="font-size: 13px; color: #666;">Si vous n'avez pas demandé cette réinitialisation, ignorez cet email. Le lien ne peut être utilisé qu'une seule fois.</p>
+            </div>
+          `,
+        });
+      } catch (mailError: any) {
+        log.error('[forgotPassword] Email send failed:', mailError?.message || mailError);
+        // Clear the token so a stale token is never left dangling when the mail fails
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { resetPasswordToken: null, resetPasswordExpires: null },
+        });
+        throw mailError;
+      }
+    }
+
+    return {
+      message:
+        "Si un compte existe pour cette adresse email, un lien de réinitialisation a été envoyé.",
+    };
+  }
+
+  /**
+   * Reset password: validate the one-time token and set the new password.
+   */
+  async resetPassword(input: ResetPasswordInput) {
+    const tokenHash = hashToken(input.token);
+    const user = await prisma.user.findFirst({
+      where: { resetPasswordToken: tokenHash },
+      select: { id: true, resetPasswordExpires: true },
+    });
+
+    if (!user) {
+      throw {
+        status: 400,
+        error: 'Invalid token',
+        message: 'Ce lien de réinitialisation est invalide. Veuillez refaire une demande.',
+      };
+    }
+    if (!user.resetPasswordExpires || user.resetPasswordExpires.getTime() < Date.now()) {
+      throw {
+        status: 400,
+        error: 'Token expired',
+        message: 'Ce lien de réinitialisation a expiré. Veuillez refaire une demande.',
+      };
+    }
+
+    const hashedPassword = await hashPassword(input.password);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
+    });
+
+    return { message: 'Votre mot de passe a été réinitialisé avec succès. Vous pouvez maintenant vous connecter.' };
   }
 
   /**

@@ -1,4 +1,5 @@
 import { prisma } from '../../../lib/prisma';
+import { sendMail } from '../../../utils/mailer';
 import { formatDateForNotification } from '../../../utils/dateTime';
 import { validateAppointmentRules } from '../../../utils/schedulingValidation';
 import { resolveEmployeeUserId } from '../../../utils/resolveEmployeeUserId';
@@ -713,15 +714,51 @@ export class BookingService {
 
       log.log(`[Booking] All appointments created: ${appointments.length} for group ${bookingGroup.id}`);
 
-      try {
-        const tenantSettings = await prisma.tenantSettings.findUnique({
-          where: { tenantId: tenant.id },
-          select: { timezone: true },
-        });
-        const timezone = tenantSettings?.timezone || 'Africa/Casablanca';
-        const appointmentDate = formatDateForNotification(defaultStart.toISOString(), timezone);
-        const participantCount = resolved.length;
+      const tenantSettingsForNotif = await prisma.tenantSettings.findUnique({
+        where: { tenantId: tenant.id },
+        select: { timezone: true },
+      });
+      const timezone = tenantSettingsForNotif?.timezone || 'Africa/Casablanca';
+      const appointmentDate = formatDateForNotification(defaultStart.toISOString(), timezone);
+      const participantCount = resolved.length;
 
+      // ---- Email notification to the salon's configured RDV emails ----
+      try {
+        const notifSettings = await prisma.tenantSettings.findUnique({
+          where: { tenantId: tenant.id },
+          select: { emailNotifications: true },
+        });
+        const appointmentEmails =
+          ((notifSettings?.emailNotifications as any)?.appointmentEmails as string[]) || [];
+        if (appointmentEmails.length > 0) {
+          const clientName = `${firstName} ${lastName}`.trim();
+          const serviceNames = resolved
+            .map((p) => p.services.map((s: any) => s.name).join(', '))
+            .filter(Boolean);
+          await sendMail({
+            to: appointmentEmails,
+            subject: `Nouveau rendez-vous — ${tenant.name}`,
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+                <h2 style="color: #002366;">Nouveau rendez-vous pris en ligne</h2>
+                <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
+                  <tr><td style="padding: 6px 0; color: #666;">Client</td><td style="padding: 6px 0; font-weight: bold;">${clientName}</td></tr>
+                  <tr><td style="padding: 6px 0; color: #666;">Service(s)</td><td style="padding: 6px 0; font-weight: bold;">${serviceNames.join('<br/>')}</td></tr>
+                  <tr><td style="padding: 6px 0; color: #666;">Date</td><td style="padding: 6px 0; font-weight: bold;">${appointmentDate}</td></tr>
+                  <tr><td style="padding: 6px 0; color: #666;">Participant(s)</td><td style="padding: 6px 0; font-weight: bold;">${participantCount}</td></tr>
+                  <tr><td style="padding: 6px 0; color: #666;">Téléphone</td><td style="padding: 6px 0; font-weight: bold;">${phone || '—'}</td></tr>
+                </table>
+                <p style="font-size: 13px; color: #666;">Connectez-vous à votre tableau de bord Reza Pro pour confirmer ou gérer ce rendez-vous.</p>
+              </div>
+            `,
+          });
+        }
+      } catch (emailError: any) {
+        log.error('[Booking] RDV notification email failed:', emailError?.message || emailError);
+      }
+
+
+      try {
         const tenantUsers = await prisma.user.findMany({
           where: {
             tenantId: tenant.id,
@@ -1404,7 +1441,9 @@ export class BookingService {
     const appointment = await prisma.appointment.findUnique({
       where: { id },
       include: {
-        client: true
+        client: true,
+        service: { select: { name: true } },
+        tenant: { select: { name: true } },
       }
     });
 
@@ -1449,6 +1488,36 @@ export class BookingService {
         cancellationReason: 'Cancelled by client'
       }
     });
+
+    // Email the salon's configured RDV notification addresses
+    try {
+      const notifSettings = await prisma.tenantSettings.findUnique({
+        where: { tenantId: appointment.tenantId },
+        select: { emailNotifications: true },
+      });
+      const appointmentEmails =
+        ((notifSettings?.emailNotifications as any)?.appointmentEmails as string[]) || [];
+      if (appointmentEmails.length > 0) {
+        const clientName = `${appointment.client.firstName || ''} ${appointment.client.lastName || ''}`.trim();
+        const serviceName = (appointment.service as any)?.name || 'Rendez-vous';
+        await sendMail({
+          to: appointmentEmails,
+          subject: `Rendez-vous annulé — ${appointment.tenant?.name || ''}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+              <h2 style="color: #B00020;">Rendez-vous annulé par le client</h2>
+              <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
+                <tr><td style="padding: 6px 0; color: #666;">Client</td><td style="padding: 6px 0; font-weight: bold;">${clientName}</td></tr>
+                <tr><td style="padding: 6px 0; color: #666;">Service</td><td style="padding: 6px 0; font-weight: bold;">${serviceName}</td></tr>
+              </table>
+              <p style="font-size: 13px; color: #666;">Connectez-vous à votre tableau de bord Reza Pro pour plus de détails.</p>
+            </div>
+          `,
+        });
+      }
+    } catch (emailError: any) {
+      log.error('[Booking] Cancellation notification email failed:', emailError?.message || emailError);
+    }
 
     return {
       appointment: cancelledAppointment,

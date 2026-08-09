@@ -1,10 +1,121 @@
+import crypto from 'crypto';
 import { prisma } from '../../../lib/prisma';
 import { comparePassword, hashPassword } from '../../../utils/password';
+import { sendMail } from '../../../utils/mailer';
 import { fail } from '../utils/http';
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
+
+function getClientFrontendBaseUrl(req?: any): string {
+  const envUrl = process.env.CLIENT_APP_URL || process.env.CLIENT_URL;
+  if (envUrl) {
+    return envUrl.split(',')[0].trim().replace(/\/$/, '');
+  }
+  if (req && req.headers && req.headers.origin) {
+    return String(req.headers.origin).replace(/\/$/, '');
+  }
+  return 'http://localhost:3000';
+}
 
 const INVALID_CREDENTIALS_MSG = 'Email ou mot de passe incorrect.';
 
 export class ClientAuthService {
+  /**
+   * Forgot password for client accounts (reza-client / mobile).
+   */
+  async forgotClientPassword(body: any, req?: any) {
+    const email = String(body.email || '').trim().toLowerCase();
+    if (!email) {
+      fail(400, { error: 'Email required', message: "Veuillez entrer votre adresse email." });
+    }
+
+    const client = await prisma.client.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: { id: true, email: true, firstName: true, lastName: true, password: true },
+    });
+
+    if (client && client.password) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await prisma.client.update({
+        where: { id: client.id },
+        data: {
+          resetPasswordToken: hashToken(token),
+          resetPasswordExpires: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+        },
+      });
+
+      const resetUrl = `${getClientFrontendBaseUrl(req)}/reset-password?token=${token}`;
+      const name = `${client.firstName || ''} ${client.lastName || ''}`.trim();
+      try {
+        await sendMail({
+          to: client.email!,
+          subject: 'Réinitialisation de votre mot de passe — Reza',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+              <h2 style="color: #002366;">Réinitialisation de votre mot de passe</h2>
+              <p>Bonjour ${name},</p>
+              <p>Vous avez demandé la réinitialisation de votre mot de passe.</p>
+              <p style="text-align: center; margin: 28px 0;">
+                <a href="${resetUrl}" style="background: #002366; color: #ffffff; padding: 12px 28px; border-radius: 30px; text-decoration: none; font-weight: bold; display: inline-block;">Réinitialiser mon mot de passe</a>
+              </p>
+              <p style="font-size: 13px; color: #666;">Ce lien expire dans 1 heure. Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.</p>
+            </div>
+          `,
+        });
+      } catch (mailError: any) {
+        await prisma.client.update({
+          where: { id: client.id },
+          data: { resetPasswordToken: null, resetPasswordExpires: null },
+        });
+        throw mailError;
+      }
+    }
+
+    return {
+      message: "Si un compte existe pour cette adresse email, un lien de réinitialisation a été envoyé.",
+    };
+  }
+
+  /**
+   * Reset password for client accounts using a one-time token.
+   */
+  async resetClientPassword(body: any) {
+    const token = String(body.token || '').trim();
+    const password = String(body.password || '');
+    if (!token) {
+      fail(400, { error: 'Token required', message: 'Lien de réinitialisation invalide.' });
+    }
+    if (password.length < 6) {
+      fail(400, { error: 'Invalid password', message: 'Le mot de passe doit contenir au moins 6 caractères.' });
+    }
+
+    const tokenHash = hashToken(token);
+    const client = await prisma.client.findFirst({
+      where: { resetPasswordToken: tokenHash },
+      select: { id: true, resetPasswordExpires: true },
+    });
+
+    if (!client) {
+      fail(400, { error: 'Invalid token', message: 'Ce lien de réinitialisation est invalide. Veuillez refaire une demande.' });
+    }
+    if (!client.resetPasswordExpires || client.resetPasswordExpires.getTime() < Date.now()) {
+      fail(400, { error: 'Token expired', message: 'Ce lien de réinitialisation a expiré. Veuillez refaire une demande.' });
+    }
+
+    const hashedPassword = await hashPassword(password);
+    await prisma.client.update({
+      where: { id: client.id },
+      data: {
+        password: hashedPassword,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
+    });
+
+    return { message: 'Votre mot de passe a été réinitialisé avec succès.' };
+  }
+
   async registerClient(body: any) {
     try {
     const { email, firstName, lastName, phone, password } = body;

@@ -5,6 +5,7 @@ import { Eye, EyeOff, Mail, ArrowLeft } from 'lucide-react';
 import CurvySlideButton from '@/components/ui/CurvySlideButton';
 import { Checkbox } from '@/components/ui/checkbox';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
+import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -97,6 +98,7 @@ function LoginPageContent() {
   const [resetEmail, setResetEmail] = useState('');
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetError, setResetError] = useState('');
+  const [resetSending, setResetSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [homeLoading, setHomeLoading] = useState(false);
   const { login, register, isAuthenticated, user } = useAuth();
@@ -145,7 +147,7 @@ function LoginPageContent() {
     }
   }, [isAuthenticated, user, router, searchParamsState]);
 
-  const handlePasswordReset = (e: React.FormEvent) => {
+  const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setResetError('');
     
@@ -160,8 +162,15 @@ function LoginPageContent() {
       return;
     }
     
-    // Simulate sending reset email
-    setResetEmailSent(true);
+    setResetSending(true);
+    try {
+      await api.forgotPassword(resetEmail.trim());
+      setResetEmailSent(true);
+    } catch (err: any) {
+      setResetError(err.message || 'Une erreur est survenue. Veuillez réessayer.');
+    } finally {
+      setResetSending(false);
+    }
   };
 
   const closeForgotPasswordModal = () => {
@@ -501,7 +510,7 @@ function LoginPageContent() {
                       }}
                     >
                       <CurvySlideButton
-                        text={"Envoyer le lien de réinitialisation"}
+                        text={resetSending ? "Envoi en cours..." : "Envoyer le lien de réinitialisation"}
                         color="#002366"
                         textColor="#ffffff"
                         borderColor="#002366"

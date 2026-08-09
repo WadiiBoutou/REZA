@@ -17,6 +17,18 @@ router.post('/login', (req, res, next) => authController.login(req, res, next));
 router.post('/register', (req, res, next) => authController.register(req, res, next));
 
 /**
+ * POST /api/auth/forgot-password
+ * Request a password reset link (emailed to the user)
+ */
+router.post('/forgot-password', (req, res, next) => authController.forgotPassword(req, res, next));
+
+/**
+ * POST /api/auth/reset-password
+ * Set a new password using a one-time reset token
+ */
+router.post('/reset-password', (req, res, next) => authController.resetPassword(req, res, next));
+
+/**
  * GET /api/auth/me
  * Get current user
  */

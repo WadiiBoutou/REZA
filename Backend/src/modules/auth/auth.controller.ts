@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authService } from './auth.service';
-import { loginSchema, registerSchema } from './auth.schema';
+import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from './auth.schema';
 import * as log from '../../utils/logger';
 
 export class AuthController {
@@ -78,6 +78,44 @@ export class AuthController {
       const schema = z.object({ tenantId: z.string().min(1) });
       const { tenantId } = schema.parse(req.body);
       const result = await authService.switchSalon(req.userId!, tenantId);
+      res.json(result);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: 'Validation error',
+          message: error.errors[0].message
+        });
+      }
+      if (error.status) {
+        return res.status(error.status).json({ error: error.error, message: error.message });
+      }
+      next(error);
+    }
+  }
+
+  async forgotPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = forgotPasswordSchema.parse(req.body);
+      const result = await authService.forgotPassword(data, req);
+      res.json(result);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: 'Validation error',
+          message: error.errors[0].message
+        });
+      }
+      if (error.status) {
+        return res.status(error.status).json({ error: error.error, message: error.message });
+      }
+      next(error);
+    }
+  }
+
+  async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = resetPasswordSchema.parse(req.body);
+      const result = await authService.resetPassword(data);
       res.json(result);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
