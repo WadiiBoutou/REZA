@@ -1440,7 +1440,6 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
                     mode="single"
                     selected={date}
                     onSelect={setDate}
-                    initialFocus
                     locale={fr}
                   />
                 </PopoverContent>

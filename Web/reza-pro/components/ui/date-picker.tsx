@@ -45,7 +45,6 @@ const DatePicker: React.FC<DatePickerProps> = ({
           selected={value}
           onSelect={onChange}
           disabled={disabled}
-          initialFocus
           locale={fr}
         />
       </PopoverContent>
