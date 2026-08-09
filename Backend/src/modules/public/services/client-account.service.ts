@@ -104,7 +104,7 @@ export class ClientAccountService {
     if (newPassword.length < 8) {
       fail(400, {
         error: 'Invalid password',
-        message: 'Le nouveau mot de passe doit contenir au moins 8 caractèreturn '
+        message: 'Le nouveau mot de passe doit contenir au moins 8 caractères.'
       });
     }
 
