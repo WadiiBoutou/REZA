@@ -2,10 +2,10 @@ import { prisma } from '../../lib/prisma';
 
 export class FamilyMemberService {
   async getFamilyMembers(tenantId: string, userEmail: string) {
+    // Global lookup: platform client accounts are not tied to a salon.
     const client = await prisma.client.findFirst({
       where: {
-        email: userEmail,
-        tenantId
+        email: userEmail
       }
     });
 
@@ -28,16 +28,15 @@ export class FamilyMemberService {
   async createFamilyMember(tenantId: string, userEmail: string, data: any) {
     let client = await prisma.client.findFirst({
       where: {
-        email: userEmail,
-        tenantId
+        email: userEmail
       }
     });
 
     if (!client) {
       const emailParts = userEmail.split('@')[0].split('.');
+      // Global fallback row (tenantId null) — never tie a platform account to a salon.
       client = await prisma.client.create({
         data: {
-          tenantId,
           firstName: emailParts[0] || 'User',
           lastName: emailParts.slice(1).join(' ') || '',
           email: userEmail,
@@ -65,8 +64,7 @@ export class FamilyMemberService {
   async updateFamilyMember(tenantId: string, userEmail: string, id: string, data: any) {
     const client = await prisma.client.findFirst({
       where: {
-        email: userEmail,
-        tenantId
+        email: userEmail
       }
     });
 
@@ -103,8 +101,7 @@ export class FamilyMemberService {
   async deleteFamilyMember(tenantId: string, userEmail: string, id: string) {
     const client = await prisma.client.findFirst({
       where: {
-        email: userEmail,
-        tenantId
+        email: userEmail
       }
     });
 

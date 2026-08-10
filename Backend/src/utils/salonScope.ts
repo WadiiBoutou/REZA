@@ -12,6 +12,22 @@ export function tenantIdFilter(salonIds: string | string[]): string | { in: stri
 }
 
 /**
+ * Client membership filter for a salon scope: a client belongs to a salon when
+ * it was created by that salon (tenantId) OR has booked there (appointments
+ * carry their own tenantId). This keeps global client accounts (tenantId null)
+ * visible in the salon's client list/stats once they have an appointment.
+ */
+export function salonClientsFilter(salonIds: string | string[]): { OR: unknown[] } {
+  const filter = tenantIdFilter(salonIds);
+  return {
+    OR: [
+      { tenantId: filter },
+      { appointments: { some: { tenantId: filter } } },
+    ],
+  };
+}
+
+/**
  * Resolve target tenant for write ops.
  * Single-salon scope → that id.
  * Multi/all → require body/query tenantId within scope.

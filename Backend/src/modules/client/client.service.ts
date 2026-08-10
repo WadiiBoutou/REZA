@@ -1,22 +1,28 @@
 import { prisma } from '../../lib/prisma';
-import { tenantIdFilter } from '../../utils/salonScope';
+import { salonClientsFilter, tenantIdFilter } from '../../utils/salonScope';
 
 export class ClientService {
   async getClients(tenantIds: string | string[], search?: string, status?: string, page: number = 1, limit: number = 50) {
     const skip = (page - 1) * limit;
     const take = limit;
-    const where: any = { tenantId: tenantIdFilter(tenantIds) };
+    // Salon membership = created by the salon OR has an appointment there
+    // (global client accounts become "the salon's" clients once they book).
+    const where: any = { ...salonClientsFilter(tenantIds) };
 
     if (status && status !== 'all') {
       where.status = status;
     }
 
     if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search } }
+      where.AND = [
+        {
+          OR: [
+            { firstName: { contains: search, mode: 'insensitive' } },
+            { lastName: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+            { phone: { contains: search } }
+          ]
+        }
       ];
     }
 
@@ -29,7 +35,8 @@ export class ClientService {
         include: {
           _count: {
             select: {
-              appointments: true
+              // Visit count scoped to this salon only
+              appointments: { where: { tenantId: tenantIdFilter(tenantIds) } }
             }
           }
         }
@@ -50,7 +57,7 @@ export class ClientService {
 
   async detectDuplicates(tenantIds: string | string[]) {
     const allClients = await prisma.client.findMany({
-      where: { tenantId: tenantIdFilter(tenantIds) },
+      where: salonClientsFilter(tenantIds),
       orderBy: { createdAt: 'desc' }
     });
 
@@ -142,10 +149,12 @@ export class ClientService {
   }
 
   async getClientById(tenantIds: string | string[], id: string) {
+    const filter = tenantIdFilter(tenantIds);
     return prisma.client.findFirst({
-      where: { id, tenantId: tenantIdFilter(tenantIds) },
+      where: { id, ...salonClientsFilter(tenantIds) },
       include: {
         appointments: {
+          where: { tenantId: filter },
           take: 10,
           orderBy: { startTime: 'desc' },
           include: {
@@ -154,11 +163,16 @@ export class ClientService {
           }
         },
         reviews: {
+          where: { tenantId: filter },
           take: 5,
           orderBy: { createdAt: 'desc' }
         },
         _count: {
-          select: { appointments: true, reviews: true, invoices: true }
+          select: {
+            appointments: { where: { tenantId: filter } },
+            reviews: { where: { tenantId: filter } },
+            invoices: { where: { tenantId: filter } }
+          }
         }
       }
     });
@@ -166,8 +180,11 @@ export class ClientService {
 
   async createClient(tenantId: string, data: any) {
     if (data.email) {
+      // Global duplicate check: one person = one row. A salon must not re-create
+      // a client who already has a platform account (tenantId null) or who booked
+      // at another salon — they become "this salon's" client via their appointment.
       const existing = await prisma.client.findFirst({
-        where: { tenantId, email: data.email }
+        where: { email: data.email }
       });
       if (existing) {
         throw new Error('DUPLICATE_EMAIL');
@@ -185,7 +202,7 @@ export class ClientService {
 
   async updateClient(tenantIds: string | string[], id: string, data: any) {
     const existing = await prisma.client.findFirst({
-      where: { id, tenantId: tenantIdFilter(tenantIds) }
+      where: { id, ...salonClientsFilter(tenantIds) }
     });
 
     if (!existing) {
@@ -203,7 +220,7 @@ export class ClientService {
 
   async deleteClient(tenantIds: string | string[], id: string) {
     const client = await prisma.client.findFirst({
-      where: { id, tenantId: tenantIdFilter(tenantIds) }
+      where: { id, ...salonClientsFilter(tenantIds) }
     });
 
     if (!client) {
@@ -223,17 +240,15 @@ export class ClientService {
   ) {
     const filter = tenantIdFilter(tenantIds);
     const primaryClient = await prisma.client.findFirst({
-      where: { id: primaryClientId, tenantId: filter }
+      where: { id: primaryClientId, ...salonClientsFilter(tenantIds) }
     });
 
     if (!primaryClient) {
       throw new Error('PRIMARY_CLIENT_NOT_FOUND');
     }
 
-    const tenantId = primaryClient.tenantId;
-
     const duplicateClients = await prisma.client.findMany({
-      where: { id: { in: duplicateClientIds }, tenantId }
+      where: { id: { in: duplicateClientIds }, ...salonClientsFilter(tenantIds) }
     });
 
     if (duplicateClients.length !== duplicateClientIds.length) {
@@ -294,45 +309,47 @@ export class ClientService {
       // Repoint EVERY clientId foreign key to the surviving record before deleting,
       // otherwise these children get cascade-deleted (familyMembers, favorites) or
       // orphaned to NULL (bookingParticipants, bookingGroups booker) with the duplicate.
+      // The salon scope (filter) drives the repoint — a global primary client has
+      // tenantId null, but its children carry the salon's tenantId.
       await tx.appointment.updateMany({
-        where: { clientId: { in: duplicateClientIds }, tenantId },
+        where: { clientId: { in: duplicateClientIds }, tenantId: filter },
         data: { clientId: primaryClientId }
       });
 
       await tx.invoice.updateMany({
-        where: { clientId: { in: duplicateClientIds }, tenantId },
+        where: { clientId: { in: duplicateClientIds }, tenantId: filter },
         data: { clientId: primaryClientId }
       });
 
       await tx.review.updateMany({
-        where: { clientId: { in: duplicateClientIds }, tenantId },
+        where: { clientId: { in: duplicateClientIds }, tenantId: filter },
         data: { clientId: primaryClientId }
       });
 
-      // BookingParticipant has no tenantId column; duplicates were validated to the same tenant.
+      // BookingParticipant has no tenantId column; duplicates were validated within the salon scope.
       await tx.bookingParticipant.updateMany({
         where: { clientId: { in: duplicateClientIds } },
         data: { clientId: primaryClientId }
       });
 
       await tx.bookingGroup.updateMany({
-        where: { bookerClientId: { in: duplicateClientIds }, tenantId },
+        where: { bookerClientId: { in: duplicateClientIds }, tenantId: filter },
         data: { bookerClientId: primaryClientId }
       });
 
-      // FamilyMember has no tenantId column; duplicates were validated to the same tenant.
+      // FamilyMember has no tenantId column; duplicates were validated within the salon scope.
       await tx.familyMember.updateMany({
         where: { clientId: { in: duplicateClientIds } },
         data: { clientId: primaryClientId }
       });
 
       await tx.favorite.updateMany({
-        where: { clientId: { in: duplicateClientIds }, tenantId },
+        where: { clientId: { in: duplicateClientIds }, tenantId: filter },
         data: { clientId: primaryClientId }
       });
 
       await tx.client.deleteMany({
-        where: { id: { in: duplicateClientIds }, tenantId }
+        where: { id: { in: duplicateClientIds }, ...salonClientsFilter(tenantIds) }
       });
     });
   }

@@ -1,6 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import crypto from 'crypto';
-import { tenantIdFilter } from '../../utils/salonScope';
+import { salonClientsFilter, tenantIdFilter } from '../../utils/salonScope';
 import { CreateSaleInput, CreateGroupSaleInput } from './invoice.schema';
 
 const invoiceListInclude = {
@@ -139,7 +139,7 @@ export class InvoiceService {
       const client = await prisma.client.findFirst({
         where: {
           id: data.clientId,
-          tenantId: tenantIdFilter(scope)
+          ...salonClientsFilter(scope)
         }
       });
 
@@ -223,15 +223,16 @@ export class InvoiceService {
       throw err;
     }
 
-    // Client must belong to the write salon (no walk-in / cross-salon).
-    const client = await prisma.client.findUnique({
-      where: { id: data.clientId },
-      select: { id: true, tenantId: true }
+    // Client must belong to the write salon: created by it OR booked there
+    // (global client accounts have tenantId null and belong via appointments).
+    const client = await prisma.client.findFirst({
+      where: {
+        id: data.clientId,
+        ...salonClientsFilter(tenantId),
+      },
+      select: { id: true },
     });
     if (!client) {
-      throw new Error('CLIENT_NOT_FOUND');
-    }
-    if (client.tenantId !== tenantId) {
       throw new Error('CLIENT_WRONG_SALON');
     }
 

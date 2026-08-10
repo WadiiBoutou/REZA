@@ -127,20 +127,19 @@ export class BookingService {
 
       const normalizedEmail = email?.trim() ? email.trim().toLowerCase() : null;
 
-      let bookerClient = await prisma.client.findFirst({
-        where: {
-          tenantId: tenant.id,
-          OR: [
-            ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
-            { phone },
-          ],
-        },
-      });
+      // Global client lookup: a client account belongs to the platform, not to a
+      // salon. Prefer email, then phone — never scope by tenantId (a person who
+      // books at several salons must stay ONE row, not one per salon).
+      let bookerClient = normalizedEmail
+        ? await prisma.client.findFirst({ where: { email: normalizedEmail } })
+        : null;
+      if (!bookerClient) {
+        bookerClient = await prisma.client.findFirst({ where: { phone } });
+      }
 
       if (!bookerClient) {
         bookerClient = await prisma.client.create({
           data: {
-            tenantId: tenant.id,
             firstName,
             lastName,
             email: normalizedEmail,
@@ -239,7 +238,7 @@ export class BookingService {
 
         if (participant.clientId) {
           const linkedClient = await prisma.client.findFirst({
-            where: { id: participant.clientId, tenantId: tenant.id },
+            where: { id: participant.clientId },
           });
           if (linkedClient) {
             appointmentClientId = linkedClient.id;
@@ -258,25 +257,25 @@ export class BookingService {
             const guestFirstName = nameParts[0] || guestName;
             const guestLastName = nameParts.slice(1).join(' ') || '';
 
-            // 1) Try to reuse an existing client by phone (idempotent)
+            // 1) Try to reuse an existing client by phone (global — the same
+            //    person must map to the same row no matter which salon they book)
             let guestClient = guestPhone
               ? await prisma.client.findFirst({
-                  where: { phone: guestPhone, tenantId: tenant.id },
+                  where: { phone: guestPhone },
                 })
               : null;
 
             // 2) Try by email if provided
             if (!guestClient && guestEmail) {
               guestClient = await prisma.client.findFirst({
-                where: { email: guestEmail.toLowerCase(), tenantId: tenant.id },
+                where: { email: guestEmail.toLowerCase() },
               });
             }
 
-            // 3) Try by firstName+lastName within the same tenant (name-based dedup)
+            // 3) Try by firstName+lastName (name-based dedup, global)
             if (!guestClient) {
               guestClient = await prisma.client.findFirst({
                 where: {
-                  tenantId: tenant.id,
                   firstName: guestFirstName,
                   lastName: guestLastName,
                 },
@@ -284,10 +283,9 @@ export class BookingService {
             }
 
             if (!guestClient) {
-              // Create a new lightweight client record for this guest
+              // Create a new lightweight global client record for this guest
               guestClient = await prisma.client.create({
                 data: {
-                  tenantId: tenant.id,
                   firstName: guestFirstName,
                   lastName: guestLastName,
                   phone: guestPhone || `guest_${Date.now()}`,
@@ -894,7 +892,7 @@ export class BookingService {
     // clientId directly (e.g. mobile non-logged-in flow sends phone/email instead).
     let clientId = rawClientId as string | undefined;
     if (!clientId && (clientPhone || clientEmail)) {
-      const whereClause: any = { tenantId };
+      const whereClause: any = {};
       if (clientPhone) whereClause.phone = clientPhone as string;
       if (clientEmail) whereClause.email = (clientEmail as string).trim().toLowerCase();
       const resolvedClient = await prisma.client.findFirst({ where: whereClause, select: { id: true } });
@@ -1834,11 +1832,12 @@ export class BookingService {
     const serviceDurationMap = new Map(allTenantServices.map((s) => [s.id, s.duration]));
 
     // Load client's own existing appointments for the day (client-conflict constraint).
+    // NOT scoped to this tenant: a client's schedule spans every salon — they can't
+    // be in two places at once even across different salons.
     const clientOccupiedRanges: { start: number; end: number }[] = [];
     if (clientId) {
       const clientApts = await prisma.appointment.findMany({
         where: {
-          tenantId,
           clientId,
           status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] as any },
           startTime: { gte: dayStart, lte: dayEnd },

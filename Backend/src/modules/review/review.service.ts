@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma';
+import { salonClientsFilter } from '../../utils/salonScope';
 import { CreateReviewInput, UpdateReviewStatusInput } from './review.schema';
 import * as log from '../../utils/logger';
 
@@ -55,11 +56,12 @@ export class ReviewService {
   async createReview(tenantId: string, userId: string, input: CreateReviewInput) {
     const { clientId, appointmentId, rating, comment } = input;
 
-    // Verify client belongs to tenant
+    // Verify client belongs to tenant (created by it or booked there — global accounts
+    // belong via their appointments).
     const client = await prisma.client.findFirst({
       where: {
         id: clientId,
-        tenantId
+        ...salonClientsFilter(tenantId)
       }
     });
 

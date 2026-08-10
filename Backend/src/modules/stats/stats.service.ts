@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma';
-import { tenantIdFilter } from '../../utils/salonScope';
+import { salonClientsFilter, tenantIdFilter } from '../../utils/salonScope';
 
 interface DateRange {
   start: Date;
@@ -79,7 +79,8 @@ export class StatsService {
     }
 
     const [totalClients, totalAppointments, totalRevenue, activeEmployees, pendingReviews] = await Promise.all([
-      prisma.client.count({ where: { tenantId } }),
+      // Salon's clients = created by it OR booked there (global accounts)
+      prisma.client.count({ where: salonClientsFilter(tenantId) }),
       prisma.appointment.count({ where: { tenantId } }),
       prisma.invoice.aggregate({
         where: {
@@ -159,6 +160,27 @@ export class StatsService {
   }
 
   /**
+   * Filter for "new clients at this salon" in a period: either the salon created
+   * the record during the period (manual adds / legacy rows), or the client's
+   * FIRST appointment at this salon falls inside the period (global accounts —
+   * their row's createdAt is account creation, not first visit).
+   */
+  private newClientsFilter(tenantIds: string | string[], start: Date, end: Date) {
+    const filter = tenantIdFilter(tenantIds);
+    return {
+      OR: [
+        { tenantId: filter, createdAt: { gte: start, lte: end } },
+        {
+          appointments: {
+            some: { tenantId: filter, startTime: { gte: start, lte: end } },
+            none: { tenantId: filter, startTime: { lt: start } },
+          },
+        },
+      ],
+    };
+  }
+
+  /**
    * Revenue for one appointment following the app-wide convention: the sum of
    * per-service item prices (AppointmentServiceItem.price), falling back to the
    * legacy appointment-level service price, then to the PAID invoice total only
@@ -224,7 +246,7 @@ export class StatsService {
     const loyaltyRate = uniqueClients > 0 ? (loyalClientsCount / uniqueClients) * 100 : 0;
 
     const newClients = await prisma.client.findMany({
-      where: { ...tenantWhere, createdAt: { gte: start, lte: end } },
+      where: this.newClientsFilter(tenantId, start, end),
       select: { id: true },
     });
     // New-client origin follows the same source-based classification as the rest
@@ -321,10 +343,7 @@ export class StatsService {
     const onlineRate = totalAppointments > 0 ? (onlineAppointments / totalAppointments) * 100 : 0;
 
     const newClients = await prisma.client.findMany({
-      where: {
-        ...tenantWhere,
-        createdAt: { gte: start, lte: end }
-      }
+      where: this.newClientsFilter(tenantId, start, end)
     });
 
     // New-client origin follows the same source-based classification as the rest
@@ -589,7 +608,7 @@ export class StatsService {
     ].filter(c => c.count > 0);
 
     const clientsWithBirthDate = await prisma.client.findMany({
-      where: { ...tenantWhere, dateOfBirth: { not: null } },
+      where: { ...salonClientsFilter(tenantId), dateOfBirth: { not: null } },
       select: { dateOfBirth: true }
     });
 
@@ -1621,13 +1640,16 @@ export class StatsService {
   ) {
     const { start, end } = this.parseDateRange({ period, startDate, endDate, month, year });
 
+    const filter = tenantIdFilter(tenantIds);
     const clients = await prisma.client.findMany({
-      where: {
-        tenantId: tenantIdFilter(tenantIds),
-        createdAt: { gte: start, lte: end },
-      },
+      where: this.newClientsFilter(tenantIds, start, end),
       include: {
-        _count: { select: { appointments: true, invoices: true } },
+        _count: {
+          select: {
+            appointments: { where: { tenantId: filter } },
+            invoices: { where: { tenantId: filter } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1673,9 +1695,8 @@ export class StatsService {
     const clientsWithVisits = visitCounts.length;
     const noVisitClients = await prisma.client.findMany({
       where: {
-        tenantId: tenantIdFilter(tenantIds),
-        createdAt: { lte: end },
-        appointments: { none: { startTime: { gte: start, lte: end }, status: { notIn: ['CANCELLED'] } } },
+        ...salonClientsFilter(tenantIds),
+        appointments: { none: { tenantId: tenantIdFilter(tenantIds), startTime: { gte: start, lte: end }, status: { notIn: ['CANCELLED'] } } },
       },
       select: { id: true, firstName: true, lastName: true, email: true, phone: true },
       orderBy: { createdAt: 'desc' },

@@ -6,7 +6,7 @@ import {
 import { resolveEmployeeUserId } from '../../utils/resolveEmployeeUserId';
 import { schedulingService } from './scheduling.service';
 import { formatDateForNotification } from '../../utils/dateTime';
-import { tenantIdFilter } from '../../utils/salonScope';
+import { salonClientsFilter, tenantIdFilter } from '../../utils/salonScope';
 import * as log from '../../utils/logger';
 import {
   getServicePrice,
@@ -190,7 +190,10 @@ export class AppointmentService {
     const startTime = new Date(data.startTime);
     const source = data.source as 'ADMIN' | 'PUBLIC' | undefined;
 
-    const client = await prisma.client.findFirst({ where: { id: data.clientId, tenantId } });
+    // Salon membership: created by this salon OR already booked here (global accounts).
+    const client = await prisma.client.findFirst({
+      where: { id: data.clientId, ...salonClientsFilter(tenantId) },
+    });
     if (!client) throw new Error('CLIENT_NOT_FOUND');
 
     const services = await this.resolveServices(tenantId, data);
