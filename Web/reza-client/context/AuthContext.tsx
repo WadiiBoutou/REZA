@@ -13,7 +13,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password?: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isAuthenticated: boolean;
   loading: boolean;
@@ -26,20 +26,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Load session after mount — avoids SSR/client localStorage mismatch
+  // Load session after mount — avoids SSR/client localStorage mismatch.
+  // Persistent sessions live in localStorage ("Rester connecté" checked),
+  // short-lived ones in sessionStorage (cleared when the tab closes).
   React.useEffect(() => {
     try {
-      const storedUser = localStorage.getItem('user');
+      const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user');
       if (storedUser) {
         setUser(JSON.parse(storedUser));
         setIsAuthenticated(true);
       }
     } catch {
       localStorage.removeItem('user');
+      sessionStorage.removeItem('user');
     }
   }, []);
 
-  const login = useCallback(async (email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
+  const login = useCallback(async (email: string, password?: string, rememberMe: boolean = true): Promise<{ success: boolean; error?: string }> => {
     // Prevent multiple simultaneous login attempts
     if (loading) {
       return { success: false, error: 'Une connexion est déjà en cours.' };
@@ -62,7 +65,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           phone: response.client.phone
         };
         
-        localStorage.setItem('user', JSON.stringify(userData));
+        // "Rester connecté": persist across browser restarts (localStorage),
+        // otherwise keep the session only for this tab (sessionStorage).
+        const storage = rememberMe ? localStorage : sessionStorage;
+        storage.setItem('user', JSON.stringify(userData));
+        if (rememberMe) {
+          sessionStorage.removeItem('user');
+        } else {
+          localStorage.removeItem('user');
+        }
         setUser(userData);
         setIsAuthenticated(true);
         setLoading(false);
@@ -79,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
     setUser(null);
     setIsAuthenticated(false);
   };

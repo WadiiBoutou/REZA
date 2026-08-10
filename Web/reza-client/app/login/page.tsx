@@ -89,6 +89,11 @@ function LoginPageContent() {
   const [lastName, setLastName] = useState('');
   const [keepLoggedIn, setKeepLoggedIn] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetSending, setResetSending] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{[key: string]: string}>({});
   const [loading, setLoading] = useState(false);
@@ -244,7 +249,7 @@ function LoginPageContent() {
         // After successful registration, login the user to update the context
         // This ensures the AuthContext is properly updated with the new user data
         // Use the trimmed password that was validated and sent to the API
-        const loginResult = await login(currentEmail.trim(), trimmedPassword);
+        const loginResult = await login(currentEmail.trim(), trimmedPassword, keepLoggedIn);
         
         if (loginResult.success) {
           // Clear all errors before redirecting
@@ -287,7 +292,7 @@ function LoginPageContent() {
       setLoading(true);
       
       try {
-        const result = await login(email.trim(), password.trim());
+        const result = await login(email.trim(), password.trim(), keepLoggedIn);
         
         if (result.success) {
           const searchParams = new URLSearchParams(window.location.search);
@@ -310,6 +315,51 @@ function LoginPageContent() {
     setError('');
     setFieldErrors({});
     setLoading(false);
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError('');
+
+    if (!resetEmail.trim()) {
+      setResetError('Veuillez entrer votre adresse email');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(resetEmail)) {
+      setResetError('Veuillez entrer une adresse email valide');
+      return;
+    }
+
+    setResetSending(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+      const response = await fetch(`${API_URL}/public/auth/client-forgot-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: resetEmail.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setResetError(data.message || data.error || 'Une erreur est survenue. Veuillez réessayer.');
+        return;
+      }
+      setResetEmailSent(true);
+    } catch (err: any) {
+      setResetError('Une erreur est survenue. Veuillez réessayer.');
+    } finally {
+      setResetSending(false);
+    }
+  };
+
+  const closeForgotPasswordModal = () => {
+    setShowForgotPassword(false);
+    setResetEmail('');
+    setResetEmailSent(false);
+    setResetError('');
   };
 
   // Redirect when already authenticated
@@ -405,41 +455,151 @@ function LoginPageContent() {
                 Retour à l&apos;accueil
               </button>
               <h1 className="text-4xl lg:text-4xl font-extrabold text-[#000000] mb-3">
-                {mode === 'signup'
-                  ? 'Nouveau sur Reza ?'
-                  : 'Bienvenue sur Reza !'}
+                {showForgotPassword
+                  ? 'Mot de passe oublié ?'
+                  : mode === 'signup'
+                    ? 'Nouveau sur Reza ?'
+                    : 'Bienvenue sur Reza !'}
               </h1>
               {/* Mode Toggle Links - now left aligned and below the subtitle */}
               <div className="mt-2 text-left">
-                <p className="text-gray-600 font-medium text-sm">
-                  {mode === 'login' ? (
-                    <>
-                      Pas encore de compte ?{' '}
-                      <button
-                        type="button"
-                        onClick={() => handleModeSwitch('signup')}
-                        className="text-[#000000] font-bold hover:underline"
-                      >
-                        S&apos;inscrire
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      Vous avez déjà un compte ?{' '}
-                      <button
-                        type="button"
-                        onClick={() => handleModeSwitch('login')}
-                        className="text-[#000000] font-bold hover:underline"
-                      >
-                        Se connecter
-                      </button>
-                    </>
-                  )}
-                </p>
+                {showForgotPassword ? (
+                  <p className="text-gray-600 font-medium text-sm">
+                    Entrez votre adresse email et nous vous enverrons un lien pour réinitialiser votre mot de passe.
+                  </p>
+                ) : (
+                  <p className="text-gray-600 font-medium text-sm">
+                    {mode === 'login' ? (
+                      <>
+                        Pas encore de compte ?{' '}
+                        <button
+                          type="button"
+                          onClick={() => handleModeSwitch('signup')}
+                          className="text-[#000000] font-bold hover:underline"
+                        >
+                          S&apos;inscrire
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        Vous avez déjà un compte ?{' '}
+                        <button
+                          type="button"
+                          onClick={() => handleModeSwitch('login')}
+                          className="text-[#000000] font-bold hover:underline"
+                        >
+                          Se connecter
+                        </button>
+                      </>
+                    )}
+                  </p>
+                )}
               </div>
             </div>
 
               <AnimatePresence mode="wait" initial={false}>
+                {showForgotPassword ? (
+                <motion.div
+                  key="forgot-password"
+                  className="space-y-4"
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -30 }}
+                  transition={{ duration: 0.35, ease: "easeInOut" }}
+                >
+                  {!resetEmailSent ? (
+                    <form onSubmit={handlePasswordReset} className="space-y-4" noValidate>
+                      <div>
+                        <label htmlFor="resetEmail" className="block text-sm font-bold text-gray-900 mb-2">
+                          Adresse email
+                        </label>
+                        <input
+                          id="resetEmail"
+                          type="text"
+                          placeholder="vous@exemple.com"
+                          value={resetEmail}
+                          onChange={(e) => setResetEmail(e.target.value)}
+                          className="w-full px-6 py-3 bg-transparent border border-gray-200 rounded-full focus:ring-1 focus:ring-[#082259] outline-none transition-all text-gray-900 placeholder-gray-400 text-base font-medium"
+                          autoFocus
+                        />
+                        {resetError && (
+                          <p className="mt-2 text-sm text-red-500">{resetError}</p>
+                        )}
+                      </div>
+
+                      <div className="bg-transparent border border-gray-200 rounded-2xl p-4 text-left">
+                        <p className="text-sm text-gray-900 font-semibold mb-2">Prochaines étapes :</p>
+                        <ol className="text-sm text-gray-900 space-y-1.5 ml-4 list-decimal">
+                          <li>Vérifiez votre boîte de réception</li>
+                          <li>Cliquez sur le lien de réinitialisation</li>
+                          <li>Créez un nouveau mot de passe</li>
+                          <li>Connectez-vous avec votre nouveau mot de passe</li>
+                        </ol>
+                      </div>
+
+                      <CurvySlideButton
+                        type="submit"
+                        disabled={resetSending}
+                        text={resetSending ? "Envoi en cours..." : "Envoyer le lien de réinitialisation"}
+                        color="#000000"
+                        textColor="#ffffff"
+                        borderColor="#000000"
+                        hoverTextColor="#000000"
+                        hoverColor="#FCFBF4"
+                        styles={{
+                          width: '100%',
+                          padding: '12px 24px',
+                          fontSize: '16px',
+                          borderRadius: '30px',
+                          marginTop: '16px',
+                          cursor: resetSending ? 'not-allowed' : 'pointer',
+                          opacity: resetSending ? 0.7 : 1,
+                        }}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={closeForgotPasswordModal}
+                        className="w-full text-gray-600 py-3 rounded-full font-semibold text-base hover:text-gray-900 transition-colors"
+                      >
+                        Retour à la connexion
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="text-center space-y-6 pt-4">
+                      <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6 mx-auto">
+                        <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76" />
+                        </svg>
+                      </div>
+                      <h2 className="text-3xl font-bold text-[#000000]">
+                        Email envoyé !
+                      </h2>
+                      <p className="text-gray-600 text-sm leading-relaxed">
+                        Nous avons envoyé un lien de réinitialisation à <strong className="text-[#000000]">{resetEmail}</strong>.
+                        Veuillez vérifier votre boîte de réception et suivre les instructions.
+                      </p>
+
+                      <p className="text-xs text-gray-500">
+                        Vous n&apos;avez pas reçu l&apos;email ? Vérifiez votre dossier spam ou{' '}
+                        <button
+                          onClick={() => setResetEmailSent(false)}
+                          className="text-[#082259] font-bold hover:underline"
+                        >
+                          réessayez
+                        </button>
+                      </p>
+
+                      <button
+                        onClick={closeForgotPasswordModal}
+                        className="w-full bg-[#000000] text-white py-3.5 rounded-full font-bold text-base hover:bg-[#000000] transition-colors duration-200 shadow-lg hover:shadow-xl"
+                      >
+                        Retour à la connexion
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+                ) : (
                 <motion.form
                   key={mode}
                   onSubmit={handleSubmit}
@@ -663,6 +823,13 @@ function LoginPageContent() {
                         Rester connecté
                       </span>
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPassword(true)}
+                      className="text-sm font-bold text-[#000000] hover:underline"
+                    >
+                      Mot de passe oublié ?
+                    </button>
                   </div>
                 ) : (
                   <div>
@@ -721,6 +888,7 @@ function LoginPageContent() {
                   />
                 </div>
                 </motion.form>
+                )}
               </AnimatePresence>
 
             <div className="w-full text-center mt-3">

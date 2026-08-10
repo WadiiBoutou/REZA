@@ -401,6 +401,21 @@ class ApiClient {
     });
   }
 
+  // Client password reset
+  async forgotPassword(email: string) {
+    return this.request<{ message: string }>('/public/auth/client-forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async resetPassword(token: string, password: string) {
+    return this.request<{ message: string }>('/public/auth/client-reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    });
+  }
+
   // Favorites endpoints
   async getClientFavorites(email: string) {
     return this.request<{ favorites: any[]; count: number }>(
