@@ -8,6 +8,9 @@ dist/
 .idea/
 DOCKER_DEPLOY.md
 
+# Local-only ops scripts (superadmin creation, DB cleanup, tenant removal)
+scripts/
+
 # Uploads (garder la structure mais pas les fichiers)
 public/uploads/*
 !public/uploads/.gitkeep
