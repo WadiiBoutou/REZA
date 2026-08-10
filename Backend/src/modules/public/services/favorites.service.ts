@@ -85,53 +85,12 @@ export class FavoritesService {
     });
 
     if (!client) {
-      // Find or create a tenant for clients
-      let tenant = await prisma.tenant.findFirst({
-        where: { isActive: true },
-        orderBy: { createdAt: 'asc' }
-      });
-
-      if (!tenant) {
-        try {
-          tenant = await prisma.tenant.create({
-            data: {
-              name: 'WellBe Platform',
-              email: 'support@wellbe.com',
-              isActive: true,
-              category: 'Platform',
-              shortDescription: 'Default tenant for client accounts'
-            }
-          });
-
-          await prisma.tenantSettings.create({
-            data: {
-              tenantId: tenant.id,
-              onlineReservationEnabled: true,
-              showMap: true,
-              showOpeningHours: true,
-              showReviews: true
-            }
-          });
-        } catch (tenantError: any) {
-          tenant = await prisma.tenant.findFirst({
-            where: { isActive: true },
-            orderBy: { createdAt: 'asc' }
-          });
-
-          if (!tenant) {
-            fail(500, {
-              error: 'System setup required',
-              message: 'Unable to initialize the system. Please contact support.'
-            });
-          }
-        }
-      }
-
-      // Create client
+      // Create a GLOBAL client — never tied to a salon. Favorites are linked
+      // to the salons via the Favorite row (tenantId) independently.
       const nameParts = clientEmail.split('@')[0].split('.');
       client = await prisma.client.create({
         data: {
-          tenantId: tenant.id,
+          tenantId: null,
           firstName: nameParts[0] || 'User',
           lastName: nameParts.slice(1).join(' ') || '',
           email: clientEmail.trim().toLowerCase(),

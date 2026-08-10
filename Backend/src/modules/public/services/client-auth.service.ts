@@ -136,56 +136,17 @@ export class ClientAuthService {
 
     const hashedPassword = await hashPassword(String(password).trim());
 
-    // Find or create a tenant for clients (use first active tenant or create default)
-    let tenant = await prisma.tenant.findFirst({
-      where: { isActive: true },
-      orderBy: { createdAt: 'asc' }
-    });
+    // Platform accounts are GLOBAL — never tied to a salon. A client becomes
+    // associated with a salon only by booking there (appointment.tenantId),
+    // so no tenant is needed at registration time.
+    const normalizedEmail = email.trim().toLowerCase();
 
-    if (!tenant) {
-      // Create default tenant for clients
-      try {
-        tenant = await prisma.tenant.create({
-          data: {
-            name: 'WellBe Platform',
-            email: 'support@wellbe.com',
-            isActive: true,
-            category: 'Platform',
-            shortDescription: 'Default tenant for client accounts'
-          }
-        });
-
-        await prisma.tenantSettings.create({
-          data: {
-            tenantId: tenant.id,
-            onlineReservationEnabled: true,
-            showMap: true,
-            showOpeningHours: true,
-            showReviews: true
-          }
-        });
-      } catch (tenantError: any) {
-        // If creation fails, try to find it again
-        tenant = await prisma.tenant.findFirst({
-          where: { isActive: true },
-          orderBy: { createdAt: 'asc' }
-        });
-
-        if (!tenant) {
-          fail(500, {
-            error: 'System setup required',
-            message: 'Unable to initialize the system. Please contact support.'
-          });
-        }
-      }
-    }
-
-    // Check if client already exists
+    // Check if client already exists (any salon scope)
     const existingClient = await prisma.client.findFirst({
       where: {
-        email: email.trim().toLowerCase(),
-        tenantId: tenant.id
-      }
+        email: normalizedEmail
+      },
+      orderBy: { createdAt: 'desc' }
     });
 
     if (existingClient) {
@@ -212,13 +173,13 @@ export class ClientAuthService {
       };
     }
 
-    // Create new client
+    // Create new client (global, no salon)
     const client = await prisma.client.create({
       data: {
-        tenantId: tenant.id,
+        tenantId: null,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         phone: phone || '',
         password: hashedPassword,
         status: 'ACTIVE'

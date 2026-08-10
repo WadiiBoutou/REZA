@@ -81,52 +81,13 @@ export class FamilyMembersService {
       let client = await resolveAccountClient(clientEmail);
 
       if (!client) {
-        let firstTenant = await prisma.tenant.findFirst({
-          where: { isActive: true },
-          orderBy: { createdAt: 'asc' },
-        });
-
-        if (!firstTenant) {
-          try {
-            firstTenant = await prisma.tenant.create({
-              data: {
-                name: 'Reza Platform',
-                email: 'support@reza.ma',
-                isActive: true,
-                category: 'Platform',
-                shortDescription: 'Default tenant for client accounts',
-              },
-            });
-
-            await prisma.tenantSettings.create({
-              data: {
-                tenantId: firstTenant.id,
-                onlineReservationEnabled: true,
-                showMap: true,
-                showOpeningHours: true,
-                showReviews: true,
-              },
-            });
-          } catch {
-            firstTenant = await prisma.tenant.findFirst({
-              where: { isActive: true },
-              orderBy: { createdAt: 'asc' },
-            });
-
-            if (!firstTenant) {
-              fail(500, {
-                error: 'System setup required',
-                message: 'Unable to initialize the system. Please contact support.',
-              });
-            }
-          }
-        }
-
+        // Create a GLOBAL client — family members are client-owned, never
+        // salon-owned, so no tenant is needed here.
         const nameParts = clientEmail.split('@')[0].split('.');
         try {
           client = await prisma.client.create({
             data: {
-              tenantId: firstTenant!.id,
+              tenantId: null,
               firstName: nameParts[0] || 'User',
               lastName: nameParts.slice(1).join(' ') || '',
               email: normalizeEmail(clientEmail),

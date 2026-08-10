@@ -31,19 +31,26 @@ export class ClientReviewsService {
       });
     }
 
-    // Find or create client
-    let client = await prisma.client.findFirst({
-      where: {
-        tenantId: tenant.id,
-        email: data.email
-      }
-    });
+    // Find or create client — prefer the salon-scoped row from a booking (so
+    // appointment-verified reviews still link), then any global account row.
+    let client =
+      (await prisma.client.findFirst({
+        where: {
+          tenantId: tenant.id,
+          email: data.email
+        }
+      })) ||
+      (await prisma.client.findFirst({
+        where: { email: data.email },
+        orderBy: { createdAt: 'desc' }
+      }));
 
     if (!client) {
-      // Create new client
+      // Create a GLOBAL client — reviewers are tied to a salon via the Review
+      // row (tenantId), not via the client itself.
       client = await prisma.client.create({
         data: {
-          tenantId: tenant.id,
+          tenantId: null,
           firstName: data.firstName,
           lastName: data.lastName,
           email: data.email,

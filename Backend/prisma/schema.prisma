@@ -297,8 +297,11 @@ enum UserRole {
 // Clients - belong to a tenant
 model Client {
   id       String @id @default(cuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Global client: NOT tied to a salon. A client belongs to a salon only via
+  // appointments/reviews (which carry their own tenantId). tenantId is kept
+  // for legacy booking-created rows; new platform accounts use null.
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   firstName   String
   lastName    String
