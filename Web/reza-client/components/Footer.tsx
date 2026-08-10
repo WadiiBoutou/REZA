@@ -299,7 +299,7 @@ export default function Footer() {
           <div>
             &copy; {new Date().getFullYear()} REZA. Tous droits réservés.
           </div>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 justify-center">
             <a href="#" className="hover:underline">Mentions légales</a>
             <a href="#" className="hover:underline">Politique de confidentialité</a>
             <a href="#" className="hover:underline">Cookies</a>

@@ -150,8 +150,8 @@ const TestimonialsAndBlogs = () => {
               Découvrez les histoires qui nous inspirent
             </h1>
             {/* Tab Switcher - updated to match Rdv.tsx style */}
-            <div className="inline-block">
-              <div className="relative flex items-center border-black/10 border justify-center w-[340px] h-12 bg-white rounded-full mx-auto">
+            <div className="inline-block w-full max-w-[340px]">
+              <div className="relative flex items-center border-black/10 border justify-center w-full h-12 bg-white rounded-full mx-auto">
                 <motion.div
                   layout
                   transition={{ type: 'spring', stiffness: 500, damping: 30 }}

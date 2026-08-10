@@ -327,7 +327,7 @@ export default function HeroAbout() {
       <div className="relative z-10 w-full max-w-6xl mx-auto px-6 md:px-12 py-20">
         {/* Header Content */}
         <div className="text-center mb-10 space-y-4">
-          <h1 className="text-[2.75rem] md:text-6xl font-bold text-[#111111] mb-4 mt-16 animate-slide-up-1 tracking-tight">
+          <h1 className="text-4xl sm:text-[2.75rem] md:text-6xl font-bold text-[#111111] mb-4 mt-16 animate-slide-up-1 tracking-tight">
             Réservez vos soins
           </h1>
           <p className="text-base md:text-[1.125rem] text-gray-800 font-normal max-w-3xl mx-auto animate-slide-up-2">

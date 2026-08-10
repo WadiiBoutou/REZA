@@ -99,7 +99,7 @@ const BeautyAppointmentGrid = () => {
             Vous êtes un client ou professionnel de la beauté !<br />
             <span className="inline-block">Pourquoi choisir REZA ?</span>
             <span className="inline-block">
-              <div className="relative flex items-center border-black/10 border justify-center w-[260px] h-12 bg-white rounded-full ml-2">
+              <div className="relative flex items-center border-black/10 border justify-center w-[220px] sm:w-[260px] h-12 bg-white rounded-full ml-2">
                 <motion.div
                   layout
                   transition={{ type: 'spring', stiffness: 500, damping: 30 }}

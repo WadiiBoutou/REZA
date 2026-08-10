@@ -899,8 +899,8 @@ function LoginPageContent() {
           )}
         </div>
 
-        {/* Left Side - Image Section (now second/right) */}
-        <div className="w-full lg:w-[700px] bg-[#f6f6ef] relative overflow-hidden">
+        {/* Left Side - Image Section (now second/right) — hidden on mobile, the form gets the full screen */}
+        <div className="hidden lg:block lg:w-[700px] bg-[#f6f6ef] relative overflow-hidden">
           {/* left - Full Height */}
           <div className="relative w-full h-full p-4">
             <div className="w-full h-full rounded-3xl overflow-hidden bg-black flex flex-col items-center justify-center relative">
