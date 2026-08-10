@@ -24,7 +24,16 @@ if (configured) {
     port,
     secure: port === 465,
     auth: user ? { user, pass } : undefined,
-  });
+    // Fail fast instead of hanging ~2 min (nodemailer's default timeout) when
+    // the SMTP server is unreachable, and log the real reason.
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
+    // Force IPv4: on hosts with broken IPv6 (common on cloud providers) the
+    // connect to smtp.gmail.com's AAAA record hangs until timeout.
+    // `family` is supported at runtime but missing from @types/nodemailer.
+    family: 4,
+  } as nodemailer.TransportOptions);
 }
 
 interface MailOptions {
@@ -60,8 +69,14 @@ export async function sendMail({ to, subject, html, text }: MailOptions): Promis
     log.log(`[Mailer] ✓ Email sent to ${Array.isArray(to) ? to.join(', ') : to} (id: ${info.messageId})`);
   } catch (error) {
     log.error('[Mailer] Failed to send email:', error);
+    // Surface the real SMTP reason (auth failure, connection refused, …) so
+    // the API response and logs show exactly why the send failed.
+    const detail =
+      error instanceof Error && error.message
+        ? ` ${error.message}`
+        : '';
     throw new Error(
-      `Failed to send email via SMTP (${host}). Check the SMTP_* environment variables and the recipient address.`
+      `Failed to send email via SMTP (${host}). Check the SMTP_* environment variables and the recipient address.${detail}`
     );
   }
 }
