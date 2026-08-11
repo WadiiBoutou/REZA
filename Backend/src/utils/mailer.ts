@@ -9,6 +9,8 @@ import * as log from './logger';
  *
  * Sending paths, chosen at runtime:
  *
+ * Sending paths, chosen at runtime:
+ *
  * 1) BREVO (best when you have no owned domain — verify your own Gmail as
  *    sender, no DNS needed): if BREVO_API_KEY is set, emails go over Brevo's
  *    HTTPS API (api.brevo.com, port 443). Render free blocks outbound SMTP, so
@@ -17,11 +19,7 @@ import * as log from './logger';
  *      BREVO_SENDER_EMAIL=you@gmail.com (must be verified in Brevo → Senders)
  *      BREVO_SENDER_NAME=Reza
  *
- * 2) RESEND: requires a verified domain you own. if RESEND_API_KEY is set:
- *      RESEND_API_KEY=re_…
- *      RESEND_FROM_EMAIL=…   (e.g. "Reza <no-reply@reza.ma>")
- *
- * 3) SMTP fallback: if neither key is set, classic SMTP via
+ * 2) SMTP fallback: if BREVO_API_KEY is unset, classic SMTP via
  *    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS. Because cloud hosts often have
  *    a broken IPv6 route (Gmail's AAAA → ENETUNREACH) and/or block one of the
  *    SMTP ports, we probe {IPv4, hostname} × {587, 465} and send through the
@@ -42,12 +40,7 @@ const brevoSenderEmail = process.env.BREVO_SENDER_EMAIL || fromEmail;
 const brevoSenderName = process.env.BREVO_SENDER_NAME || fromName;
 const BREVO_ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
 
-// Resend HTTP API (port 443 — requires a verified domain you own)
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const resendFrom = process.env.RESEND_FROM_EMAIL || `"${fromName}" <${fromEmail}>`;
-const RESEND_ENDPOINT = 'https://api.resend.com/emails';
-
-const configured = Boolean(host) || Boolean(BREVO_API_KEY) || Boolean(RESEND_API_KEY);
+const configured = Boolean(host) || Boolean(BREVO_API_KEY);
 
 const PROBE_TIMEOUT_MS = 4000;
 const CONNECT_TIMEOUT_MS = 8000;
@@ -158,40 +151,6 @@ async function sendViaBrevo(to: string, subject: string, html: string, text?: st
   log.log(`[Mailer] ✓ Email sent via Brevo (id: ${body?.messageId || 'unknown'})`);
 }
 
-async function sendViaResend(to: string, subject: string, html: string, text?: string): Promise<void> {
-  log.log(`[Mailer] Sending via Resend API (HTTPS) to ${to}`);
-  const res = await fetch(RESEND_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: resendFrom,
-      to: [to],
-      subject,
-      html,
-      ...(text ? { text } : {}),
-    }),
-  });
-
-  if (!res.ok) {
-    let detail = '';
-    try {
-      const body: any = await res.json();
-      detail = body?.message || JSON.stringify(body);
-    } catch {
-      detail = await res.text().catch(() => '');
-    }
-    log.error(`[Mailer] Resend API error ${res.status}: ${detail}`);
-    throw new Error(
-      `Failed to send email via Resend (HTTP ${res.status}). Check the RESEND_API_KEY and that the sender "${resendFrom}" is verified in Resend.${detail ? ` ${detail}` : ''}`
-    );
-  }
-  const body: any = await res.json().catch(() => ({}));
-  log.log(`[Mailer] ✓ Email sent via Resend (id: ${body?.id || 'unknown'})`);
-}
-
 async function sendViaSmtp(to: string, subject: string, html: string, text?: string): Promise<void> {
   if (!host) throw new Error('SMTP_HOST is not set');
   log.log(`[Mailer] Preparing SMTP send to ${to}…`);
@@ -206,7 +165,7 @@ async function sendViaSmtp(to: string, subject: string, html: string, text?: str
     throw new Error(
       `Failed to send email via SMTP (${host}). No SMTP endpoint reachable — tried ` +
         `${probeResults.map((r) => `${r.label}${r.ok ? '' : ' (unreachable)'}`).join(', ')}. ` +
-        `Your host blocks outbound SMTP; set RESEND_API_KEY to send via HTTPS instead.`
+        `Your host blocks outbound SMTP; set BREVO_API_KEY to send via HTTPS instead.`
     );
   }
 
@@ -260,7 +219,7 @@ export async function sendMail({ to, subject, html, text }: MailOptions): Promis
   if (!configured) {
     if (process.env.NODE_ENV === 'production') {
       throw new Error(
-        'Email is not configured. Set BREVO_API_KEY (no domain needed) or RESEND_API_KEY, or SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS.'
+        'Email is not configured. Set BREVO_API_KEY (no domain needed) or SMTP_HOST, SMTP_PORT, SMTP_USER and SMTP_PASS.'
       );
     }
     log.log(
@@ -271,11 +230,6 @@ export async function sendMail({ to, subject, html, text }: MailOptions): Promis
 
   if (BREVO_API_KEY) {
     await sendViaBrevo(recipients, subject, html, text);
-    return;
-  }
-
-  if (RESEND_API_KEY) {
-    await sendViaResend(recipients, subject, html, text);
     return;
   }
 
