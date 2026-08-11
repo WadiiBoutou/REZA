@@ -368,6 +368,26 @@ export class PublicController {
     }
   }
 
+  async verifyClientEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await clientAuthService.verifyClientEmail(req.body);
+      res.json(result);
+    } catch (error) {
+      if (handlePublicError(error, res, next)) return;
+      next(error);
+    }
+  }
+
+  async resendClientVerification(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await clientAuthService.resendClientVerification(req.body);
+      res.json(result);
+    } catch (error) {
+      if (handlePublicError(error, res, next)) return;
+      next(error);
+    }
+  }
+
   async getClientFavorites(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await favoritesService.getClientFavorites(req.params.email);

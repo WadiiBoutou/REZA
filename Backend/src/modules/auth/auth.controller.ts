@@ -112,6 +112,30 @@ export class AuthController {
     }
   }
 
+  async verifyEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await authService.verifyEmail(req.body);
+      res.json(result);
+    } catch (error: any) {
+      if (error.status) {
+        return res.status(error.status).json({ error: error.error, message: error.message });
+      }
+      next(error);
+    }
+  }
+
+  async resendVerificationEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await authService.resendVerificationEmail(req.body);
+      res.json(result);
+    } catch (error: any) {
+      if (error.status) {
+        return res.status(error.status).json({ error: error.error, message: error.message });
+      }
+      next(error);
+    }
+  }
+
   async resetPassword(req: Request, res: Response, next: NextFunction) {
     try {
       const data = resetPasswordSchema.parse(req.body);

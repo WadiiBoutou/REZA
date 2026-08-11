@@ -581,7 +581,9 @@ export default function ProOnboardingPage() {
                     Compte créé avec succès !
                   </h1>
                   <p className="text-gray-600">
-                    Votre compte professionnel a été créé. Vous pouvez maintenant vous connecter avec votre email et mot de passe.
+                    Votre compte professionnel a été créé. Un email de confirmation a été envoyé à{" "}
+                    <span className="font-medium text-gray-900">{formData.email}</span> — cliquez sur le lien pour
+                    activer votre compte, puis connectez-vous avec votre email et mot de passe.
                   </p>
                 </div>
 

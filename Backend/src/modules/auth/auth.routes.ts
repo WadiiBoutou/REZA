@@ -29,6 +29,18 @@ router.post('/forgot-password', (req, res, next) => authController.forgotPasswor
 router.post('/reset-password', (req, res, next) => authController.resetPassword(req, res, next));
 
 /**
+ * POST /api/auth/verify-email
+ * Confirm a newly registered account with the emailed one-time token
+ */
+router.post('/verify-email', (req, res, next) => authController.verifyEmail(req, res, next));
+
+/**
+ * POST /api/auth/resend-verification
+ * Resend the confirmation email for an unverified account
+ */
+router.post('/resend-verification', (req, res, next) => authController.resendVerificationEmail(req, res, next));
+
+/**
  * GET /api/auth/me
  * Get current user
  */

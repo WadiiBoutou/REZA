@@ -268,6 +268,7 @@ model User {
   resetPasswordToken String?  @db.VarChar(255)
   resetPasswordExpires DateTime?
   verifyEmailToken    String?  @db.VarChar(255)
+  verifyEmailExpires  DateTime?
 
   // Relations
   appointments            Appointment[]            @relation("AppointmentEmployee")
@@ -316,6 +317,9 @@ model Client {
   // Password reset (hashed token)
   resetPasswordToken   String?  @db.VarChar(255)
   resetPasswordExpires DateTime?
+  // Email verification (hashed token, 24h expiry) — accounts are locked until confirmed
+  verifyEmailToken   String?  @db.VarChar(255)
+  verifyEmailExpires DateTime?
 
   // Relations
   appointments          Appointment[]

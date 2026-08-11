@@ -23,7 +23,8 @@ function getFrontendBaseUrl(req?: any): string {
   return 'http://localhost:3001';
 }
 
-const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes — recommended for password resets
+const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — recommended for email confirmation
 
 const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
@@ -84,6 +85,16 @@ export class AuthService {
         status: 401,
         error: 'Invalid credentials',
         message: 'Email or password is incorrect'
+      };
+    }
+
+    // Unverified accounts cannot log in until the confirmation link is clicked.
+    if (user.verifyEmailToken) {
+      throw {
+        status: 403,
+        error: 'Email not verified',
+        message:
+          'Veuillez confirmer votre adresse email. Un lien de confirmation vous a été envoyé — vérifiez votre boîte de réception.'
       };
     }
 
@@ -222,6 +233,8 @@ export class AuthService {
     const hashedPassword = await hashPassword(input.password);
     const userRole = input.createTenant ? 'ADMIN' : 'STAFF';
 
+    // New accounts are locked until the email is confirmed.
+    const verifyToken = crypto.randomBytes(32).toString('hex');
     const user = await prisma.user.create({
       data: {
         email: input.email,
@@ -230,7 +243,9 @@ export class AuthService {
         lastName: input.lastName,
         phone: input.phone,
         tenantId: tenantId,
-        role: userRole
+        role: userRole,
+        verifyEmailToken: hashToken(verifyToken),
+        verifyEmailExpires: new Date(Date.now() + VERIFY_TOKEN_TTL_MS)
       },
       include: {
         tenant: {
@@ -251,15 +266,27 @@ export class AuthService {
       });
     }
 
-    const token = generateToken({
-      userId: user.id,
-      email: user.email,
-      tenantId: tenantId,
-      role: user.role
-    });
+    // If the confirmation email cannot be sent, roll the account back so the
+    // user can retry cleanly instead of being stuck unverified. Deleting the
+    // tenant cascades the user, which cascades the owner account.
+    try {
+      await this.sendVerificationEmail(
+        {
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName
+        },
+        verifyToken
+      );
+    } catch (mailError) {
+      await prisma.tenant.delete({ where: { id: tenantId } }).catch(() => {});
+      throw mailError;
+    }
 
     return {
-      token,
+      requiresEmailVerification: true,
+      message:
+        'Un email de confirmation a été envoyé. Vérifiez votre boîte de réception pour activer votre compte.',
       user: {
         id: user.id,
         email: user.email,
@@ -275,6 +302,125 @@ export class AuthService {
           : null
       }
     };
+  }
+
+  /**
+   * Email verification for a newly registered pro account (one-time token).
+   */
+  async verifyEmail(body: any) {
+    const token = String(body.token || '').trim();
+    const email = String(body.email || '').trim().toLowerCase();
+    if (!token || !email) {
+      throw {
+        status: 400,
+        error: 'Invalid link',
+        message: 'Lien de vérification invalide.'
+      };
+    }
+
+    const tokenHash = hashToken(token);
+    const user = await prisma.user.findFirst({
+      where: {
+        verifyEmailToken: tokenHash,
+        email: { equals: email, mode: 'insensitive' }
+      },
+      select: { id: true, email: true, verifyEmailExpires: true }
+    });
+
+    if (!user) {
+      throw {
+        status: 400,
+        error: 'Invalid token',
+        message: 'Ce lien de vérification est invalide. Veuillez réessayer.'
+      };
+    }
+    if (!user.verifyEmailExpires || user.verifyEmailExpires.getTime() < Date.now()) {
+      throw {
+        status: 400,
+        error: 'Token expired',
+        message: 'Ce lien de vérification a expiré. Veuillez demander un nouveau lien.'
+      };
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { verifyEmailToken: null, verifyEmailExpires: null }
+    });
+
+    return {
+      message: 'Email vérifié avec succès. Vous pouvez maintenant vous connecter.',
+      emailVerified: true
+    };
+  }
+
+  /**
+   * Resend the verification email for an unverified pro account.
+   * Always returns the same message (no account enumeration).
+   */
+  async resendVerificationEmail(body: any) {
+    const email = String(body.email || '').trim().toLowerCase();
+    if (!email) {
+      throw {
+        status: 400,
+        error: 'Email required',
+        message: 'Veuillez entrer votre adresse email.'
+      };
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        verifyEmailToken: { not: null }
+      },
+      select: { id: true, email: true, firstName: true, lastName: true }
+    });
+
+    if (user) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await this.sendVerificationEmail(
+        {
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName
+        },
+        token
+      );
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          verifyEmailToken: hashToken(token),
+          verifyEmailExpires: new Date(Date.now() + VERIFY_TOKEN_TTL_MS)
+        }
+      });
+    }
+
+    return {
+      message: 'Si un compte existe pour cette adresse, un email de confirmation a été envoyé.'
+    };
+  }
+
+  private async sendVerificationEmail(
+    user: { email: string; firstName?: string | null; lastName?: string | null },
+    token: string
+  ) {
+    const base = getFrontendBaseUrl();
+    const verifyUrl = `${base}/verify-email?token=${token}&email=${encodeURIComponent(user.email)}`;
+    const name = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    await sendMail({
+      to: user.email,
+      subject: 'Confirmez votre adresse email — Reza Pro',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+          <h2 style="color: #002366;">Confirmez votre adresse email</h2>
+          <p>Bonjour ${name},</p>
+          <p>Merci de vous être inscrit sur Reza Pro. Cliquez sur le bouton ci-dessous pour confirmer votre adresse email et activer votre compte.</p>
+          <p style="text-align: center; margin: 28px 0;">
+            <a href="${verifyUrl}" style="background: #002366; color: #ffffff; padding: 12px 28px; border-radius: 30px; text-decoration: none; font-weight: bold; display: inline-block;">Confirmer mon email</a>
+          </p>
+          <p style="font-size: 13px; color: #666;">Ce lien expire dans 24 heures. Si vous n'avez pas créé de compte sur Reza Pro, ignorez cet email.</p>
+        </div>
+      `
+    });
   }
 
   /**
@@ -310,7 +456,7 @@ export class AuthService {
               <h2 style="color: #002366;">Réinitialisation de votre mot de passe</h2>
               <p>Bonjour ${firstName},</p>
               <p>Vous avez demandé la réinitialisation de votre mot de passe Reza Pro.</p>
-              <p>Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe. Ce lien expire dans <strong>1 heure</strong>.</p>
+              <p>Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe. Ce lien expire dans <strong>30 minutes</strong>.</p>
               <p style="text-align: center; margin: 28px 0;">
                 <a href="${resetUrl}" style="background: #002366; color: #ffffff; padding: 12px 28px; border-radius: 30px; text-decoration: none; font-weight: bold; display: inline-block;">Réinitialiser mon mot de passe</a>
               </p>

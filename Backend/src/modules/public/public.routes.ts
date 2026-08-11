@@ -87,6 +87,12 @@ router.post('/auth/client-forgot-password', (req, res, next) =>
 router.post('/auth/client-reset-password', (req, res, next) =>
   publicController.resetClientPassword(req, res, next)
 );
+router.post('/auth/client-verify-email', (req, res, next) =>
+  publicController.verifyClientEmail(req, res, next)
+);
+router.post('/auth/client-resend-verification', (req, res, next) =>
+  publicController.resendClientVerification(req, res, next)
+);
 router.get('/client/:email/favorites', (req, res, next) =>
   publicController.getClientFavorites(req, res, next)
 );

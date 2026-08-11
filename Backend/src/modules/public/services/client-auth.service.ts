@@ -4,7 +4,8 @@ import { comparePassword, hashPassword } from '../../../utils/password';
 import { sendMail } from '../../../utils/mailer';
 import { fail } from '../utils/http';
 
-const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes — recommended for password resets
+const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — recommended for email confirmation
 const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
 function getClientFrontendBaseUrl(req?: any): string {
@@ -59,7 +60,7 @@ export class ClientAuthService {
               <p style="text-align: center; margin: 28px 0;">
                 <a href="${resetUrl}" style="background: #002366; color: #ffffff; padding: 12px 28px; border-radius: 30px; text-decoration: none; font-weight: bold; display: inline-block;">Réinitialiser mon mot de passe</a>
               </p>
-              <p style="font-size: 13px; color: #666;">Ce lien expire dans 1 heure. Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.</p>
+              <p style="font-size: 13px; color: #666;">Ce lien expire dans 30 minutes. Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.</p>
             </div>
           `,
         });
@@ -70,11 +71,106 @@ export class ClientAuthService {
         });
         throw mailError;
       }
+    }  return {
+    message: "Si un compte existe pour cette adresse email, un lien de réinitialisation a été envoyé.",
+  };
+}
+
+  /**
+   * Email verification for a newly registered client account (one-time token).
+   */
+  async verifyClientEmail(body: any) {
+    const token = String(body.token || '').trim();
+    if (!token) {
+      fail(400, { error: 'Token required', message: 'Lien de vérification invalide.' });
+    }
+
+    const tokenHash = hashToken(token);
+    const client = await prisma.client.findFirst({
+      where: { verifyEmailToken: tokenHash },
+      select: { id: true, email: true, verifyEmailExpires: true },
+    });
+
+    if (!client) {
+      fail(400, { error: 'Invalid token', message: 'Ce lien de vérification est invalide. Veuillez réessayer.' });
+    }
+    if (!client.verifyEmailExpires || client.verifyEmailExpires.getTime() < Date.now()) {
+      fail(400, { error: 'Token expired', message: 'Ce lien de vérification a expiré. Veuillez demander un nouveau lien.' });
+    }
+
+    await prisma.client.update({
+      where: { id: client.id },
+      data: { verifyEmailToken: null, verifyEmailExpires: null },
+    });
+
+    return {
+      message: 'Email vérifié avec succès. Vous pouvez maintenant vous connecter.',
+      client: { email: client.email },
+    };
+  }
+
+  /**
+   * Resend the verification email for an unverified client account.
+   * Always returns the same message (no account enumeration).
+   */
+  async resendClientVerification(body: any) {
+    const email = String(body.email || '').trim().toLowerCase();
+    if (!email) {
+      fail(400, { error: 'Email required', message: 'Veuillez entrer votre adresse email.' });
+    }
+
+    const client = await prisma.client.findFirst({
+      where: {
+        email: { equals: email, mode: 'insensitive' },
+        password: { not: null },
+        verifyEmailToken: { not: null },
+      },
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+
+    if (client) {
+      const token = crypto.randomBytes(32).toString('hex');
+      try {
+        await this.sendVerificationEmail(client, token);
+      } catch (mailError) {
+        throw mailError;
+      }
+      await prisma.client.update({
+        where: { id: client.id },
+        data: {
+          verifyEmailToken: hashToken(token),
+          verifyEmailExpires: new Date(Date.now() + VERIFY_TOKEN_TTL_MS),
+        },
+      });
     }
 
     return {
-      message: "Si un compte existe pour cette adresse email, un lien de réinitialisation a été envoyé.",
+      message: 'Si un compte existe pour cette adresse, un email de confirmation a été envoyé.',
     };
+  }
+
+  private async sendVerificationEmail(
+    client: { email?: string | null; firstName?: string | null; lastName?: string | null },
+    token: string
+  ) {
+    const base = getClientFrontendBaseUrl();
+    const verifyUrl = `${base}/verify-email?token=${token}`;
+    const name = `${client.firstName || ''} ${client.lastName || ''}`.trim();
+    await sendMail({
+      to: client.email!,
+      subject: 'Confirmez votre adresse email — Reza',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+          <h2 style="color: #002366;">Confirmez votre adresse email</h2>
+          <p>Bonjour ${name},</p>
+          <p>Merci de vous être inscrit sur Reza. Cliquez sur le bouton ci-dessous pour confirmer votre adresse email et activer votre compte.</p>
+          <p style="text-align: center; margin: 28px 0;">
+            <a href="${verifyUrl}" style="background: #002366; color: #ffffff; padding: 12px 28px; border-radius: 30px; text-decoration: none; font-weight: bold; display: inline-block;">Confirmer mon email</a>
+          </p>
+          <p style="font-size: 13px; color: #666;">Ce lien expire dans 24 heures. Si vous n'avez pas créé de compte sur Reza, ignorez cet email.</p>
+        </div>
+      `,
+    });
   }
 
   /**
@@ -117,7 +213,6 @@ export class ClientAuthService {
   }
 
   async registerClient(body: any) {
-    try {
     const { email, firstName, lastName, phone, password } = body;
 
     if (!email || !firstName || !lastName) {
@@ -150,6 +245,16 @@ export class ClientAuthService {
     });
 
     if (existingClient) {
+      // A real, already-confirmed account must not be silently re-registered.
+      if (existingClient.password && !existingClient.verifyEmailToken) {
+        fail(409, {
+          error: 'Account exists',
+          message: 'Un compte existe déjà avec cette adresse email. Connectez-vous.'
+        });
+      }
+
+      // Unverified registration (or a guest booking row): refresh details and
+      // re-issue the confirmation email.
       await prisma.client.update({
         where: { id: existingClient.id },
         data: {
@@ -160,20 +265,20 @@ export class ClientAuthService {
         },
       });
 
+      await this.issueClientVerification(existingClient.id, {
+        email: existingClient.email || normalizedEmail,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      });
+
       return {
-        client: {
-          id: existingClient.id,
-          email: existingClient.email,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          phone: phone || existingClient.phone,
-          tenantId: existingClient.tenantId
-        },
-        message: 'Compte créé avec succès'
+        requiresEmailVerification: true,
+        message: 'Un email de confirmation a été envoyé. Vérifiez votre boîte de réception pour activer votre compte.',
       };
     }
 
-    // Create new client (global, no salon)
+    // Create new client (global, no salon), locked until the email is confirmed.
+    const verifyToken = crypto.randomBytes(32).toString('hex');
     const client = await prisma.client.create({
       data: {
         tenantId: null,
@@ -182,24 +287,43 @@ export class ClientAuthService {
         email: normalizedEmail,
         phone: phone || '',
         password: hashedPassword,
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        verifyEmailToken: hashToken(verifyToken),
+        verifyEmailExpires: new Date(Date.now() + VERIFY_TOKEN_TTL_MS),
       }
     });
 
+    // If the confirmation email cannot be sent, roll the account back so the
+    // user can retry cleanly instead of being stuck unverified.
+    try {
+      await this.sendVerificationEmail(
+        { email: client.email, firstName: client.firstName, lastName: client.lastName },
+        verifyToken
+      );
+    } catch (mailError) {
+      await prisma.client.delete({ where: { id: client.id } });
+      throw mailError;
+    }
+
     return {
-      client: {
-        id: client.id,
-        email: client.email,
-        firstName: client.firstName,
-        lastName: client.lastName,
-        phone: client.phone,
-        tenantId: client.tenantId
-      },
-      message: 'Compte créé avec succès'
+      requiresEmailVerification: true,
+      message: 'Un email de confirmation a été envoyé. Vérifiez votre boîte de réception pour activer votre compte.',
     };
-  } catch (error) {
-    throw error;
   }
+
+  private async issueClientVerification(
+    clientId: string,
+    client: { email: string; firstName: string; lastName: string }
+  ) {
+    const token = crypto.randomBytes(32).toString('hex');
+    await this.sendVerificationEmail(client, token);
+    await prisma.client.update({
+      where: { id: clientId },
+      data: {
+        verifyEmailToken: hashToken(token),
+        verifyEmailExpires: new Date(Date.now() + VERIFY_TOKEN_TTL_MS),
+      },
+    });
   }
 
   async loginClient(body: any) {
@@ -259,6 +383,15 @@ export class ClientAuthService {
       fail(401, {
         error: 'Invalid credentials',
         message: INVALID_CREDENTIALS_MSG
+      });
+    }
+
+    // Unverified accounts cannot log in until the confirmation link is clicked.
+    if (client.verifyEmailToken) {
+      fail(403, {
+        error: 'Email not verified',
+        message:
+          'Veuillez confirmer votre adresse email. Vérifiez votre boîte de réception — un lien de confirmation vous a été envoyé.',
       });
     }
 
