@@ -1,18 +1,26 @@
+import dns from 'node:dns';
 import nodemailer from 'nodemailer';
 import * as log from './logger';
+
+// Gmail's smtp.gmail.com resolves to both A (IPv4) and AAAA (IPv6) records.
+// On hosts with broken/blocked IPv6 (common on cloud providers) Node picks the
+// IPv6 address and the connect fails with ENETUNREACH. nodemailer ignores the
+// `family` transport option, so force IPv4 at the DNS level for the process.
+dns.setDefaultResultOrder('ipv4first');
 
 /**
  * Shared mail sender — used for ALL platform emails (password reset,
  * appointment notifications, …). The sender is the platform owner (Reza),
  * configured via env vars:
- *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM_EMAIL, SMTP_FROM_NAME
+ *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
+ * Optional: SMTP_FROM_EMAIL (defaults to SMTP_USER), SMTP_FROM_NAME
  */
 
 const host = process.env.SMTP_HOST;
 const port = parseInt(process.env.SMTP_PORT || '587', 10);
 const user = process.env.SMTP_USER || '';
 const pass = process.env.SMTP_PASS || '';
-const fromEmail = process.env.SMTP_FROM_EMAIL || 'no-reply@reza.ma';
+const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'no-reply@reza.ma';
 const fromName = process.env.SMTP_FROM_NAME || 'Reza';
 
 const configured = Boolean(host);
@@ -29,11 +37,7 @@ if (configured) {
     connectionTimeout: 15000,
     greetingTimeout: 10000,
     socketTimeout: 20000,
-    // Force IPv4: on hosts with broken IPv6 (common on cloud providers) the
-    // connect to smtp.gmail.com's AAAA record hangs until timeout.
-    // `family` is supported at runtime but missing from @types/nodemailer.
-    family: 4,
-  } as nodemailer.TransportOptions);
+  });
 }
 
 interface MailOptions {
@@ -47,7 +51,7 @@ export async function sendMail({ to, subject, html, text }: MailOptions): Promis
   if (!configured || !transporter) {
     if (process.env.NODE_ENV === 'production') {
       throw new Error(
-        'SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and SMTP_FROM_EMAIL before sending emails in production.'
+        'SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER and SMTP_PASS before sending emails in production.'
       );
     }
     // Dev fallback: log the email instead of failing, so flows can be tested
