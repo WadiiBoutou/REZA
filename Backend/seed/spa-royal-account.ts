@@ -1,7 +1,4 @@
-import type {
-  PrismaClient,
-  SubscriptionPlan,
-} from '../prisma/generated/prisma/client';
+import type { PrismaClient } from '../prisma/generated/prisma/client';
 import { hashPassword } from '../src/utils/password';
 import {
   avatarUrlFor,
@@ -449,7 +446,7 @@ async function seedOneSalon(
 
 // ─── Entry point ────────────────────────────────────────────────
 
-export async function seedSpaRoyalAccount(prisma: PrismaClient, plan: SubscriptionPlan) {
+export async function seedSpaRoyalAccount(prisma: PrismaClient) {
   console.log('\n👑 Spa Royal multi-salon account…');
 
   const adminPassword = await hashPassword(PASSWORDS.admin);
@@ -479,7 +476,6 @@ export async function seedSpaRoyalAccount(prisma: PrismaClient, plan: Subscripti
   await prisma.subscription.create({
     data: {
       accountId: account.id,
-      planId: plan.id,
       status: 'ACTIVE',
       salonsPaid: 1,
       subscribedAt: new Date(),

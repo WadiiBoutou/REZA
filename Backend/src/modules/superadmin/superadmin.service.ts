@@ -160,16 +160,9 @@ export class SuperAdminService {
           },
         });
       } else {
-        const basePlan = await prisma.subscriptionPlan.findFirst({
-          orderBy: { createdAt: 'asc' },
-        });
-        if (!basePlan) {
-          throw { status: 404, error: 'Plan not found', message: 'Aucun plan de référence' };
-        }
         await prisma.subscription.create({
           data: {
             accountId,
-            planId: basePlan.id,
             status: data.subscriptionStatus ?? 'ACTIVE',
             currentPeriodEnd: periodEnd ?? null,
           },
@@ -378,7 +371,6 @@ export class SuperAdminService {
         where: { accountId: account.id },
         create: {
           accountId: account.id,
-          planId: sub?.planId ?? (await this.ensureReferencePlanId()),
           status: 'ACTIVE',
           salonsPaid: declaredIds.size,
           subscribedAt: now,
@@ -470,15 +462,6 @@ export class SuperAdminService {
       // Never block the approve/reject itself
       log.error('Error clearing PAYMENT_DECLARED notification:', notificationError);
     }
-  }
-
-  private async ensureReferencePlanId(): Promise<string> {
-    const plan = await prisma.subscriptionPlan.findFirst({ orderBy: { createdAt: 'asc' } });
-    if (plan) return plan.id;
-    const created = await prisma.subscriptionPlan.create({
-      data: { name: 'Standard', priceCents: 0, maxSalons: 999, isActive: true },
-    });
-    return created.id;
   }
 
   // ── Superadmin notifications ───────────────────────────────────────────

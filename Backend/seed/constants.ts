@@ -27,14 +27,6 @@ export const REZA_ADMIN = {
 // Pre-hashed bcrypt for 123456 (cost 12)
 export const REZA_ADMIN_HASHED_PASSWORD = '$2a$12$lf7ornt4nWL67x967ECXeOfFzJO9qWVJQ/PiZVfqIHy3GYvl.QWLC';
 
-export const BASE_PLAN = {
-  name: 'Standard',
-  priceCents: 80_000,
-  currency: 'MAD',
-  interval: 'year',
-  maxSalons: 3,
-} as const;
-
 /** English keys required by schedulingValidation + getAvailableSlots */
 export const BUSINESS_HOURS_BY_DAY = {
   monday: { open: '09:00', close: '19:00' },

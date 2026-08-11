@@ -1,7 +1,4 @@
-import type {
-  PrismaClient,
-  SubscriptionPlan,
-} from '../prisma/generated/prisma/client';
+import type { PrismaClient } from '../prisma/generated/prisma/client';
 import {
   avatarUrlFor,
   birthDateFor,
@@ -325,7 +322,7 @@ async function seedOneSalon(
 /**
  * One account, two salons, shared admin login.
  */
-export async function seedRezaAccount(prisma: PrismaClient, plan: SubscriptionPlan) {
+export async function seedRezaAccount(prisma: PrismaClient) {
   console.log('\n👑 Reza multi-salon account…');
 
   // Owner user on first salon tenant (tenant linked after account create)
@@ -356,7 +353,6 @@ export async function seedRezaAccount(prisma: PrismaClient, plan: SubscriptionPl
   await prisma.subscription.create({
     data: {
       accountId: account.id,
-      planId: plan.id,
       status: 'ACTIVE',
       salonsPaid: 2,
       subscribedAt: new Date(),

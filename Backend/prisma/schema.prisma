@@ -31,29 +31,10 @@ model Account {
   @@map("accounts")
 }
 
-// Subscription plans (managed by superadmin); salon limit is per plan
-model SubscriptionPlan {
-  id         String  @id @default(cuid())
-  name       String
-  priceCents Int
-  currency   String  @default("MAD")
-  interval   String  @default("year")
-  maxSalons  Int
-  isActive   Boolean @default(true)
-
-  subscriptions Subscription[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("subscription_plans")
-}
 model Subscription {
-  id        String           @id @default(cuid())
-  accountId String           @unique
-  account   Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  planId    String
-  plan      SubscriptionPlan @relation(fields: [planId], references: [id])
+  id        String  @id @default(cuid())
+  accountId String  @unique
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   status SubscriptionStatus @default(NONE)
   // Billing coverage under the virement model (no Stripe):

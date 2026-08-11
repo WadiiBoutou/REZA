@@ -171,8 +171,6 @@ export async function wipeData(prismaClient: PrismaClient) {
 // ─── Billing scenario ──────────────────────────────────────────
 
 async function setBillingScenario(prismaClient: PrismaClient) {
-  const plan = await prismaClient.subscriptionPlan.findFirst();
-  if (!plan) throw new Error('No SubscriptionPlan found — run `npm run seed` first.');
   const superadmin = await prismaClient.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
 
   const accounts = await prismaClient.account.findMany({
@@ -195,7 +193,7 @@ async function setBillingScenario(prismaClient: PrismaClient) {
     const upsertSub = (data: { status: 'ACTIVE'; salonsPaid: number; subscribedAt: Date; currentPeriodEnd: Date }) =>
       prismaClient.subscription.upsert({
         where: { accountId: account.id },
-        create: { accountId: account.id, planId: plan.id, ...data },
+        create: { accountId: account.id, ...data },
         update: data,
       });
 
@@ -218,7 +216,7 @@ async function setBillingScenario(prismaClient: PrismaClient) {
           paidAt: data.periodStart,
           periodStart: data.periodStart,
           periodEnd: data.periodEnd,
-          notes: `${plan.name} — Mensuel`,
+          notes: 'Abonnement Reza Pro — Mensuel',
           createdAt: data.periodStart,
         } as any,
       });

@@ -26,7 +26,6 @@ export async function cleanupDatabase(prisma: PrismaClient) {
   await prisma.account.deleteMany();
   await prisma.user.deleteMany();
   await prisma.tenant.deleteMany();
-  await prisma.subscriptionPlan.deleteMany();
   await prisma.earlyAccessSignup.deleteMany();
 
   console.log('✅ Database cleaned');

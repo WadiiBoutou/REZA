@@ -11,7 +11,7 @@ import { cleanupDatabase } from './cleanup';
 import { PASSWORDS, REZA_ADMIN, SPA_ROYAL_ADMIN, SUPERADMIN } from './constants';
 import { seedRezaAccount } from './reza-account';
 import { seedSpaRoyalAccount } from './spa-royal-account';
-import { seedSubscriptionPlan } from './subscription-plan';
+import { seedBillingConfig } from './subscription-plan';
 import { seedSuperadmin } from './superadmin';
 import { seedRefill } from './refill-data';
 
@@ -20,10 +20,10 @@ async function main() {
 
   await cleanupDatabase(prisma);
 
-  const plan = await seedSubscriptionPlan(prisma);
+  await seedBillingConfig(prisma);
   await seedSuperadmin(prisma);
-  await seedRezaAccount(prisma, plan);
-  await seedSpaRoyalAccount(prisma, plan);
+  await seedRezaAccount(prisma);
+  await seedSpaRoyalAccount(prisma);
 
   // Wipes data (already empty after cleanup) and generates the large test dataset:
   // ~500 RDV, ~160 factures, ~70 avis, group bookings, billing scenarios.
