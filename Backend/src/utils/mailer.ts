@@ -38,6 +38,17 @@ if (configured) {
     greetingTimeout: 10000,
     socketTimeout: 20000,
   });
+
+  // Diagnose connectivity: log which IPv4 addresses the hostname actually
+  // resolves to at runtime, so Render logs show whether DNS/family is the issue.
+  dns.promises
+    .resolve4(host!)
+    .then((addrs) => {
+      log.log(`[Mailer] SMTP ${host}:${port} resolves to IPv4: ${addrs.join(', ')} (ipv4first enabled)`);
+    })
+    .catch(() => {
+      log.log(`[Mailer] SMTP ${host}:${port} — no IPv4 records found (IPv6-only?)`);
+    });
 }
 
 interface MailOptions {
@@ -62,27 +73,47 @@ export async function sendMail({ to, subject, html, text }: MailOptions): Promis
     return;
   }
 
-  try {
-    const info = await transporter.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
-      to: Array.isArray(to) ? to.join(', ') : to,
-      subject,
-      html,
-      text,
-    });
-    log.log(`[Mailer] ✓ Email sent to ${Array.isArray(to) ? to.join(', ') : to} (id: ${info.messageId})`);
-  } catch (error) {
-    log.error('[Mailer] Failed to send email:', error);
-    // Surface the real SMTP reason (auth failure, connection refused, …) so
-    // the API response and logs show exactly why the send failed.
-    const detail =
-      error instanceof Error && error.message
-        ? ` ${error.message}`
-        : '';
-    throw new Error(
-      `Failed to send email via SMTP (${host}). Check the SMTP_* environment variables and the recipient address.${detail}`
-    );
+  // Transient egress/DNS failures (timeouts, unreachable, resets) are common on
+  // cloud hosts — retry a few times with short backoff before surfacing the error.
+  const attempts = 3;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const info = await transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to: Array.isArray(to) ? to.join(', ') : to,
+        subject,
+        html,
+        text,
+      });
+      log.log(`[Mailer] ✓ Email sent to ${Array.isArray(to) ? to.join(', ') : to} (id: ${info.messageId})`);
+      return;
+    } catch (error) {
+      lastError = error;
+      const msg = error instanceof Error ? error.message : String(error);
+      const retryable = /timeout|ENETUNREACH|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up|greeting/i.test(
+        msg
+      );
+      if (attempt < attempts && retryable) {
+        log.error(`[Mailer] attempt ${attempt}/${attempts} failed, retrying… (${msg})`);
+        await new Promise((r) => setTimeout(r, attempt * 1500));
+        continue;
+      }
+      break;
+    }
   }
+
+  log.error('[Mailer] Failed to send email:', lastError);
+  // Surface the real SMTP reason (auth failure, connection refused, …) so
+  // the API response and logs show exactly why the send failed.
+  const detail =
+    lastError instanceof Error && lastError.message
+      ? ` ${lastError.message}`
+      : '';
+  throw new Error(
+    `Failed to send email via SMTP (${host}). Check the SMTP_* environment variables and the recipient address.${detail}`
+  );
 }
 
 export const mailer = { sendMail };

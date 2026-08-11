@@ -599,7 +599,10 @@ export default function ProOnboardingPage() {
                 <div className="flex justify-center pt-4">
                   <button
                     onClick={() => {
-                      const saasLoginUrl = process.env.NEXT_PUBLIC_SAAS_LOGIN_URL || 'http://localhost:3000/login';
+                      const raw = (process.env.NEXT_PUBLIC_SAAS_LOGIN_URL || 'http://localhost:3000/login').trim();
+                      // Normalize: if the env value lacks a protocol (e.g. "reza-pro.vercel.app/login"),
+                      // the browser would treat it as a relative path on the client domain → 404.
+                      const saasLoginUrl = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
                       // Pass email as URL parameter for auto-fill
                       const loginUrl = `${saasLoginUrl}?email=${encodeURIComponent(formData.email)}`;
                       window.location.href = loginUrl;
