@@ -5,21 +5,22 @@ import * as log from './logger';
 
 /**
  * Shared mail sender — used for ALL platform emails (password reset,
- * appointment notifications, …). The sender is the platform owner (Reza),
- * configured via env vars:
- *   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
- * Optional: SMTP_FROM_EMAIL (defaults to SMTP_USER), SMTP_FROM_NAME
+ * appointment notifications, …).
  *
- * Connectivity hardening (cloud hosts are picky):
- *  - smtp.gmail.com resolves to both A (IPv4) and AAAA (IPv6). On hosts with a
- *    broken IPv6 route the resolver can pick IPv6 → ENETUNREACH. So we resolve
- *    IPv4 ourselves and connect to the literal IP.
- *  - Some networks block port 587 (STARTTLS) but allow 465 (SSL), and some
- *    egress proxies require the hostname rather than a literal IP. So we probe
- *    a small set of candidates — {IP, hostname} × {configured port, alt port} —
- *    pick the first one that accepts a TCP connection, and send through it.
- *  - A quick probe (not the full SMTP handshake) keeps failures fast (~seconds)
- *    and produces readable logs instead of a silent ~1 min timeout.
+ * Two sending paths, chosen at runtime:
+ *
+ * 1) RESEND (recommended on Render): if RESEND_API_KEY is set, emails go over
+ *    Resend's HTTPS API (api.resend.com, port 443). Render's free instances
+ *    block outbound SMTP (ports 587/465) — verified by the mailer's probe — so
+ *    the HTTP path is the reliable one. Requires a verified sender:
+ *      RESEND_API_KEY=re_…            (Resend dashboard → API Keys)
+ *      RESEND_FROM_EMAIL=…            (must be a verified sender/domain, e.g. "Reza <no-reply@reza.ma>")
+ *
+ * 2) SMTP fallback: if RESEND_API_KEY is unset, classic SMTP via
+ *    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS. Because cloud hosts often have
+ *    a broken IPv6 route (Gmail's AAAA → ENETUNREACH) and/or block one of the
+ *    SMTP ports, we probe {IPv4, hostname} × {587, 465} and send through the
+ *    first candidate that accepts a TCP connection. Fast, readable failure.
  */
 
 const host = process.env.SMTP_HOST;
@@ -29,7 +30,12 @@ const pass = process.env.SMTP_PASS || '';
 const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'no-reply@reza.ma';
 const fromName = process.env.SMTP_FROM_NAME || 'Reza';
 
-const configured = Boolean(host);
+// Resend HTTP API (port 443 — never blocked by cloud egress firewalls)
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const resendFrom = process.env.RESEND_FROM_EMAIL || `"${fromName}" <${fromEmail}>`;
+const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+
+const configured = Boolean(host) || Boolean(RESEND_API_KEY);
 
 const PROBE_TIMEOUT_MS = 4000;
 const CONNECT_TIMEOUT_MS = 8000;
@@ -57,7 +63,7 @@ function probe(hostname: string, port: number): Promise<boolean> {
   });
 }
 
-/** Build the ordered list of connection candidates to try. */
+/** Build the ordered list of SMTP connection candidates to try. */
 async function buildCandidates(): Promise<Candidate[]> {
   const altPort = configuredPort === 465 ? 587 : 465;
   let ip = host!;
@@ -74,12 +80,11 @@ async function buildCandidates(): Promise<Candidate[]> {
     { host: ip, port: altPort, secure: altPort === 465, label: `${ip}:${altPort}` },
     { host: host!, port: altPort, secure: altPort === 465, label: `${host}:${altPort}` },
   ];
-  // De-dupe identical labels (when the resolved IP equals the hostname).
   const seen = new Set<string>();
   return candidates.filter((c) => (seen.has(c.label) ? false : (seen.add(c.label), true)));
 }
 
-/** Find the first candidate that accepts a TCP connection. */
+/** Find the first SMTP candidate that accepts a TCP connection. */
 async function pickCandidate(candidates: Candidate[]): Promise<{ candidate: Candidate; probeResults: { label: string; ok: boolean }[] }> {
   const probeResults: { label: string; ok: boolean }[] = [];
   for (const c of candidates) {
@@ -90,8 +95,6 @@ async function pickCandidate(candidates: Candidate[]): Promise<{ candidate: Cand
   }
   return { candidate: candidates[0], probeResults };
 }
-
-let transporterPromise: Promise<nodemailer.Transporter> | null = null;
 
 function getTransporter(candidate: Candidate): nodemailer.Transporter {
   return nodemailer.createTransport({
@@ -108,27 +111,43 @@ function getTransporter(candidate: Candidate): nodemailer.Transporter {
   });
 }
 
-interface MailOptions {
-  to: string | string[];
-  subject: string;
-  html: string;
-  text?: string;
+async function sendViaResend(to: string, subject: string, html: string, text?: string): Promise<void> {
+  log.log(`[Mailer] Sending via Resend API (HTTPS) to ${to}`);
+  const res = await fetch(RESEND_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: resendFrom,
+      to: [to],
+      subject,
+      html,
+      ...(text ? { text } : {}),
+    }),
+  });
+
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body: any = await res.json();
+      detail = body?.message || JSON.stringify(body);
+    } catch {
+      detail = await res.text().catch(() => '');
+    }
+    log.error(`[Mailer] Resend API error ${res.status}: ${detail}`);
+    throw new Error(
+      `Failed to send email via Resend (HTTP ${res.status}). Check the RESEND_API_KEY and that the sender "${resendFrom}" is verified in Resend.${detail ? ` ${detail}` : ''}`
+    );
+  }
+  const body: any = await res.json().catch(() => ({}));
+  log.log(`[Mailer] ✓ Email sent via Resend (id: ${body?.id || 'unknown'})`);
 }
 
-export async function sendMail({ to, subject, html, text }: MailOptions): Promise<void> {
-  if (!configured || !host) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(
-        'SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER and SMTP_PASS before sending emails in production.'
-      );
-    }
-    log.log(
-      `[Mailer] (dev, SMTP not configured — email NOT sent)\n  to: ${Array.isArray(to) ? to.join(', ') : to}\n  subject: ${subject}\n  html: ${html.slice(0, 400)}`
-    );
-    return;
-  }
-
-  log.log(`[Mailer] Preparing to send to ${Array.isArray(to) ? to.join(', ') : to}…`);
+async function sendViaSmtp(to: string, subject: string, html: string, text?: string): Promise<void> {
+  if (!host) throw new Error('SMTP_HOST is not set');
+  log.log(`[Mailer] Preparing SMTP send to ${to}…`);
   const candidates = await buildCandidates();
   const { candidate, probeResults } = await pickCandidate(candidates);
 
@@ -140,15 +159,13 @@ export async function sendMail({ to, subject, html, text }: MailOptions): Promis
     throw new Error(
       `Failed to send email via SMTP (${host}). No SMTP endpoint reachable — tried ` +
         `${probeResults.map((r) => `${r.label}${r.ok ? '' : ' (unreachable)'}`).join(', ')}. ` +
-        `This usually means your host blocks outbound SMTP; try SMTP_PORT=465 (SSL).`
+        `Your host blocks outbound SMTP; set RESEND_API_KEY to send via HTTPS instead.`
     );
   }
 
   log.log(`[Mailer] Using ${candidate.label} (${candidate.secure ? 'SSL' : 'STARTTLS'})`);
   const transporter = getTransporter(candidate);
 
-  // Transient failures still happen mid-handshake — retry a couple times with
-  // short backoff, but keep total time low.
   const attempts = 2;
   let lastError: unknown;
 
@@ -156,12 +173,12 @@ export async function sendMail({ to, subject, html, text }: MailOptions): Promis
     try {
       const info = await transporter.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
-        to: Array.isArray(to) ? to.join(', ') : to,
+        to,
         subject,
         html,
         text,
       });
-      log.log(`[Mailer] ✓ Email sent to ${Array.isArray(to) ? to.join(', ') : to} (id: ${info.messageId})`);
+      log.log(`[Mailer] ✓ Email sent to ${to} (id: ${info.messageId})`);
       return;
     } catch (error) {
       lastError = error;
@@ -181,6 +198,36 @@ export async function sendMail({ to, subject, html, text }: MailOptions): Promis
   throw new Error(
     `Failed to send email via SMTP (${host}). Check the SMTP_* environment variables and the recipient address.${detail}`
   );
+}
+
+interface MailOptions {
+  to: string | string[];
+  subject: string;
+  html: string;
+  text?: string;
+}
+
+export async function sendMail({ to, subject, html, text }: MailOptions): Promise<void> {
+  const recipients = Array.isArray(to) ? to.join(', ') : to;
+
+  if (!configured) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'Email is not configured. Set RESEND_API_KEY (recommended) or SMTP_HOST, SMTP_PORT, SMTP_USER and SMTP_PASS.'
+      );
+    }
+    log.log(
+      `[Mailer] (dev, email not configured — email NOT sent)\n  to: ${recipients}\n  subject: ${subject}\n  html: ${html.slice(0, 400)}`
+    );
+    return;
+  }
+
+  if (RESEND_API_KEY) {
+    await sendViaResend(recipients, subject, html, text);
+    return;
+  }
+
+  await sendViaSmtp(recipients, subject, html, text);
 }
 
 export const mailer = { sendMail };
