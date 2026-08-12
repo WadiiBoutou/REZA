@@ -282,20 +282,26 @@ const GestionPrestations = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [services, categories, loading]);
 
-  const handleAddCategory = (name: string) => {
+  const handleAddCategory = async (name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     if (categories.includes(trimmed)) {
       toast('Cette catégorie est déjà disponible');
       return;
     }
-    // Categories are automatically extracted from services, so we just need to
-    // create a service with this category. It's persisted when a service with
-    // this category is created.
-    // The modal stays open so the admin can pick multiple categories — it only
-    // closes when the admin explicitly clicks X / Fermer.
-    setCategories([...categories, trimmed]);
-    toast.success(`Catégorie "${trimmed}" ajoutée. Créez une prestation pour la sauvegarder.`);
+    const next = [...categories, trimmed];
+    setCategories(next);
+    // Persist the declared category list so it survives a refresh. The modal
+    // stays open so the admin can pick multiple categories — it only closes
+    // when the admin explicitly clicks X / Fermer.
+    try {
+      await api.updateCategories(next);
+      toast.success(`Catégorie "${trimmed}" ajoutée`);
+    } catch (err: any) {
+      console.error('Error saving category:', err);
+      toast.error(err.message || 'Erreur lors de l\'enregistrement de la catégorie');
+      setCategories(categories); // roll back on failure
+    }
   };
 
   const handleDeleteCategory = async (category: string) => {
@@ -306,7 +312,11 @@ const GestionPrestations = () => {
         // Delete all services in this category
         const servicesToDelete = services.filter(s => s.category === category);
         await Promise.all(servicesToDelete.map(s => api.deleteService(s.id)));
-        
+
+        // Also remove the category from the persisted declared list, so it
+        // doesn't come back as an empty category after a refresh.
+        await api.updateCategories(categories.filter(c => c !== category));
+
         // Refresh data
         await fetchData();
         

@@ -42,16 +42,44 @@ export class ServiceService {
       }
     });
 
-    const categories = await prisma.service.findMany({
-      where: { tenantId: tenantIdFilter(tenantIds) },
-      select: { category: true },
-      distinct: ['category']
-    });
+    // Categories = declared salon categories (persisted via setCategories) UNION
+    // categories actually derived from services. Declared-but-empty categories
+    // survive a refresh; derived ones keep showing up automatically.
+    const [derivedRows, tenants] = await Promise.all([
+      prisma.service.findMany({
+        where: { tenantId: tenantIdFilter(tenantIds) },
+        select: { category: true },
+        distinct: ['category']
+      }),
+      prisma.tenant.findMany({
+        where: { id: tenantIdFilter(tenantIds) },
+        select: { categories: true }
+      })
+    ]);
+
+    const declared = tenants.flatMap(t => t.categories || []);
+    const derived = derivedRows.map(c => c.category).filter(Boolean);
 
     return { 
       services, 
-      categories: categories.map(c => c.category).filter(Boolean) 
+      categories: Array.from(new Set([...declared, ...derived])) 
     };
+  }
+
+  /**
+   * Persist the salon(s)' declared service categories (full replace of the list).
+   * The pro "Gestion des prestations" page calls this whenever the admin adds or
+   * removes a category so the choice survives a refresh.
+   */
+  async setCategories(tenantIds: string | string[], categories: string[]) {
+    const cleaned = Array.from(
+      new Set(categories.map((c) => c.trim()).filter(Boolean))
+    );
+    await prisma.tenant.updateMany({
+      where: { id: tenantIdFilter(tenantIds) },
+      data: { categories: cleaned }
+    });
+    return { categories: cleaned };
   }
 
   async getServiceById(tenantId: string, id: string) {

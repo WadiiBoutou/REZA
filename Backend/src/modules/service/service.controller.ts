@@ -38,6 +38,25 @@ export class ServiceController {
     }
   }
 
+  async setCategories(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.tenantId) {
+        return res.status(401).json({
+          error: 'Tenant identification required',
+          message: 'Unable to determine tenant'
+        });
+      }
+      const { categories } = z
+        .object({ categories: z.array(z.string()).optional().default([]) })
+        .parse(req.body);
+      const tenantIds = req.salonIds || [req.tenantId];
+      const result = await serviceService.setCategories(tenantIds, categories);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async createService(req: Request, res: Response, next: NextFunction) {
     try {
       const data = createServiceSchema.parse(req.body);

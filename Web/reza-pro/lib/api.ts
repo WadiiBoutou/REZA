@@ -752,6 +752,17 @@ class ApiClient {
     });
   }
 
+  async updateCategories(
+    categories: string[],
+    opts?: { salonIds?: string | string[] }
+  ) {
+    return this.request<any>('/services/categories', {
+      method: 'PUT',
+      body: JSON.stringify({ categories }),
+      headers: this.salonHeaders(opts?.salonIds),
+    });
+  }
+
   async getService(id: string) {
     return this.request<any>(`/services/${id}`);
   }

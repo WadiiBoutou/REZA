@@ -139,6 +139,11 @@ model Tenant {
   latitude         Float? // GPS coordinates for map
   longitude        Float? // GPS coordinates for map
   tags             String[] // Tags for search and filtering (e.g., ["spa", "hammam", "massage"])
+  // Service categories the salon declares it offers (picked from the canonical
+  // client-app list in the pro "Gestion des prestations" page). Persisted so
+  // empty-but-declared categories survive a refresh; merged with categories
+  // actually derived from services when listing.
+  categories       String[] @default([])
 
   isActive           Boolean @default(true)
   // Whether this salon's one-time setup fee has been paid (virement model).
