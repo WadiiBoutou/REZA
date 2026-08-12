@@ -48,28 +48,34 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, id, startTime,
       return t >= range.startMin && t < range.endMin;
     });
   };
+
+  // First selectable slot: agendaStart snapped up to the 30-min grid
+  // (e.g. 09:15 → 09:30). Used as the placeholder when no time is picked yet
+  // instead of a hardcoded 08:00.
+  const firstSlot = useMemo(() => {
+    if (!range) return '08:00';
+    const snapped = Math.ceil(range.startMin / 30) * 30;
+    if (snapped >= range.endMin) return startTime || '08:00'; // degenerate range
+    const h = Math.floor(snapped / 60).toString().padStart(2, '0');
+    const m = (snapped % 60).toString().padStart(2, '0');
+    return `${h}:${m}`;
+  }, [range, startTime]);
+
   const [open, setOpen] = useState(false);
-  const [selectedHour, setSelectedHour] = useState(() => {
-    const parts = (value || '').split(':');
-    return parts[0] || '08';
-  });
-  const [selectedMinute, setSelectedMinute] = useState(() => {
-    const parts = (value || '').split(':');
-    const m = parts[1] || '00';
-    return MINUTES.includes(m) ? m : '00';
-  });
+  const [selectedHour, setSelectedHour] = useState(() => firstSlot.split(':')[0]);
+  const [selectedMinute, setSelectedMinute] = useState(() => firstSlot.split(':')[1]);
   const containerRef = useRef<HTMLDivElement>(null);
   const hourListRef = useRef<HTMLDivElement>(null);
 
   // Sync internal state when value prop changes externally
   useEffect(() => {
-    const parts = (value || '').split(':');
-    const h = parts[0] || '08';
-    const m = parts[1] || '00';
+    const parts = (value || firstSlot).split(':');
+    const h = parts[0];
+    const m = parts[1];
     const allowed = allowedMinutesFor(h);
     setSelectedHour(h);
-    setSelectedMinute(allowed.includes(m) ? m : (allowed[0] || '00'));
-  }, [value, startTime, endTime]);
+    setSelectedMinute(allowed.includes(m) ? m : (allowed[0] || m));
+  }, [value, startTime, endTime, firstSlot]);
 
   // Auto-scroll hour list to selected hour when opened
   useEffect(() => {
@@ -116,9 +122,9 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, id, startTime,
     onChange && onChange(newVal);
   };
 
-  const displayValue = value || '08:00';
+  const displayValue = value || firstSlot;
   const displayMinutes = MINUTES.includes(displayValue.split(':')[1] || '') ? displayValue.split(':')[1] : '00';
-  const displayHours = displayValue.split(':')[0] || '08';
+  const displayHours = displayValue.split(':')[0] || firstSlot.split(':')[0];
 
   return (
     <div ref={containerRef} className="relative w-full" id={id}>
@@ -129,7 +135,7 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, id, startTime,
         className="w-full flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-full text-sm bg-white hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-colors"
       >
         <Clock size={16} className="text-gray-400 shrink-0" />
-        <span className="text-gray-900 font-medium tabular-nums">
+        <span className={`tabular-nums ${value ? 'text-gray-900 font-medium' : 'text-gray-400 font-medium'}`}>
           {displayHours}:{displayMinutes}
         </span>
         <span className="ml-auto text-gray-400 text-xs">▼</span>
@@ -193,6 +199,9 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, id, startTime,
                       {m}
                     </button>
                   ))}
+                  {allowedMinutesFor(selectedHour).length === 0 && (
+                    <span className="text-xs text-gray-400 px-2 text-center">—</span>
+                  )}
                 </div>
               </div>
             </div>
