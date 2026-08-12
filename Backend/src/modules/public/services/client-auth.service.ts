@@ -393,13 +393,9 @@ export class ClientAuthService {
       });
     }
 
-    // Check if client is active
-    if (client.status !== 'ACTIVE') {
-      fail(401, {
-        error: 'Invalid credentials',
-        message: INVALID_CREDENTIALS_MSG
-      });
-    }
+    // A client's status is salon-relative (a salon flags a client INACTIVE to
+    // block online booking there only) — it must never lock the client out of
+    // their platform account. Only email verification gates login.
 
     // Unverified accounts cannot log in until the confirmation link is clicked.
     if (client.verifyEmailToken) {

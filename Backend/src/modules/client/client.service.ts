@@ -2,6 +2,19 @@ import { prisma } from '../../lib/prisma';
 import { salonClientsFilter, tenantIdFilter } from '../../utils/salonScope';
 
 export class ClientService {
+  /**
+   * Client ids flagged INACTIVE (blocked from online booking) within the given
+   * salon scope. Status is salon-relative: the same client can be ACTIVE at one
+   * salon and INACTIVE at another, and their platform account is unaffected.
+   */
+  private async blockedClientIds(tenantIds: string | string[]): Promise<Set<string>> {
+    const blocks = await prisma.clientBlock.findMany({
+      where: { tenantId: tenantIdFilter(tenantIds) },
+      select: { clientId: true },
+    });
+    return new Set(blocks.map((b) => b.clientId));
+  }
+
   async getClients(tenantIds: string | string[], search?: string, status?: string, page: number = 1, limit: number = 50) {
     const skip = (page - 1) * limit;
     const take = limit;
@@ -9,8 +22,15 @@ export class ClientService {
     // (global client accounts become "the salon's" clients once they book).
     const where: any = { ...salonClientsFilter(tenantIds) };
 
+    // Status is salon-relative: "INACTIVE" = blocked from booking online here.
+    const blockedIds = await this.blockedClientIds(tenantIds);
+
     if (status && status !== 'all') {
-      where.status = status;
+      if (status === 'INACTIVE') {
+        where.id = { in: [...blockedIds] };
+      } else if (status === 'ACTIVE') {
+        where.id = { notIn: [...blockedIds] };
+      }
     }
 
     if (search) {
@@ -44,8 +64,13 @@ export class ClientService {
       prisma.client.count({ where })
     ]);
 
+    const clientsWithStatus = clients.map((c) => ({
+      ...c,
+      status: blockedIds.has(c.id) ? 'INACTIVE' : 'ACTIVE',
+    }));
+
     return {
-      clients,
+      clients: clientsWithStatus,
       pagination: {
         page,
         limit: take,
@@ -150,7 +175,7 @@ export class ClientService {
 
   async getClientById(tenantIds: string | string[], id: string) {
     const filter = tenantIdFilter(tenantIds);
-    return prisma.client.findFirst({
+    const client = await prisma.client.findFirst({
       where: { id, ...salonClientsFilter(tenantIds) },
       include: {
         appointments: {
@@ -176,6 +201,10 @@ export class ClientService {
         }
       }
     });
+
+    if (!client) return null;
+    const blockedIds = await this.blockedClientIds(tenantIds);
+    return { ...client, status: blockedIds.has(client.id) ? 'INACTIVE' : 'ACTIVE' };
   }
 
   async createClient(tenantId: string, data: any) {
@@ -191,13 +220,26 @@ export class ClientService {
       }
     }
 
-    return prisma.client.create({
+    const { status, ...clientData } = data;
+    const client = await prisma.client.create({
       data: {
-        ...data,
+        ...clientData,
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
         tenantId
       } as any
     });
+
+    // Status is salon-relative: INACTIVE/BLOCKED means the client cannot book
+    // online at THIS salon — stored as a per-salon block, never on the client row.
+    if (status === 'INACTIVE' || status === 'BLOCKED') {
+      await prisma.clientBlock.upsert({
+        where: { clientId_tenantId: { clientId: client.id, tenantId } },
+        create: { clientId: client.id, tenantId },
+        update: {},
+      });
+    }
+
+    return client;
   }
 
   async updateClient(tenantIds: string | string[], id: string, data: any) {
@@ -209,13 +251,35 @@ export class ClientService {
       throw new Error('CLIENT_NOT_FOUND');
     }
 
-    return prisma.client.update({
+    const { status, ...clientData } = data;
+    const client = await prisma.client.update({
       where: { id },
       data: {
-        ...data,
+        ...clientData,
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined
       }
     });
+
+    // Status is salon-relative — write a per-salon block for the salon the admin
+    // is acting on (single-salon scope). A multi-salon filter leaves it unchanged.
+    const blockTenant = Array.isArray(tenantIds)
+      ? tenantIds.length === 1 ? tenantIds[0] : null
+      : tenantIds;
+    if (blockTenant) {
+      if (status === 'INACTIVE' || status === 'BLOCKED') {
+        await prisma.clientBlock.upsert({
+          where: { clientId_tenantId: { clientId: id, tenantId: blockTenant } },
+          create: { clientId: id, tenantId: blockTenant },
+          update: {},
+        });
+      } else if (status === 'ACTIVE') {
+        await prisma.clientBlock.deleteMany({
+          where: { clientId: id, tenantId: blockTenant },
+        });
+      }
+    }
+
+    return client;
   }
 
   async deleteClient(tenantIds: string | string[], id: string) {
@@ -347,6 +411,36 @@ export class ClientService {
         where: { clientId: { in: duplicateClientIds }, tenantId: filter },
         data: { clientId: primaryClientId }
       });
+
+      // Per-salon blocks: repoint duplicates' blocks to the survivor. A block
+      // can exist only once per (client, salon), so drop collisions with the
+      // primary's existing blocks and extra duplicate blocks on the same salon.
+      const dupBlocks = await tx.clientBlock.findMany({
+        where: { clientId: { in: duplicateClientIds } },
+        select: { id: true, tenantId: true },
+      });
+      if (dupBlocks.length > 0) {
+        const primaryTenants = new Set(
+          (await tx.clientBlock.findMany({
+            where: { clientId: primaryClientId },
+            select: { tenantId: true },
+          })).map((b) => b.tenantId)
+        );
+        const keep: string[] = [];
+        const seenTenants = new Set<string>();
+        for (const b of dupBlocks) {
+          if (primaryTenants.has(b.tenantId)) continue; // survivor already blocked here
+          if (seenTenants.has(b.tenantId)) continue; // one block per salon is enough
+          seenTenants.add(b.tenantId);
+          keep.push(b.id);
+        }
+        const drop = dupBlocks.map((b) => b.id).filter((id) => !keep.includes(id));
+        await tx.clientBlock.deleteMany({ where: { id: { in: drop } } });
+        await tx.clientBlock.updateMany({
+          where: { id: { in: keep } },
+          data: { clientId: primaryClientId },
+        });
+      }
 
       await tx.client.deleteMany({
         where: { id: { in: duplicateClientIds }, ...salonClientsFilter(tenantIds) }

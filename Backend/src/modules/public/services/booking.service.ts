@@ -161,6 +161,22 @@ export class BookingService {
         });
       }
 
+      // Per-salon block: the salon may have flagged this client (INACTIVE) to
+      // prevent them from booking ONLINE here. This never affects the client's
+      // platform account (login, other salons) nor admin-created appointments.
+      const block = await prisma.clientBlock.findUnique({
+        where: {
+          clientId_tenantId: { clientId: bookerClient.id, tenantId: tenant.id },
+        },
+      });
+      if (block) {
+        fail(403, {
+          error: 'Client blocked',
+          message:
+            "Ce salon ne vous permet pas actuellement de prendre rendez-vous en ligne. Contactez l'établissement pour plus d'informations.",
+        });
+      }
+
       log.log(`[Booking] Booker client resolved: id=${bookerClient.id} name=${bookerClient.firstName} ${bookerClient.lastName} phone=${bookerClient.phone}`);
 
       const loadServices = async (ids: string[]) => {

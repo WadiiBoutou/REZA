@@ -168,6 +168,7 @@ model Tenant {
   // Relations
   users            User[]
   clients          Client[]
+  clientBlocks     ClientBlock[]
   services         Service[]
   employees        Employee[]
   appointments     Appointment[]
@@ -315,6 +316,7 @@ model Client {
   favorites             Favorite[]           @relation("ClientFavorites")
   bookingGroupsAsBooker BookingGroup[]       @relation("BookingGroupBooker")
   bookingParticipants   BookingParticipant[]
+  clientBlocks          ClientBlock[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -322,6 +324,24 @@ model Client {
   @@index([tenantId, email])
   @@index([tenantId, phone])
   @@map("clients")
+}
+
+// Per-salon client block: a salon can flag a client INACTIVE to prevent them
+// from booking ONLINE with that salon, without affecting the client's
+// platform-wide account (login, favorites, other salons) or admin-created
+// appointments. One row per (client, salon); absence = ACTIVE for that salon.
+model ClientBlock {
+  id        String   @id @default(cuid())
+  clientId  String
+  tenantId  String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, tenantId])
+  @@map("client_blocks")
 }
 
 enum ClientStatus {
