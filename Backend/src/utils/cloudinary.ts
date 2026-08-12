@@ -19,17 +19,23 @@ import { v2 as cloudinary } from 'cloudinary';
 import fs from 'fs';
 import path from 'path';
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+// Trim every Cloudinary env value: a stray trailing newline or space (common
+// when pasting into the Render dashboard or a .env file) makes Cloudinary
+// return an HTML 404 page instead of a JSON error, which the SDK then wraps
+// in a cryptic "Server return invalid JSON response" message.
+const CLOUDINARY_ENV = {
+  cloud_name: (process.env.CLOUDINARY_CLOUD_NAME || '').trim(),
+  api_key: (process.env.CLOUDINARY_API_KEY || '').trim(),
+  api_secret: (process.env.CLOUDINARY_API_SECRET || '').trim(),
+};
+
+cloudinary.config(CLOUDINARY_ENV);
 
 export function cloudinaryConfigured(): boolean {
   return Boolean(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-    process.env.CLOUDINARY_API_KEY &&
-    process.env.CLOUDINARY_API_SECRET
+    CLOUDINARY_ENV.cloud_name &&
+    CLOUDINARY_ENV.api_key &&
+    CLOUDINARY_ENV.api_secret
   );
 }
 
@@ -53,13 +59,27 @@ export async function uploadImage(input: UploadImageInput, folder: string): Prom
     const ext = (mimetype.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
     const publicId = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     const dataUri = `data:${mimetype};base64,${buffer.toString('base64')}`;
-    const result = await cloudinary.uploader.upload(dataUri, {
-      folder,
-      public_id: publicId,
-      resource_type: 'image',
-      format: ext === 'svg' ? undefined : ext, // svg handled as raw by default
-    });
-    return result.secure_url;
+    try {
+      const result = await cloudinary.uploader.upload(dataUri, {
+        folder,
+        public_id: publicId,
+        resource_type: 'image',
+        format: ext === 'svg' ? undefined : ext, // svg handled as raw by default
+      });
+      return result.secure_url;
+    } catch (uploadError: any) {
+      // The Cloudinary SDK wraps non-JSON responses (e.g. an HTML 404 page when
+      // the cloud name is misconfigured) in a cryptic "Server return invalid
+      // JSON response" message — surface a clear, actionable error instead.
+      const status = uploadError?.http_code;
+      if (status === 404 || /invalid JSON response|Page not found|DOCTYPE/i.test(uploadError?.message || '')) {
+        throw new Error(
+          `L'upload d'image a échoué : Cloudinary a répondu ${status || '404'}. ` +
+          `Vérifiez que CLOUDINARY_CLOUD_NAME (${CLOUDINARY_ENV.cloud_name || '(vide)'}) est un nom de cloud valide sur votre compte Cloudinary.`
+        );
+      }
+      throw uploadError;
+    }
   }
 
   if (process.env.NODE_ENV === 'production') {
