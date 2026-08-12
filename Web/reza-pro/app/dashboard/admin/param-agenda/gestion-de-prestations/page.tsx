@@ -469,11 +469,6 @@ const GestionPrestations = () => {
     });
   };
 
-  // Full known list for dropdowns: canonical categories + any legacy/custom
-  // ones in use. Kept separate from `categories` (which drives section
-  // rendering) so empty canonical sections don't clutter the page.
-  const categoryOptions = Array.from(new Set([...SALON_CATEGORIES, ...categories]));
-
   const nonEmptyCategories = categories.filter((c) => (groupedServices[c] || []).length > 0);
   const allCollapsed = nonEmptyCategories.length > 0 && nonEmptyCategories.every((c) => collapsedCategories.has(c));
   const expandAll = () => setCollapsedCategories(new Set());
@@ -593,7 +588,7 @@ const GestionPrestations = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Toutes les catégories</SelectItem>
-                  {categoryOptions.map(cat => (
+                  {categories.map(cat => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                   ))}
                 </SelectContent>
@@ -694,7 +689,7 @@ const GestionPrestations = () => {
       {showModal && (
         <ServiceModal
           service={editingService}
-          categories={categoryOptions}
+          categories={categories}
           employees={employees}
           onClose={() => {
             setShowModal(false);

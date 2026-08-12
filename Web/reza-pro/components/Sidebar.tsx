@@ -1316,7 +1316,9 @@ export default function Sidebar() {
 						{/* Notifications */}
 						<button className="relative p-2.5 rounded-full text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all" onClick={() => setShowNotificationSidebar(true)}>
 							<Bell size={20} strokeWidth={2} />
-							<span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
+							{unreadCount > 0 && (
+								<span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
+							)}
 						</button>
 						
 						{/* Divider */}
