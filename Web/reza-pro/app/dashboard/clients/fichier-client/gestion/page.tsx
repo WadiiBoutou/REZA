@@ -557,7 +557,6 @@ export default function ClientsGestionPage() {
                   }
                 }}
                 className="px-4 py-2 text-sm font-medium rounded-full border border-gray-200 hover:border-gray-300 transition-colors flex items-center gap-2 whitespace-nowrap"
-                title="Défaut pour les nouveaux clients sans override explicite"
               >
                 <span className="text-gray-500 text-xs">Confirmation par défaut</span>
                 <span className={autoConfirmGlobal ? 'text-emerald-600 font-medium' : 'text-amber-600 font-medium'}>
