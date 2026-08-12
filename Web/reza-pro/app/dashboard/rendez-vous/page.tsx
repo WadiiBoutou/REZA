@@ -636,6 +636,9 @@ interface NewAppointmentModalProps {
   }>;
   initialDate?: Date;
   initialTime?: string;
+  /** Agenda display range (from Horaires → agenda) — restricts the heure de début picker. */
+  agendaStart?: string;
+  agendaEnd?: string;
 }
 
 // Plan types matching backend scheduling.service.ts
@@ -678,7 +681,7 @@ const PLAN_DEBOUNCE_MS = 300;
 const ERROR_AUTO_DISMISS_MS = 3000;
 const CREATE_ERROR_AUTO_DISMISS_MS = 8000;
 
-const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCreateAppointment, employeesData = [], initialDate, initialTime }) => {
+const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCreateAppointment, employeesData = [], initialDate, initialTime, agendaStart, agendaEnd }) => {
   const { isAuthenticated, salons, isSalonFilterMulti, effectiveSalonIds } = useAuth();
   const [createTenantId, setCreateTenantId] = useState(() =>
     !isSalonFilterMulti && effectiveSalonIds.length === 1 ? effectiveSalonIds[0] : ''
@@ -1448,7 +1451,13 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCr
             <div className="space-y-2">
               <Label htmlFor="time" className="mb-2">Heure de début</Label>
               <div className='mt-2'>
-                <TimePicker value={time} onChange={setTime} id="rdv-time-picker" />
+                <TimePicker
+                  value={time}
+                  onChange={setTime}
+                  id="rdv-time-picker"
+                  startTime={agendaStart}
+                  endTime={agendaEnd}
+                />
               </div>
             </div>
           </div>
@@ -3290,6 +3299,8 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
           employeesData={employeesData}
           initialDate={newRdvInitialDate}
           initialTime={newRdvInitialTime}
+          agendaStart={agendaStart}
+          agendaEnd={agendaEnd}
         />
       )}
 

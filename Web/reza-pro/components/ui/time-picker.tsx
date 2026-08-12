@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -6,12 +6,48 @@ interface TimePickerProps {
   value?: string;
   onChange?: (value: string) => void;
   id?: string;
+  /**
+   * Optional range restriction: only slots within [startTime, endTime) are
+   * offered (used e.g. to limit the "Heure de début" to the salon's agenda
+   * display hours). Omit both to offer all 24 hours.
+   */
+  startTime?: string;
+  endTime?: string;
 }
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
 const MINUTES = ['00', '30'];
 
-const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, id }) => {
+const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, id, startTime, endTime }) => {
+  // Resolved [startMin, endMin) range in minutes since midnight, or null when
+  // no restriction was requested.
+  const range = useMemo(() => {
+    if (!startTime || !endTime) return null;
+    const [sh, sm] = startTime.split(':').map(Number);
+    const [eh, em] = endTime.split(':').map(Number);
+    return { startMin: (sh || 0) * 60 + (sm || 0), endMin: (eh || 0) * 60 + (em || 0) };
+  }, [startTime, endTime]);
+
+  // Hours whose 60-minute span intersects the range (an hour is offered if any
+  // of its 30-min slots can start within [startMin, endMin)).
+  const allowedHours = useMemo(() => {
+    if (!range) return HOURS;
+    return HOURS.filter((h) => {
+      const hStart = Number(h) * 60;
+      const hEnd = hStart + 60;
+      return hStart < range.endMin && hEnd > range.startMin;
+    });
+  }, [range]);
+
+  // Minutes selectable for a given hour (boundary hours lose the out-of-range half).
+  const allowedMinutesFor = (hour: string): string[] => {
+    if (!range) return MINUTES;
+    const hBase = Number(hour) * 60;
+    return MINUTES.filter((m) => {
+      const t = hBase + Number(m);
+      return t >= range.startMin && t < range.endMin;
+    });
+  };
   const [open, setOpen] = useState(false);
   const [selectedHour, setSelectedHour] = useState(() => {
     const parts = (value || '').split(':');
@@ -30,20 +66,21 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, id }) => {
     const parts = (value || '').split(':');
     const h = parts[0] || '08';
     const m = parts[1] || '00';
+    const allowed = allowedMinutesFor(h);
     setSelectedHour(h);
-    setSelectedMinute(MINUTES.includes(m) ? m : '00');
-  }, [value]);
+    setSelectedMinute(allowed.includes(m) ? m : (allowed[0] || '00'));
+  }, [value, startTime, endTime]);
 
   // Auto-scroll hour list to selected hour when opened
   useEffect(() => {
     if (open && hourListRef.current) {
-      const idx = HOURS.indexOf(selectedHour);
+      const idx = allowedHours.indexOf(selectedHour);
       if (idx >= 0) {
         const item = hourListRef.current.children[idx] as HTMLElement;
         if (item) item.scrollIntoView({ block: 'center', behavior: 'auto' });
       }
     }
-  }, [open, selectedHour]);
+  }, [open, selectedHour, allowedHours]);
 
   // Close on click outside
   useEffect(() => {
@@ -68,9 +105,13 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, id }) => {
   }, [open]);
 
   const handleSelect = (h: string, m: string) => {
-    const newVal = `${h}:${m}`;
+    // Boundary hours only allow the in-range minute (e.g. 09:00 is invalid
+    // when the range starts at 09:30 — fall back to 09:30).
+    const allowed = allowedMinutesFor(h);
+    const finalM = allowed.includes(m) ? m : (allowed[0] || m);
+    const newVal = `${h}:${finalM}`;
     setSelectedHour(h);
-    setSelectedMinute(m);
+    setSelectedMinute(finalM);
     setOpen(false);
     onChange && onChange(newVal);
   };
@@ -115,7 +156,7 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, id }) => {
                   className="h-48 overflow-y-auto scroll-smooth"
                   style={{ scrollbarWidth: 'thin' }}
                 >
-                  {HOURS.map((h) => (
+                  {allowedHours.map((h) => (
                     <button
                       key={h}
                       type="button"
@@ -138,7 +179,7 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, id }) => {
                   Min
                 </div>
                 <div className="h-48 flex flex-col items-center justify-center gap-3">
-                  {MINUTES.map((m) => (
+                  {allowedMinutesFor(selectedHour).map((m) => (
                     <button
                       key={m}
                       type="button"

@@ -212,12 +212,14 @@ const GestionHoraires = () => {
       router.replace('/dashboard/admin/salons/mes-salons');
       return;
     }
-    if (!querySalonId || querySalonId !== scopedSalonId) {
-      router.replace(
-        `/dashboard/admin/param-etablissement/gestion-horaires-delais?salonId=${scopedSalonId}`
-      );
+    // Keep the URL clean: when exactly one salon is active, the global salon
+    // filter already scopes this page, so strip a stale ?salonId= param instead
+    // of re-adding it to the URL. An explicit ?salonId= for multi-salon scoping
+    // (query ≠ single active salon) is still honored and left untouched.
+    if (querySalonId && querySalonId === scopedSalonId && effectiveSalonIds.length === 1) {
+      router.replace('/dashboard/admin/param-etablissement/gestion-horaires-delais');
     }
-  }, [mounted, scopedSalonId, querySalonId, router, salons.length]);
+  }, [mounted, scopedSalonId, querySalonId, router, salons.length, effectiveSalonIds.length]);
 
   useEffect(() => {
     if (mounted && scopedSalonId) {
