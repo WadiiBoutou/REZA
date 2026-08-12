@@ -232,6 +232,10 @@ function LoginPageContent() {
         // Check if email verification is required
         if (responseData.requiresEmailVerification) {
           // Show success message and redirect to login with message
+          // Drop the loading overlay FIRST — without this the form stays
+          // hidden behind the floating REZA and the user never sees that
+          // the confirmation email was sent.
+          setLoading(false);
           // Show success message
           const successMessage = responseData.message || 'Compte créé avec succès. Veuillez vérifier votre email pour activer votre compte.';
           setError(successMessage);
