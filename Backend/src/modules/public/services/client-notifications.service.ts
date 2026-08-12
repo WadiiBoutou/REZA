@@ -36,9 +36,23 @@ export class ClientNotificationsService {
       };
     }
 
-    // Get all client IDs and tenant IDs
+    // Get all client IDs and tenant IDs (clients may have a null tenantId,
+    // e.g. "global" clients with no salon — those can't have tenant notifications)
     const clientIds = clients.map(c => c.id);
-    const tenantIds = [...new Set(clients.map(c => c.tenantId))];
+    const tenantIds = [...new Set(clients.map(c => c.tenantId).filter((t): t is string => !!t))];
+
+    if (tenantIds.length === 0) {
+      return {
+        notifications: [],
+        unreadCount: 0,
+        grouped: {
+          today: [],
+          yesterday: [],
+          thisWeek: [],
+          older: []
+        }
+      };
+    }
 
     // Build where clause to find notifications for these clients
     // Notifications are stored with clientId in metadata and belong to the tenant
