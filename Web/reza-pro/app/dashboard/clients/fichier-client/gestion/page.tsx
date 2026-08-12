@@ -122,7 +122,6 @@ export default function ClientsGestionPage() {
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [createTenantId, setCreateTenantId] = useState('');
-  const [autoConfirmGlobal, setAutoConfirmGlobal] = useState<boolean | null>(null);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -136,16 +135,6 @@ export default function ClientsGestionPage() {
   });
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
-
-  // Fetch global auto-confirm default
-  const fetchAutoConfirmDefault = async () => {
-    try {
-      const res = await api.getAutoConfirmSettings();
-      setAutoConfirmGlobal(res.enabled);
-    } catch {
-      setAutoConfirmGlobal(false);
-    }
-  };
 
   // Fetch clients from API
   const fetchClients = async () => {
@@ -217,7 +206,6 @@ export default function ClientsGestionPage() {
   useEffect(() => {
     if (user) {
       fetchClients();
-      fetchAutoConfirmDefault();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, salonFilterKey]);
@@ -538,32 +526,6 @@ export default function ClientsGestionPage() {
                 Liste
               </button>
             </div>
-
-            <div className="h-8 w-px bg-gray-200"></div>
-
-            {/* Global Auto-Confirm Default Toggle */}
-            {autoConfirmGlobal !== null && (
-              <button
-                type="button"
-                onClick={async () => {
-                  const next = !autoConfirmGlobal;
-                  setAutoConfirmGlobal(next);
-                  try {
-                    await api.updateAutoConfirmSettings(next);
-                    toast.success(next ? 'Confirmation automatique activée' : 'Confirmation manuelle par défaut');
-                  } catch {
-                    setAutoConfirmGlobal(!next);
-                    toast.error('Erreur lors de la mise à jour');
-                  }
-                }}
-                className="px-4 py-2 text-sm font-medium rounded-full border border-gray-200 hover:border-gray-300 transition-colors flex items-center gap-2 whitespace-nowrap"
-              >
-                <span className="text-gray-500 text-xs">Confirmation par défaut</span>
-                <span className={autoConfirmGlobal ? 'text-emerald-600 font-medium' : 'text-amber-600 font-medium'}>
-                  {autoConfirmGlobal ? 'Auto ▾' : 'Manuel ▾'}
-                </span>
-              </button>
-            )}
 
             <div className="h-8 w-px bg-gray-200"></div>
 
