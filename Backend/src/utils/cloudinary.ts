@@ -75,11 +75,22 @@ export async function uploadImage(input: UploadImageInput, folder: string): Prom
       // Never print env values here: the raw CLOUDINARY_CLOUD_NAME may contain
       // the API key and secret if a full cloudinary:// URL was pasted in.
       const status = uploadError?.http_code;
-      if (status === 404 || /invalid JSON response|Page not found|DOCTYPE/i.test(uploadError?.message || '')) {
+      const message = uploadError?.message || '';
+      // 404 / HTML page → the cloud name is wrong or the upload URL is malformed.
+      if (status === 404 || /invalid JSON response|Page not found|DOCTYPE/i.test(message)) {
         throw new Error(
-          `L'upload d'image a échoué : Cloudinary a répondu ${status || '404'}. ` +
+          `L'upload d'image a échoué : Cloudinary a répondu 404. ` +
           `Vérifiez que CLOUDINARY_CLOUD_NAME sur Render contient le nom de cloud SEUL ` +
           `(ex. dqceikk6h), sans le préfixe "cloudinary://…" et sans clés.`
+        );
+      }
+      // 401 / 403 → Cloudinary received the request but rejected the credentials.
+      if (status === 401 || status === 403) {
+        throw new Error(
+          `L'upload d'image a échoué : Cloudinary a refusé l'authentification (${status}). ` +
+          `Les identifiants CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET sur Render ne ` +
+          `correspondent pas au compte du cloud « ${CLOUDINARY_ENV.cloud_name || '(vide)'} ». ` +
+          `Vérifiez/régénérez les clés dans Cloudinary → Settings → API Keys et mettez-les à jour sur Render.`
         );
       }
       throw uploadError;
