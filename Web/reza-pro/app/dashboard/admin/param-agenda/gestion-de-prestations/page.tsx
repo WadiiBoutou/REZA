@@ -110,25 +110,6 @@ function validateServicePricing(service: Service): string | null {
   return null;
 }
 
-function applyRangePriceChange(
-  service: Service,
-  field: 'priceFrom' | 'priceTo',
-  rawValue: number
-): Pick<Service, 'priceFrom' | 'priceTo'> {
-  const value = Math.max(0, rawValue);
-  if (service.priceType !== 'range') {
-    return { [field]: value } as Pick<Service, 'priceFrom' | 'priceTo'>;
-  }
-  if (field === 'priceFrom') {
-    const priceTo =
-      service.priceTo != null && value > service.priceTo ? value : service.priceTo;
-    return { priceFrom: value, priceTo };
-  }
-  const priceFrom =
-    service.priceFrom != null && value < service.priceFrom ? value : service.priceFrom;
-  return { priceTo: value, priceFrom };
-}
-
 const GestionPrestations = () => {
   const { isAuthenticated, salons, effectiveSalonIds, isSalonFilterMulti, salonFilter } = useAuth();
   const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
@@ -1089,34 +1070,14 @@ const ServiceModal = ({
       toast.error('Veuillez remplir tous les champs obligatoires (Nom et Catégorie)');
       return;
     }
-    const pricingError = validateServicePricing(formData);
+    // Pricing is fixed-price only — 'from'/'range' legacy services are converted on save.
+    const fixedFormData = { ...formData, priceType: 'fixed' as const };
+    const pricingError = validateServicePricing(fixedFormData);
     if (pricingError) {
       toast.error(pricingError);
       return;
     }
-    onSave(formData);
-  };
-
-  const rangePriceError =
-    formData.priceType === 'range' &&
-    !formData.onQuote &&
-    formData.priceFrom != null &&
-    formData.priceTo != null &&
-    formData.priceFrom > 0 &&
-    formData.priceTo > 0 &&
-    formData.priceFrom > formData.priceTo
-      ? 'Le prix minimum ne peut pas dépasser le prix maximum'
-      : null;
-
-  const setRangePrice = (field: 'priceFrom' | 'priceTo', rawValue: number) => {
-    setFormData((prev) => ({ ...prev, ...applyRangePriceChange(prev, field, rawValue) }));
-  };
-
-  const adjustRangePrice = (field: 'priceFrom' | 'priceTo', delta: number) => {
-    setFormData((prev) => {
-      const current = Number(prev[field] || 0) + delta;
-      return { ...prev, ...applyRangePriceChange(prev, field, current) };
-    });
+    onSave(fixedFormData);
   };
 
   return (
@@ -1273,24 +1234,7 @@ const ServiceModal = ({
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-3">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Type de prix
-                </label>
-                {/* Use Select dropdown for priceType */}
-                <Select value={formData.priceType} onValueChange={v => setFormData({ ...formData, priceType: v as 'fixed' | 'from' | 'range' })}>
-                  <SelectTrigger className="w-full px-4 py-2.5 rounded-full bg-gray-50 border border-gray-200 text-sm mt-2">
-                    <SelectValue placeholder="Sélectionner le type de prix" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="fixed">Prix fixe</SelectItem>
-                    <SelectItem value="from">À partir de</SelectItem>
-                    <SelectItem value="range">Fourchette</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {formData.priceType === 'fixed' && (
+              {/* Fixed price only — 'Type de prix' removed by design */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Prix (MAD)
@@ -1323,114 +1267,6 @@ const ServiceModal = ({
                     </button>
                   </div>
                 </div>
-              )}
-
-              {formData.priceType === 'from' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Prix minimum (MAD)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      onClick={() => setFormData((prev) => ({ ...prev, priceFrom: Math.max(0, Number(prev.priceFrom || 0) - 10) }))}
-                      aria-label="Diminuer le prix minimum"
-                    >
-                      -
-                    </button>
-                    <input
-                      type="number"
-                      value={formData.priceFrom || ''}
-                      onChange={e => setFormData({ ...formData, priceFrom: Number(e.target.value) })}
-                      className="w-full px-4 py-2.5 rounded-full bg-gray-50 border border-gray-200 text-sm text-center no-arrows"
-                      required
-                      placeholder="Prix minimum en MAD"
-                      min={0}
-                    />
-                    <button
-                      type="button"
-                      className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      onClick={() => setFormData({ ...formData, priceFrom: Number(formData.priceFrom || 0) + 10 })}
-                      aria-label="Augmenter le prix minimum"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {formData.priceType === 'range' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Prix minimum (MAD)
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        onClick={() => adjustRangePrice('priceFrom', -10)}
-                        aria-label="Diminuer le prix minimum"
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        value={formData.priceFrom || ''}
-                        onChange={(e) => setRangePrice('priceFrom', Number(e.target.value))}
-                        className="w-full px-4 py-2.5 rounded-full bg-gray-50 border border-gray-200 text-sm text-center no-arrows"
-                        required
-                        placeholder="Prix minimum en MAD"
-                        min={0}
-                      />
-                      <button
-                        type="button"
-                        className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        onClick={() => adjustRangePrice('priceFrom', 10)}
-                        aria-label="Augmenter le prix minimum"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Prix maximum (MAD)
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        onClick={() => adjustRangePrice('priceTo', -10)}
-                        aria-label="Diminuer le prix maximum"
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        value={formData.priceTo || ''}
-                        onChange={(e) => setRangePrice('priceTo', Number(e.target.value))}
-                        className="w-full px-4 py-2.5 rounded-full bg-gray-50 border border-gray-200 text-sm text-center no-arrows"
-                        required
-                        placeholder="Prix maximum en MAD"
-                        min={formData.priceFrom || 0}
-                      />
-                      <button
-                        type="button"
-                        className="px-4 py-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        onClick={() => adjustRangePrice('priceTo', 10)}
-                        aria-label="Augmenter le prix maximum"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  {rangePriceError && (
-                    <p className="md:col-span-3 text-sm text-red-600">{rangePriceError}</p>
-                  )}
-                </>
-              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
