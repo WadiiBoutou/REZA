@@ -1,5 +1,19 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/backend-api';
 
+// Human-friendly French messages for common statuses — used when the server
+// returns a non-JSON body (HTML error page, deploy swap, proxy) so users
+// never see raw parse errors like "Unexpected token '<'".
+function friendlyHttpMessage(status: number, fallback: string): string {
+  if (status === 401) return 'Session expirée. Veuillez vous reconnecter.';
+  if (status === 403) return "Accès refusé. Vous n'avez pas la permission d'effectuer cette action.";
+  if (status === 404) return 'Ressource introuvable. Vérifiez que le lien est correct.';
+  if (status === 408) return 'La requête a expiré. Veuillez réessayer.';
+  if (status === 429) return 'Trop de requêtes. Veuillez réessayer dans quelques instants.';
+  if (status === 500) return 'Erreur serveur. Veuillez réessayer dans quelques instants.';
+  if (status === 502 || status === 503 || status === 504) return 'Le service est temporairement indisponible. Veuillez réessayer.';
+  return fallback;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -22,19 +36,45 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'An error occurred' }));
-      // Create error with the message from API
-      const apiError = new Error(error.message || `HTTP error! status: ${response.status}`);
+      // Read as text first, then try JSON — never leak parse errors to the user.
+      let apiError: any;
+      try {
+        const text = await response.text();
+        let parsed: any = null;
+        if (text && text.trim()) {
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            parsed = null;
+          }
+        }
+        const message = parsed && typeof parsed.message === 'string'
+          ? parsed.message
+          : (parsed && typeof parsed.error === 'string' ? parsed.error : '');
+        apiError = new Error(
+          message || friendlyHttpMessage(response.status, `HTTP error! status: ${response.status}`)
+        );
+        apiError.data = parsed || (text || null);
+      } catch (readError) {
+        apiError = new Error(friendlyHttpMessage(response.status, `HTTP error! status: ${response.status}`));
+      }
       // Store status code and full error data for better error handling
-      (apiError as any).status = response.status;
-      (apiError as any).statusText = response.statusText;
-      (apiError as any).data = error;
+      apiError.status = response.status;
+      apiError.statusText = response.statusText;
       // Don't log expected client errors (4xx) as console errors
       // These are user input errors and should be displayed in UI only
       throw apiError;
     }
 
-    return response.json();
+    const successText = await response.text();
+    if (!successText || !successText.trim()) {
+      return {} as T;
+    }
+    try {
+      return JSON.parse(successText);
+    } catch {
+      throw new Error('Réponse du serveur invalide. Veuillez réessayer.');
+    }
   }
 
   // Public endpoints

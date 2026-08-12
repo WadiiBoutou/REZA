@@ -46,6 +46,48 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
+/**
+ * Human-friendly French message for common HTTP statuses, used when the
+ * server returns a non-JSON body (HTML error page from a proxy, a deploy
+ * swap, etc.) so users never see raw parse errors like "Unexpected token '<'".
+ */
+function friendlyHttpMessage(status: number, fallback: string): string {
+  if (status === 401) return 'Session expirée. Veuillez vous reconnecter.';
+  if (status === 403) return "Accès refusé. Vous n'avez pas la permission d'effectuer cette action.";
+  if (status === 404) return 'Ressource introuvable. Vérifiez que le lien est correct.';
+  if (status === 408) return 'La requête a expiré. Veuillez réessayer.';
+  if (status === 429) return 'Trop de requêtes. Veuillez réessayer dans quelques instants.';
+  if (status === 500) return 'Erreur serveur. Veuillez réessayer dans quelques instants.';
+  if (status === 502 || status === 503 || status === 504) return 'Le service est temporairement indisponible. Veuillez réessayer.';
+  return fallback;
+}
+
+/**
+ * Safely turn a non-OK response into an Error. Reads the body as text, parses
+ * JSON when possible (backend errors), and falls back to a clean French
+ * message when the body is HTML or unreadable. Never leaks parse exceptions.
+ */
+async function errorFromResponse(response: Response, fallback: string): Promise<Error> {
+  const status = response.status;
+  try {
+    const text = await response.text();
+    if (text && text.trim()) {
+      try {
+        const data = JSON.parse(text);
+        const msg = data && (typeof data.message === 'string' ? data.message : (typeof data.error === 'string' ? data.error : ''));
+        if (msg) return new Error(msg);
+        return new Error(friendlyHttpMessage(status, fallback));
+      } catch {
+        // Non-JSON body (HTML etc.) — never surface it raw.
+        return new Error(friendlyHttpMessage(status, fallback));
+      }
+    }
+  } catch {
+    // Body unreadable
+  }
+  return new Error(friendlyHttpMessage(status, fallback));
+}
+
 type PlanAlert = {
   severity: 'conflict' | 'warning' | 'info';
   type: string;
@@ -217,12 +259,13 @@ class ApiClient {
           // Try to get text response
           const text = await responseClone.text();
           if (text && text.trim()) {
-            errorMessage = text;
+            errorMessage = text.trim().startsWith('<') ? friendlyHttpMessage(response.status, errorMessage) : text;
           }
         }
       } catch (parseError) {
         // If parsing fails, use default message
         console.error('Error parsing error response:', parseError);
+        errorMessage = friendlyHttpMessage(response.status, errorMessage);
       }
       
       const error = new Error(errorMessage);
@@ -384,14 +427,15 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        error: failMessage,
-        message: `HTTP ${response.status}: ${response.statusText}`,
-      }));
-      throw new Error(error.message || error.error || failMessage);
+      throw await errorFromResponse(response, failMessage);
     }
 
-    return response.json();
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error('Réponse du serveur invalide. Veuillez réessayer.');
+    }
   }
 
   async createSalon(data: {
@@ -843,14 +887,15 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        error: 'Upload failed',
-        message: `HTTP ${response.status}: ${response.statusText}`
-      }));
-      throw new Error(error.message || 'Failed to upload avatar');
+      throw await errorFromResponse(response, "Erreur lors de l'upload de la photo");
     }
 
-    return response.json();
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error('Réponse du serveur invalide. Veuillez réessayer.');
+    }
   }
 
   async uploadClientAvatar(file: File): Promise<{ avatar: string }> {
@@ -872,14 +917,15 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        error: 'Upload failed',
-        message: `HTTP ${response.status}: ${response.statusText}`
-      }));
-      throw new Error(error.message || 'Failed to upload avatar');
+      throw await errorFromResponse(response, "Erreur lors de l'upload de la photo");
     }
 
-    return response.json();
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error('Réponse du serveur invalide. Veuillez réessayer.');
+    }
   }
 
   // Appointment endpoints
@@ -1156,14 +1202,15 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        error: 'Upload failed',
-        message: `HTTP ${response.status}: ${response.statusText}`
-      }));
-      throw new Error(error.message || 'Failed to upload cover image');
+      throw await errorFromResponse(response, "Erreur lors de l'upload de l'image de couverture");
     }
 
-    return response.json();
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error('Réponse du serveur invalide. Veuillez réessayer.');
+    }
   }
 
   async uploadHeaderImage(file: File): Promise<{ headerImage: string }> {
@@ -1188,22 +1235,15 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[API] Upload failed, response:', errorText);
-      let error;
-      try {
-        error = JSON.parse(errorText);
-      } catch {
-        error = {
-          error: 'Upload failed',
-          message: `HTTP ${response.status}: ${response.statusText}`
-        };
-      }
-      throw new Error(error.message || error.error || 'Failed to upload header image');
+      throw await errorFromResponse(response, "Erreur lors de l'upload de l'image d'en-tête");
     }
 
-    const result = await response.json();
-    return result;
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error('Réponse du serveur invalide. Veuillez réessayer.');
+    }
   }
 
   async getHeaderImage(): Promise<{ headerImage: string | null }> {
