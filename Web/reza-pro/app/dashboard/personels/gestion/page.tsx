@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, X, Copy, Building } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Search, Edit2, Trash2, X, Copy, Building, Camera, Loader2 } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Sketch } from '@uiw/react-color';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -30,6 +30,11 @@ type EmployeeAgenda = {
 	  avatar?: string;
 	  tenantId?: string;
 };
+
+// Avatar upload rules — validated on the client before sending
+const AVATAR_MAX_SIZE = 5 * 1024 * 1024; // 5 Mo
+const AVATAR_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+const AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 const defaultWorkingHours: WorkingHours[] = [
   { day: 'Lundi', isWorking: true, startTime: '09:00', endTime: '18:00', breaks: [{ start: '12:00', end: '13:00' }] },
@@ -85,7 +90,9 @@ const transformAgendaToEmployee = (agenda: EmployeeAgenda, existingEmployee?: an
     firstName: existingEmployee?.firstName || firstName,
     lastName: existingEmployee?.lastName || lastName,
     email: agenda.email || undefined,
-    avatar: agenda.avatar || existingEmployee?.avatar || undefined,
+    // avatar: undefined means it was removed in the form → send null to clear it.
+    // Otherwise keep the current value (uploaded or pre-existing).
+    avatar: agenda.avatar !== undefined ? agenda.avatar : (existingEmployee?.avatar ?? null),
     workingHours: agenda.workingHours,
     agendaSettings,
     isActive: true
@@ -722,6 +729,36 @@ const AgendaModal = ({
 
   const [activeTab, setActiveTab] = useState<'info' | 'hours'>('info');
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarFile = async (file?: File) => {
+    if (!file) return;
+
+    // Extension must be an image (jpg, jpeg, png, webp, gif)
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!AVATAR_EXTENSIONS.includes(ext) || !AVATAR_MIME_TYPES.includes(file.type)) {
+      toast.error("Format d'image invalide. Utilisez JPG, PNG, WEBP ou GIF.");
+      return;
+    }
+
+    // Size limit
+    if (file.size > AVATAR_MAX_SIZE) {
+      toast.error('Image trop volumineuse (max 5 Mo).');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const { avatar } = await api.uploadEmployeeAvatar(file);
+      setFormData((prev) => ({ ...prev, avatar }));
+      toast.success('Photo de profil mise à jour');
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de l'upload de la photo");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleSubmit = () => {
     if (showSalonPicker && !createTenantId) {
@@ -800,6 +837,78 @@ const AgendaModal = ({
           {/* Info Tab */}
           {activeTab === 'info' && (
             <div className="space-y-6">
+              {/* Avatar */}
+              <div className="flex flex-col items-center gap-3 pt-2">
+                <div className="relative group">
+                  <div
+                    className="w-28 h-28 rounded-full overflow-hidden flex items-center justify-center border-2 border-gray-200 shadow-sm transition-shadow group-hover:shadow-md"
+                    style={formData.avatar ? undefined : { backgroundColor: formData.color }}
+                  >
+                    {formData.avatar ? (
+                      <img
+                        src={formData.avatar}
+                        alt="Photo de profil"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-white font-semibold text-4xl">
+                        {formData.name.charAt(0).toUpperCase() || '?'}
+                      </span>
+                    )}
+                    {!formData.avatar && !uploadingAvatar && (
+                      <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                        <Camera
+                          size={20}
+                          className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {uploadingAvatar && (
+                    <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
+                      <Loader2 size={20} className="text-white animate-spin" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={uploadingAvatar}
+                    className="px-4 py-2 text-sm font-medium text-[#002366] bg-[#002366]/5 border border-[#002366]/15 rounded-full hover:bg-[#002366]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Camera size={14} className="inline-block mr-1.5 -mt-0.5" />
+                    {formData.avatar ? 'Changer la photo' : 'Ajouter une photo'}
+                  </button>
+                  {formData.avatar && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData((prev) => ({ ...prev, avatar: undefined }))}
+                      disabled={uploadingAvatar}
+                      className="px-4 py-2 text-sm font-medium text-gray-500 border border-gray-200 rounded-full hover:text-red-600 hover:border-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Supprimer
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-xs text-gray-400">
+                  JPG, PNG, WEBP ou GIF — 5 Mo maximum
+                </p>
+
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={(e) => {
+                    handleAvatarFile(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+
               {showSalonPicker && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">

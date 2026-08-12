@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { employeeService } from './employee.service';
 import { createEmployeeSchema, updateEmployeeSchema } from './employee.schema';
 import { isSalonRequiredError, resolveWriteTenantId } from '../../utils/salonScope';
+import { uploadImage } from '../../utils/cloudinary';
 
 export class EmployeeController {
   async getEmployees(req: Request, res: Response, next: NextFunction) {
@@ -60,6 +61,22 @@ export class EmployeeController {
       if (error.message === 'EMPLOYEE_NOT_FOUND') {
         return res.status(404).json({ error: 'Employee not found' });
       }
+      next(error);
+    }
+  }
+
+  async uploadAvatar(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          error: 'No file uploaded',
+          message: 'Veuillez sélectionner une image'
+        });
+      }
+
+      const avatar = await uploadImage(req.file, 'avatars');
+      res.json({ avatar });
+    } catch (error) {
       next(error);
     }
   }
