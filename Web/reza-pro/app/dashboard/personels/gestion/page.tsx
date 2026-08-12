@@ -368,7 +368,7 @@ const GestionDesAgendas = () => {
             className="px-5 py-2 bg-[#002366] text-white text-sm font-medium rounded-full hover:bg-gray-800 transition-colors shadow-sm"
           >
             <Plus size={16} className="inline-block mr-2 -mt-0.5" />
-            Nouvel Agenda
+            Nouvel employé
           </button>
         </div>
 
@@ -761,7 +761,7 @@ const AgendaModal = ({
         <div className="sticky top-0 bg-white border-b border-gray-100 px-8 py-6 rounded-t-2xl z-10">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-light text-gray-900">
-              {agenda ? 'Modifier l\'agenda' : 'Nouvel agenda'}
+              {agenda ? 'Modifier l\'agenda' : 'Nouvel employé'}
             </h2>
             <button
               onClick={onClose}
