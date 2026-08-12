@@ -3,6 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
 
 function VerifyEmailContent() {
@@ -11,6 +12,8 @@ function VerifyEmailContent() {
   const [status, setStatus] = useState<'verifying' | 'success' | 'error' | 'expired'>('verifying');
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
+  const [connected, setConnected] = useState(false);
+  const { completeVerification } = useAuth();
 
   useEffect(() => {
     const verifyEmail = async () => {
@@ -29,11 +32,21 @@ function VerifyEmailContent() {
         const response = await api.verifyEmail(token, emailParam);
         setStatus('success');
         setMessage(response.message || 'Email vérifié avec succès !');
-        
-        // Redirect to login after 3 seconds
-        setTimeout(() => {
-          router.push('/login?verified=true');
-        }, 3000);
+
+        if (response.token) {
+          // The confirmation link proves email ownership — sign the user in now.
+          completeVerification(response);
+          setConnected(true);
+          const dest = response.user?.role === 'SUPER_ADMIN' ? '/superadmin' : '/dashboard/rendez-vous';
+          setTimeout(() => {
+            router.push(dest);
+          }, 1500);
+        } else {
+          // Legacy fallback: redirect to login after 3 seconds
+          setTimeout(() => {
+            router.push('/login?verified=true');
+          }, 3000);
+        }
       } catch (error: any) {
         console.error('[VerifyEmail] Verification error:', error);
         
@@ -96,13 +109,15 @@ function VerifyEmailContent() {
                 {message}
               </p>
               <p className="text-sm text-gray-500 mb-6">
-                Vous allez être redirigé vers la page de connexion...
+                {connected
+                  ? 'Vous êtes maintenant connecté. Redirection vers votre tableau de bord...'
+                  : 'Vous allez être redirigé vers la page de connexion...'}
               </p>
               <button
-                onClick={() => router.push('/login')}
+                onClick={() => router.push(connected ? '/dashboard/rendez-vous' : '/login')}
                 className="w-full bg-[#002366] text-white py-3 rounded-full font-semibold text-base hover:bg-[#003d99] transition-colors"
               >
-                Aller à la connexion
+                {connected ? 'Aller à mon tableau de bord' : 'Aller à la connexion'}
               </button>
             </>
           )}

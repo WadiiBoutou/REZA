@@ -601,7 +601,16 @@ class ApiClient {
   }
 
   async verifyEmail(token: string, email: string) {
-    return this.request<{ message: string; emailVerified: boolean }>('/auth/verify-email', {
+    return this.request<{
+      token?: string;
+      user?: any;
+      message: string;
+      emailVerified: boolean;
+      salons?: any[];
+      activeTenantId?: string | null;
+      subscription?: any;
+      salonLimit?: number;
+    }>('/auth/verify-email', {
       method: 'POST',
       body: JSON.stringify({ token, email }),
     });

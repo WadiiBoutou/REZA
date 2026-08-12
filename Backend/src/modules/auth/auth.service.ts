@@ -324,7 +324,17 @@ export class AuthService {
         verifyEmailToken: tokenHash,
         email: { equals: email, mode: 'insensitive' }
       },
-      select: { id: true, email: true, verifyEmailExpires: true }
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        tenantId: true,
+        isActive: true,
+        verifyEmailExpires: true,
+        tenant: { select: { id: true, name: true, isActive: true } }
+      }
     });
 
     if (!user) {
@@ -342,13 +352,66 @@ export class AuthService {
       };
     }
 
+    // Mirror the login guards: a deactivated account or organization cannot sign in.
+    if (!user.isActive) {
+      throw {
+        status: 403,
+        error: 'Account inactive',
+        message: 'Your account has been deactivated'
+      };
+    }
+    if (user.tenant && !user.tenant.isActive) {
+      throw {
+        status: 403,
+        error: 'Tenant inactive',
+        message: 'Your organization account has been deactivated'
+      };
+    }
+    if (!user.tenant && user.role !== 'SUPER_ADMIN') {
+      throw {
+        status: 403,
+        error: 'Invalid account',
+        message: 'Your account is not linked to an organization'
+      };
+    }
+
     await prisma.user.update({
       where: { id: user.id },
       data: { verifyEmailToken: null, verifyEmailExpires: null }
     });
 
+    // The confirmation link proves email ownership — issue a session immediately.
+    const authToken = generateToken({
+      userId: user.id,
+      email: user.email,
+      ...(user.tenantId ? { tenantId: user.tenantId } : {}),
+      role: user.role
+    });
+
+    const accountContext = await accountService.getContextForUser(user.id);
+
     return {
-      message: 'Email vérifié avec succès. Vous pouvez maintenant vous connecter.',
+      token: authToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        tenantId: user.tenantId,
+        tenant: user.tenant
+          ? {
+              id: user.tenant.id,
+              name: user.tenant.name
+            }
+          : null
+      },
+      account: accountContext.account,
+      salons: accountContext.salons,
+      activeTenantId: user.tenantId,
+      subscription: accountContext.subscription,
+      salonLimit: accountContext.salonLimit,
+      message: 'Email vérifié avec succès. Vous êtes maintenant connecté.',
       emailVerified: true
     };
   }

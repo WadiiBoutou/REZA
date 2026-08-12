@@ -299,7 +299,9 @@ function LoginPageContent() {
           const redirectUrl = searchParams.get('redirect') || '/account';
           router.push(redirectUrl);
         } else {
-          setError('Email ou mot de passe incorrect.');
+          // Use the real backend message — e.g. the "check your inbox" notice
+          // for unverified accounts — instead of a generic credentials error.
+          setError(result.error || 'Email ou mot de passe incorrect.');
         }
       } catch (error: any) {
         console.error('[Login] Login error:', error);

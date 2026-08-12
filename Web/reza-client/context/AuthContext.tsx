@@ -17,6 +17,8 @@ interface AuthContextType {
   logout: () => void;
   isAuthenticated: boolean;
   loading: boolean;
+  /** Sign the user in right after clicking the email confirmation link. */
+  connectAfterVerification: (client: { email: string; firstName?: string | null; lastName?: string | null; phone?: string | null }) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -84,9 +86,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error: any) {
       setLoading(false);
-      return { success: false, error: 'Email ou mot de passe incorrect.' };
+      // Surface the backend message (e.g. "confirm your email — check your inbox"
+      // for unverified accounts) instead of always showing the generic error.
+      return { success: false, error: error.message || 'Email ou mot de passe incorrect.' };
     }
   }, [loading]);
+
+  // Called by the /verify-email page after the confirmation link is clicked.
+  // The link proves email ownership, so the user is signed in immediately.
+  const connectAfterVerification = useCallback((client: { email: string; firstName?: string | null; lastName?: string | null; phone?: string | null }) => {
+    const email = client.email || '';
+    const userData: User = {
+      email,
+      name: `${client.firstName || ''} ${client.lastName || ''}`.trim() || email.split('@')[0] || 'Client',
+      firstName: client.firstName || undefined,
+      lastName: client.lastName || undefined,
+      phone: client.phone || undefined,
+    };
+    localStorage.setItem('user', JSON.stringify(userData));
+    sessionStorage.removeItem('user');
+    setUser(userData);
+    setIsAuthenticated(true);
+  }, []);
 
   const logout = () => {
     localStorage.removeItem('user');
@@ -96,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated, loading, connectAfterVerification }}>
       {children}
     </AuthContext.Provider>
   );

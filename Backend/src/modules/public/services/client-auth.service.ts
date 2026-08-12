@@ -88,7 +88,14 @@ export class ClientAuthService {
     const tokenHash = hashToken(token);
     const client = await prisma.client.findFirst({
       where: { verifyEmailToken: tokenHash },
-      select: { id: true, email: true, verifyEmailExpires: true },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        verifyEmailExpires: true,
+      },
     });
 
     if (!client) {
@@ -103,9 +110,17 @@ export class ClientAuthService {
       data: { verifyEmailToken: null, verifyEmailExpires: null },
     });
 
+    // The confirmation link proves email ownership — return the full client so
+    // the frontend can sign the user in immediately (no password needed).
     return {
-      message: 'Email vérifié avec succès. Vous pouvez maintenant vous connecter.',
-      client: { email: client.email },
+      message: 'Email vérifié avec succès. Vous êtes maintenant connecté.',
+      client: {
+        id: client.id,
+        email: client.email,
+        firstName: client.firstName,
+        lastName: client.lastName,
+        phone: client.phone,
+      },
     };
   }
 

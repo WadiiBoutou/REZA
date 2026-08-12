@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle, XCircle, Mail, ArrowLeft } from 'lucide-react';
 import LoadingOverlay from '@/components/UI/LoadingOverlay';
 import CurvySlideButton from '@/components/UI/CurvySlideButton';
+import { useAuth } from '../../context/AuthContext';
 
 function VerifyEmailContent() {
   const router = useRouter();
@@ -14,6 +15,8 @@ function VerifyEmailContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'expired'>('loading');
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
+  const [connected, setConnected] = useState(false);
+  const { connectAfterVerification } = useAuth();
 
   useEffect(() => {
     if (!token) {
@@ -53,6 +56,14 @@ function VerifyEmailContent() {
       setMessage(data.message || 'Email vérifié avec succès.');
       if (data.client?.email) {
         setEmail(data.client.email);
+      }
+      if (data.client) {
+        // The confirmation link proves email ownership — sign the user in now.
+        connectAfterVerification(data.client);
+        setConnected(true);
+        setTimeout(() => {
+          router.push('/account');
+        }, 1500);
       }
     } catch (error: any) {
       console.error('Verification error:', error);
@@ -116,9 +127,14 @@ function VerifyEmailContent() {
               </div>
               <h1 className="text-2xl font-bold text-gray-900 mb-4">Email vérifié !</h1>
               <p className="text-gray-600 mb-6">{message}</p>
+              <p className="text-sm text-gray-500 mb-6">
+                {connected
+                  ? 'Vous êtes maintenant connecté. Redirection vers votre compte...'
+                  : 'Vous pouvez maintenant vous connecter.'}
+              </p>
               <CurvySlideButton
-                onClick={() => router.push('/login')}
-                text="Se connecter"
+                onClick={() => router.push(connected ? '/account' : '/login')}
+                text={connected ? 'Aller à mon compte' : 'Se connecter'}
                 color="#000000"
                 textColor="#ffffff"
                 borderColor="#000000"

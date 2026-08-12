@@ -126,6 +126,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
   refreshUser: () => Promise<void>;
+  /** Sign the user in right after clicking the email confirmation link (JWT returned by backend). */
+  completeVerification: (response: any) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -260,11 +262,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         'too many login attempts': 'Trop de tentatives de connexion. Veuillez réessayer plus tard',
       };
 
-      const rawMessage = (error.message || '').toLowerCase().trim();
+      const rawMessage = (error.message || '').trim();
+      const lowerMessage = rawMessage.toLowerCase();
       const frenchMessage =
-        msgMap[rawMessage] ||
+        msgMap[lowerMessage] ||
         // Partial match fallback
-        Object.entries(msgMap).find(([key]) => rawMessage.includes(key))?.[1] ||
+        Object.entries(msgMap).find(([key]) => lowerMessage.includes(key))?.[1] ||
+        // Backend already sends user-facing French messages (e.g. the unverified
+        // email notice) — pass them through instead of the generic credentials error.
+        rawMessage ||
         'Email ou mot de passe invalide';
 
       return {
@@ -320,6 +326,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
   };
+
+  // Called by the /verify-email page after the confirmation link is clicked.
+  // The backend issues a real JWT on verification, so the user is signed in immediately.
+  const completeVerification = useCallback((response: any) => {
+    if (response?.token) {
+      api.setToken(response.token);
+    }
+    if (response?.user) {
+      setUser(response.user);
+    }
+    applyAccountContext(response);
+    setIsAuthenticated(true);
+  }, []);
 
   const refreshUser = async (): Promise<void> => {
     try {
@@ -446,7 +465,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout, 
       isAuthenticated, 
       loading,
-      refreshUser 
+      refreshUser,
+      completeVerification
     }}>
       {children}
     </AuthContext.Provider>
