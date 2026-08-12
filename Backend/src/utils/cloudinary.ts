@@ -5,18 +5,15 @@
  * secure URL is stored in the DB — never the local filesystem, which is
  * ephemeral on Render and would be wiped on every redeploy/restart.
  *
- * Configuration (env vars, required in production) — two equivalent ways:
- *   1. CLOUDINARY_URL=cloudinary://<api_key>:<api_secret>@<cloud_name>
- *      (the value Cloudinary's dashboard shows) — recommended, single var.
- *   2. CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET
- *      (individual values, cloud name only — NOT the full URL).
+ * Configuration (env vars, required in production):
+ *   CLOUDINARY_CLOUD_NAME  → the cloud name ALONE, e.g. dqceikk6h
+ *                            (NOT the full cloudinary://... URL)
+ *   CLOUDINARY_API_KEY
+ *   CLOUDINARY_API_SECRET
  *
- * For robustness we also accept the full cloudinary:// URL in
- * CLOUDINARY_CLOUD_NAME itself (a common paste mistake) and parse it.
- * All values are trimmed: a stray trailing newline or space (common when
- * pasting into the Render dashboard or a .env file) makes Cloudinary return
- * an HTML 404 page instead of a JSON error, which the SDK then wraps in a
- * cryptic "Server return invalid JSON response" message.
+ * Values are trimmed to guard against a stray trailing newline/space (common
+ * when pasting into the Render dashboard or a .env file), which makes
+ * Cloudinary return an HTML 404 page instead of a JSON error.
  *
  * Dev fallback: when Cloudinary is not configured, the buffer is written to
  * the local public/uploads folder (existing behaviour) so local development
@@ -27,37 +24,10 @@ import { v2 as cloudinary } from 'cloudinary';
 import fs from 'fs';
 import path from 'path';
 
-/**
- * Parse a Cloudinary connection URL of the form
- * `cloudinary://<api_key>:<api_secret>@<cloud_name>` (the value shown on the
- * Cloudinary dashboard). Returns {} when the string isn't in that format.
- */
-function parseCloudinaryUrl(raw: string): {
-  cloud_name?: string;
-  api_key?: string;
-  api_secret?: string;
-} {
-  const match = raw.trim().match(/^cloudinary:\/\/([^:]+):([^@]+)@([^/]+)$/);
-  if (!match) return {};
-  return { api_key: match[1], api_secret: match[2], cloud_name: match[3] };
-}
-
-const urlFromEnv = parseCloudinaryUrl(process.env.CLOUDINARY_URL || '');
-const urlFromCloudNameVar = parseCloudinaryUrl(process.env.CLOUDINARY_CLOUD_NAME || '');
-
 const CLOUDINARY_ENV = {
-  cloud_name:
-    urlFromEnv.cloud_name ||
-    urlFromCloudNameVar.cloud_name ||
-    (process.env.CLOUDINARY_CLOUD_NAME || '').trim(),
-  api_key:
-    urlFromEnv.api_key ||
-    urlFromCloudNameVar.api_key ||
-    (process.env.CLOUDINARY_API_KEY || '').trim(),
-  api_secret:
-    urlFromEnv.api_secret ||
-    urlFromCloudNameVar.api_secret ||
-    (process.env.CLOUDINARY_API_SECRET || '').trim(),
+  cloud_name: (process.env.CLOUDINARY_CLOUD_NAME || '').trim(),
+  api_key: (process.env.CLOUDINARY_API_KEY || '').trim(),
+  api_secret: (process.env.CLOUDINARY_API_SECRET || '').trim(),
 };
 
 cloudinary.config(CLOUDINARY_ENV);
@@ -102,16 +72,14 @@ export async function uploadImage(input: UploadImageInput, folder: string): Prom
       // The Cloudinary SDK wraps non-JSON responses (e.g. an HTML 404 page when
       // the cloud name is misconfigured) in a cryptic "Server return invalid
       // JSON response" message — surface a clear, actionable error instead.
-      // Never print raw env values here: CLOUDINARY_URL / a full URL pasted
-      // into CLOUDINARY_CLOUD_NAME contains the API key and secret.
+      // Never print env values here: the raw CLOUDINARY_CLOUD_NAME may contain
+      // the API key and secret if a full cloudinary:// URL was pasted in.
       const status = uploadError?.http_code;
       if (status === 404 || /invalid JSON response|Page not found|DOCTYPE/i.test(uploadError?.message || '')) {
         throw new Error(
           `L'upload d'image a échoué : Cloudinary a répondu ${status || '404'}. ` +
-          `Vérifiez votre configuration Cloudinary (cloud résolu : ${CLOUDINARY_ENV.cloud_name || '(vide)'}). ` +
-          `Utilisez soit CLOUDINARY_URL=cloudinary://<api_key>:<api_secret>@<cloud_name> ` +
-          `(la valeur affichée sur votre tableau de bord Cloudinary), ` +
-          `soit CLOUDINARY_CLOUD_NAME + CLOUDINARY_API_KEY + CLOUDINARY_API_SECRET avec le nom de cloud seul.`
+          `Vérifiez que CLOUDINARY_CLOUD_NAME sur Render contient le nom de cloud SEUL ` +
+          `(ex. dqceikk6h), sans le préfixe "cloudinary://…" et sans clés.`
         );
       }
       throw uploadError;
@@ -120,7 +88,7 @@ export async function uploadImage(input: UploadImageInput, folder: string): Prom
 
   if (process.env.NODE_ENV === 'production') {
     throw new Error(
-      'Cloudinary is not configured (CLOUDINARY_URL ou CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET manquants) — refusing to store uploads on ephemeral local disk in production.'
+      'Cloudinary is not configured (CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET missing) — refusing to store uploads on ephemeral local disk in production.'
     );
   }
 
