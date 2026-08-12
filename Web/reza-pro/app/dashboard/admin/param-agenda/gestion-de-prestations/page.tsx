@@ -311,8 +311,9 @@ const GestionPrestations = () => {
     // Categories are automatically extracted from services, so we just need to
     // create a service with this category. It's persisted when a service with
     // this category is created.
+    // The modal stays open so the admin can pick multiple categories — it only
+    // closes when the admin explicitly clicks X / Fermer.
     setCategories([...categories, trimmed]);
-    setShowCategoryModal(false);
     toast.success(`Catégorie "${trimmed}" ajoutée. Créez une prestation pour la sauvegarder.`);
   };
 
