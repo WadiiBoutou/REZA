@@ -853,6 +853,35 @@ class ApiClient {
     return response.json();
   }
 
+  async uploadClientAvatar(file: File): Promise<{ avatar: string }> {
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    const url = `${this.baseURL}/clients/upload-avatar`;
+    const headers: HeadersInit = {};
+
+    const currentToken = this.token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+    if (currentToken) {
+      headers['Authorization'] = `Bearer ${currentToken}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        error: 'Upload failed',
+        message: `HTTP ${response.status}: ${response.statusText}`
+      }));
+      throw new Error(error.message || 'Failed to upload avatar');
+    }
+
+    return response.json();
+  }
+
   // Appointment endpoints
   async getAppointments(params?: {
     startDate?: string;

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Search, X, Phone, Mail, User as UserIcon, MapPin, Calendar, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Pencil, Trash2, Search, X, Phone, Mail, User as UserIcon, MapPin, Calendar, Loader2, Camera } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -9,6 +9,10 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
+
+const AVATAR_MAX_SIZE = 5 * 1024 * 1024; // 5 Mo
+const AVATAR_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+const AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 
 // Backend client structure
@@ -125,10 +129,13 @@ export default function ClientsGestionPage() {
     email: '',
     phone: '',
     address: '',
+    avatar: undefined as string | undefined,
     status: 'Active' as 'Active' | 'Inactive',
     notes: '',
     autoConfirmOverride: 'default' as 'default' | 'auto' | 'manual'
   });
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch global auto-confirm default
   const fetchAutoConfirmDefault = async () => {
@@ -227,6 +234,34 @@ export default function ClientsGestionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, statusFilter, salonFilterKey]);
 
+  const handleAvatarFile = async (file?: File) => {
+    if (!file) return;
+
+    // Extension must be an image (jpg, jpeg, png, webp, gif)
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!AVATAR_EXTENSIONS.includes(ext) || !AVATAR_MIME_TYPES.includes(file.type)) {
+      toast.error("Format d'image invalide. Utilisez JPG, PNG, WEBP ou GIF.");
+      return;
+    }
+
+    // Size limit
+    if (file.size > AVATAR_MAX_SIZE) {
+      toast.error('Image trop volumineuse (max 5 Mo).');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const { avatar } = await api.uploadClientAvatar(file);
+      setFormData((prev) => ({ ...prev, avatar }));
+      toast.success('Photo de profil mise à jour');
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de l'upload de la photo");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const handleAddClient = () => {
     setEditingClient(null);
     setCreateTenantId(
@@ -238,6 +273,7 @@ export default function ClientsGestionPage() {
       email: '',
       phone: '',
       address: '',
+      avatar: undefined,
       status: 'Active',
       notes: '',
       autoConfirmOverride: 'default'
@@ -256,6 +292,7 @@ export default function ClientsGestionPage() {
       email: client.email,
       phone: client.phone,
       address: client.address || '',
+      avatar: client.avatar || undefined,
       status: client.status,
       notes,
       autoConfirmOverride
@@ -313,6 +350,7 @@ export default function ClientsGestionPage() {
           email: formData.email || undefined,
           phone: formData.phone,
           address: formData.address || undefined,
+          avatar: formData.avatar !== undefined ? formData.avatar : null,
           status: formData.status === 'Active' ? 'ACTIVE' : 'INACTIVE',
           notes: (formData.notes?.replace(/__ACO:(AUTO|MANUAL)/g, '').trim() || '') + (formData.autoConfirmOverride !== 'default' ? `\n__ACO:${formData.autoConfirmOverride === 'auto' ? 'AUTO' : 'MANUAL'}` : '') || undefined
         });
@@ -330,6 +368,7 @@ export default function ClientsGestionPage() {
           email: formData.email || undefined,
           phone: formData.phone,
           address: formData.address || undefined,
+          avatar: formData.avatar || undefined,
           status: formData.status === 'Active' ? 'ACTIVE' : 'INACTIVE',
           notes: (formData.notes?.replace(/__ACO:(AUTO|MANUAL)/g, '').trim() || '') + (formData.autoConfirmOverride !== 'default' ? `\n__ACO:${formData.autoConfirmOverride === 'auto' ? 'AUTO' : 'MANUAL'}` : '') || undefined,
           ...(createTenantId ? { tenantId: createTenantId } : {}),
@@ -837,6 +876,75 @@ export default function ClientsGestionPage() {
                     </select>
                   </div>
                 )}
+                {/* Avatar */}
+                <div className="flex flex-col items-center gap-3 pt-1">
+                  <div className="relative group">
+                    <div className="w-28 h-28 rounded-full overflow-hidden flex items-center justify-center border-2 border-gray-200 shadow-sm transition-shadow group-hover:shadow-md bg-[#002366]">
+                      {formData.avatar ? (
+                        <img
+                          src={formData.avatar}
+                          alt="Photo de profil"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-white font-semibold text-4xl">
+                          {((formData.firstName || formData.lastName || '').charAt(0) || '?').toUpperCase()}
+                        </span>
+                      )}
+                      {!formData.avatar && !uploadingAvatar && (
+                        <div className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                          <Camera
+                            size={20}
+                            className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    {uploadingAvatar && (
+                      <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
+                        <Loader2 size={20} className="text-white animate-spin" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={uploadingAvatar}
+                      className="px-4 py-2 text-sm font-medium text-[#002366] bg-[#002366]/5 border border-[#002366]/15 rounded-full hover:bg-[#002366]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Camera size={14} className="inline-block mr-1.5 -mt-0.5" />
+                      {formData.avatar ? 'Changer la photo' : 'Ajouter une photo'}
+                    </button>
+                    {formData.avatar && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData((prev) => ({ ...prev, avatar: undefined }))}
+                        disabled={uploadingAvatar}
+                        className="px-4 py-2 text-sm font-medium text-gray-500 border border-gray-200 rounded-full hover:text-red-600 hover:border-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Supprimer
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-gray-400">
+                    JPG, PNG, WEBP ou GIF — 5 Mo maximum
+                  </p>
+
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(e) => {
+                      handleAvatarFile(e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                  />
+                </div>
+
                 {/* Personal Info */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Informations personnelles</h3>

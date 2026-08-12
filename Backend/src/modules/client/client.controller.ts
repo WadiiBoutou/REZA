@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { clientService } from './client.service';
 import { createClientSchema, updateClientSchema } from './client.schema';
 import { isSalonRequiredError, resolveWriteTenantId } from '../../utils/salonScope';
+import { uploadImage } from '../../utils/cloudinary';
 
 export class ClientController {
   async getClients(req: Request, res: Response, next: NextFunction) {
@@ -84,6 +85,22 @@ export class ClientController {
       if (error.message === 'CLIENT_NOT_FOUND') {
         return res.status(404).json({ error: 'Client not found' });
       }
+      next(error);
+    }
+  }
+
+  async uploadAvatar(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          error: 'No file uploaded',
+          message: 'Veuillez sélectionner une image'
+        });
+      }
+
+      const avatar = await uploadImage(req.file, 'avatars');
+      res.json({ avatar });
+    } catch (error) {
       next(error);
     }
   }
