@@ -118,7 +118,8 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, id, startTime,
     const newVal = `${h}:${finalM}`;
     setSelectedHour(h);
     setSelectedMinute(finalM);
-    setOpen(false);
+    // Keep the popover open so the admin can adjust both hour and minute
+    // before confirming — only OK, Escape or clicking outside closes it.
     onChange && onChange(newVal);
   };
 
