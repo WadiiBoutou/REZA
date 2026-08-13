@@ -101,17 +101,31 @@ export default function HeroAbout() {
     setSelectedCategories((prev) =>
       prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
     );
-  };
+  };	// Navigate to search results with a CLEAN URL. Selected categories travel via
+	// sessionStorage so the results page pre-selects them in its filter modal
+	// (where the user can change or clear them freely) instead of being stuck to
+	// a ?category= URL param.
+	const goToSearch = (categories: string[], params: URLSearchParams) => {
+		try {
+			if (categories.length > 0) {
+				sessionStorage.setItem('reza_search_categories', JSON.stringify(categories));
+			} else {
+				sessionStorage.removeItem('reza_search_categories');
+			}
+		} catch {
+			/* ignore */
+		}
+		const qs = params.toString();
+		router.push(`/search-results${qs ? `?${qs}` : ''}`);
+	};
 
-  const applyCategories = () => {
-    if (selectedCategories.length === 0) return;
-    const params = new URLSearchParams();
-    // Comma-separated categories → backend AND semantics (salons matching ALL).
-    params.set('category', selectedCategories.join(','));
-    if (location.trim()) params.set('location', location.trim());
-    setShowSearchDropdown(false);
-    router.push(`/search-results?${params.toString()}`);
-  };
+	const applyCategories = () => {
+		if (selectedCategories.length === 0) return;
+		const params = new URLSearchParams();
+		if (location.trim()) params.set('location', location.trim());
+		setShowSearchDropdown(false);
+		goToSearch(selectedCategories, params);
+	};
 
   // Fetch categories and create dynamic popular searches
   useEffect(() => {
@@ -741,42 +755,34 @@ export default function HeroAbout() {
               {/* Search Button */}
               <div className="w-full md:w-auto px-2 pb-2 md:pb-0 md:px-0">
                 <button
-                  className="bg-[#101928] text-white px-8 py-3.5 rounded-full font-medium hover:bg-black transition-all duration-300 flex items-center justify-center gap-2 w-full md:w-auto text-base shadow-sm"
-                  onClick={() => {
-                  const params = new URLSearchParams();
-                  const trimmedQuery = searchQuery.trim();
-                  
-                  // Only add query if user actually typed something
-                  if (trimmedQuery) {
-                    params.append('query', trimmedQuery);
-                    // Detect if search matches a category and include it (only if query is not empty)
-                    const detectedCategory = getCategoryFromSearch(trimmedQuery);
-                    if (detectedCategory) {
-                      params.append('category', detectedCategory);
-                    }
-                  }
+                  className="bg-[#101928] text-white px-8 py-3.5 rounded-full font-medium hover:bg-black transition-all duration-300 flex items-center justify-center gap-2 w-full md:w-auto text-base shadow-sm"				  onClick={() => {
+				  const params = new URLSearchParams();
+				  const trimmedQuery = searchQuery.trim();
+				  
+				  // Only add query if user actually typed something
+				  if (trimmedQuery) {
+					params.append('query', trimmedQuery);
+				  }
 
-                  // Include categories checked in the prestations dropdown (AND semantics)
-                  if (selectedCategories.length > 0) {
-                    const existing = params.get('category');
-                    const merged = Array.from(
-                      new Set([...(existing ? existing.split(',') : []), ...selectedCategories])
-                    );
-                    if (merged.length > 0) {
-                      params.set('category', merged.join(','));
-                    }
-                  }
-                  
-                  // Only add location if provided
-                  if (location.trim()) {
-                    params.append('location', location.trim());
-                  }
-                  
-                  // Always redirect to search results page (even if params are empty, show all results)
-                  const queryString = params.toString();
-                  router.push(`/search-results${queryString ? `?${queryString}` : ''}`);
-                }}
-              >
+				  // Categories (detected from the query + checked in the prestations
+				  // dropdown, AND semantics) travel via sessionStorage, not the URL.
+				  const detectedCategory = trimmedQuery ? getCategoryFromSearch(trimmedQuery) : null;
+				  const merged = Array.from(
+					new Set([
+					  ...(detectedCategory ? [detectedCategory] : []),
+					  ...selectedCategories,
+					])
+				  );
+				  
+				  // Only add location if provided
+				  if (location.trim()) {
+					params.append('location', location.trim());
+				  }
+				  
+				  // Always redirect to search results page (even if params are empty, show all results)
+				  goToSearch(merged, params);
+				}}
+			  >
                 <Search className="w-5 h-5" />
                 <span className="hidden md:inline font-semibold">Rechercher</span>
                 <span className="md:hidden font-semibold">Rechercher</span>

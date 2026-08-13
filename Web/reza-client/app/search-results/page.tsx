@@ -73,7 +73,6 @@ function LuxurySearchResultsContent() {
 	const searchParams = useSearchParams();
 	const [query, setQuery] = useState(searchParams?.get('query') || searchParams?.get('q') || '');
 	const [location, setLocation] = useState(searchParams?.get('location') || '');
-	const [categoryFromUrl, setCategoryFromUrl] = useState(searchParams?.get('category') || '');
 	const [results, setResults] = useState<any[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [selectedSalon, setSelectedSalon] = useState<string | null>(null);
@@ -223,10 +222,6 @@ function LuxurySearchResultsContent() {
 
 	// Update state when URL params change
 	useEffect(() => {
-		const urlCategory = searchParams?.get('category') || '';
-		if (urlCategory !== categoryFromUrl) {
-			setCategoryFromUrl(urlCategory);
-		}
 		const urlQuery = searchParams?.get('query') || searchParams?.get('q') || '';
 		if (urlQuery !== query) {
 			setQuery(urlQuery);
@@ -273,16 +268,40 @@ function LuxurySearchResultsContent() {
 		setShowGeoPrompt(true);
 	}, []);
 
+	// Categories chosen on the dashboard arrive via sessionStorage so the URL
+	// stays clean (no ?category=…). Deep links / footer links may still carry
+	// ?category= — read it ONCE into the modal state so the user can change or
+	// clear it freely instead of being stuck to a URL param.
+	useEffect(() => {
+		if (typeof window === 'undefined') return;
+		let cats: string[] = [];
+		try {
+			const stored = sessionStorage.getItem('reza_search_categories');
+			if (stored) {
+				sessionStorage.removeItem('reza_search_categories');
+				const parsed = JSON.parse(stored);
+				if (Array.isArray(parsed)) cats = parsed.map((c: string) => String(c).trim()).filter(Boolean);
+			}
+		} catch {
+			/* ignore */
+		}
+		if (cats.length === 0) {
+			cats = (searchParams?.get('category') || '').split(',').map((c) => c.trim()).filter(Boolean);
+		}
+		if (cats.length > 0) {
+			setFilterValues((prev) => ({ ...prev, categories: Array.from(new Set(cats)) }));
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
 	// Fetch tenants from API
 	useEffect(() => {
 		const fetchTenants = async () => {
 			try {
 				setLoading(true);
-				// All selected categories (URL + filter panel) joined — the backend
-				// applies AND semantics: salons must match EVERY selected category.
-				const urlCats = (categoryFromUrl || '').split(',').map((c) => c.trim()).filter(Boolean);
-				const allCats = Array.from(new Set([...urlCats, ...filterValues.categories]));
-				const categoryParam = allCats.length > 0 ? allCats.join(',') : undefined;
+				// Selected categories (filter modal state only — the source of truth
+				// after the initial seed) — backend applies AND semantics.
+				const categoryParam = filterValues.categories.length > 0 ? filterValues.categories.join(',') : undefined;
 				// Only pass query if it's not empty (trim whitespace)
 				const searchQuery = query && query.trim() ? query.trim() : undefined;
 				const geo =
@@ -337,7 +356,7 @@ function LuxurySearchResultsContent() {
 		};
 
 		fetchTenants();
-	}, [query, location, categoryFromUrl, filterValues.categories, filterValues.distance, userLocation]);
+	}, [query, location, filterValues.categories, filterValues.distance, userLocation]);
 
 	// Filter results based on filter values
 	const getFilteredResults = () => {
@@ -672,24 +691,42 @@ function LuxurySearchResultsContent() {
 			return;
 		}
 		const salon = selectedSalonDetails;
+		// Anchor the card using the marker's REAL on-screen position (DOM rects,
+		// same coordinate space as the map container) — never layout-space math
+		// like latLngToContainerPoint, which breaks when the map is scaled.
 		const update = () => {
-			if (!salon.coordinates?.lat || !salon.coordinates?.lng) {
-				setPopupAnchor(null);
-				return;
-			}
 			try {
-				const pt = map.latLngToContainerPoint([salon.coordinates.lat, salon.coordinates.lng]);
-				const size = map.getSize();
-				const x = Math.max(170, Math.min(pt.x, size.x - 170));
-				setPopupAnchor({ x, y: pt.y });
+				const mapEl = map.getContainer();
+				const mapRect = mapEl.getBoundingClientRect();
+				if (mapRect.width <= 0 || mapRect.height <= 0) {
+					setPopupAnchor(null);
+					return;
+				}
+				const entry = markersRef.current.find((m) => m.id === salon.id);
+				const iconEl = entry?.marker?.getElement?.();
+				if (!iconEl) {
+					setPopupAnchor(null);
+					return;
+				}
+				const iconRect = iconEl.getBoundingClientRect();
+				// Marker tip: divIcon is ~28px tall with iconAnchor [32, 16].
+				const anchorX = iconRect.left - mapRect.left + iconRect.width / 2;
+				const anchorY = iconRect.top - mapRect.top + 16;
+				// Clamp horizontally so the 320px card never leaves the map sides.
+				const x = Math.max(170, Math.min(anchorX, mapRect.width - 170));
+				// Always open ABOVE the pin; keep the whole card inside the map by
+				// pinning its top to the map's top edge when the pin is too high.
+				const CARD_H = 400;
+				const y = Math.max(CARD_H, anchorY);
+				setPopupAnchor({ x, y });
 			} catch {
 				/* ignore */
 			}
 		};
-		update();
 		map.on('move', update);
 		map.on('zoom', update);
 		map.on('moveend', update);
+		update();
 		return () => {
 			map.off('move', update);
 			map.off('zoom', update);
@@ -725,8 +762,10 @@ function LuxurySearchResultsContent() {
 				bounds.push(latLng);
 
 				// Marker label: star rating by default; price range only when the
-				// user sorts by Prix (then min-max, or a single number when equal)
+				// user sorts by Prix (then min-max, or a single number when equal);
+				// real distance only when the user sorts by Plus proche with GPS on.
 				const showPrice = sortBy === 'price';
+				const showDistance = sortBy === 'distance' && userLocation != null;
 				let markerLabel: string | null = null;
 				if (showPrice) {
 					const r = salon.priceRange;
@@ -737,6 +776,8 @@ function LuxurySearchResultsContent() {
 					} else if (salon.price) {
 						markerLabel = salon.price;
 					}
+				} else if (showDistance) {
+					markerLabel = getDistanceForDisplay(salon);
 				} else if (typeof salon.rating === 'number' && salon.rating > 0) {
 					markerLabel = `★ ${salon.rating.toFixed(1)}`;
 				}
@@ -1278,14 +1319,13 @@ function LuxurySearchResultsContent() {
 							.filter((u: string) => Boolean(u));
 						const gallerySrcs = Array.from(new Set(gallery));
 						const safeIndex = gallerySrcs.length > 0 ? Math.min(galleryIndex, gallerySrcs.length - 1) : 0;
-						const above = popupAnchor.y > 420;
 						return (
 							<div
 								className="absolute z-[500] w-80"
 								style={{
 									left: popupAnchor.x,
 									top: popupAnchor.y,
-									transform: above ? 'translate(-50%, calc(-100% - 14px))' : 'translate(-50%, 18px)',
+									transform: 'translate(-50%, calc(-100% - 14px))',
 								}}
 							>
 								<div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-fadeInUp">
@@ -1368,10 +1408,8 @@ function LuxurySearchResultsContent() {
 										</button>
 									</div>
 								</div>
-								{/* Pointer to the ticket */}
-								<div
-									className={`absolute left-1/2 w-3 h-3 bg-white border-gray-200 -translate-x-1/2 rotate-45 ${above ? '-bottom-1.5 border-b border-r' : '-top-1.5 border-t border-l'}`}
-								/>
+								{/* Pointer to the ticket (card always sits above it) */}
+								<div className="absolute left-1/2 -bottom-1.5 w-3 h-3 bg-white border-gray-200 -translate-x-1/2 rotate-45 border-b border-r" />
 							</div>
 						);
 					})()}
