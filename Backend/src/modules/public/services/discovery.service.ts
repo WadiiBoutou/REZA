@@ -20,10 +20,11 @@ export class DiscoveryService {
   async getTenantByIdentifier(identifier: string) {
     try {
 
-    // Try to find tenant by subdomain, domain, or ID
+    // Try to find tenant by slug, subdomain, domain, or ID
     const tenant = await prisma.tenant.findFirst({
       where: {
         OR: [
+          { slug: identifier },
           { subdomain: identifier },
           { domain: identifier },
           { id: identifier }
