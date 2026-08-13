@@ -11,7 +11,8 @@ import {
   Save,
   Trash2,
   Loader2,
-  Check
+  Check,
+  Clock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -140,6 +141,10 @@ const GestionHoraires = () => {
   // Booking delays
   const [bookingDelay, setBookingDelay] = useState({ value: '1', unit: 'jours', allowLastMoment: false });
   const [advanceBooking, setAdvanceBooking] = useState({ value: '1', unit: 'mois' });
+
+  // Bulk pause (applied to every open day at once)
+  const [bulkBreakStart, setBulkBreakStart] = useState('12:00');
+  const [bulkBreakEnd, setBulkBreakEnd] = useState('14:00');
 
   // Blocked dates
   const [blockedDates, setBlockedDates] = useState<string[]>([]);
@@ -311,6 +316,35 @@ const GestionHoraires = () => {
       breaks: breaks.filter((_, i) => i !== breakIndex),
     };
     setSchedules(newSchedules);
+  };
+
+  // Add one pause to every open day, but only where it fits inside that day's
+  // opening hours (a pause outside the hours would be meaningless) and skip
+  // days that already have that exact pause. Multiple pauses per day are safe:
+  // the slot engine rejects any slot overlapping ANY pause.
+  const addBreakToAllDays = () => {
+    const start = bulkBreakStart;
+    const end = bulkBreakEnd;
+    if (start >= end) {
+      toast.error('L\'heure de début doit être avant l\'heure de fin');
+      return;
+    }
+    let addedCount = 0;
+    const newSchedules = schedules.map((s) => {
+      if (!s.isOpen) return s;
+      // Only apply when the pause sits within this day's open/close window
+      if (start < s.openTime || end > s.closeTime) return s;
+      const exists = (s.breaks ?? []).some((b) => b.start === start && b.end === end);
+      if (exists) return s;
+      addedCount += 1;
+      return { ...s, breaks: [...(s.breaks ?? []), { start, end }] };
+    });
+    if (addedCount > 0) {
+      setSchedules(newSchedules);
+      toast.success(addedCount === 1 ? 'Pause ajoutée à 1 jour' : `Pause ajoutée à ${addedCount} jours`);
+    } else {
+      toast.error('Aucun jour ouvert ne peut recevoir cette pause (elle doit être comprise dans les horaires d\'ouverture)');
+    }
   };
 
 
@@ -532,6 +566,27 @@ const GestionHoraires = () => {
                 ))}
               </div>
 
+              {/* Bulk pause — add the same pause to every open day at once */}
+              <div className="flex flex-wrap items-center gap-3 p-4 bg-[#002366]/[0.04] border border-dashed border-[#002366]/25 rounded-xl mb-4">
+                <Clock size={16} className="text-[#002366] shrink-0" />
+                <span className="text-sm font-medium text-gray-800">Ajouter une pause à tous les jours ouverts :</span>
+                <TimePicker
+                  value={bulkBreakStart}
+                  onChange={(value) => setBulkBreakStart(value)}
+                />
+                <span className="text-gray-400">-</span>
+                <TimePicker
+                  value={bulkBreakEnd}
+                  onChange={(value) => setBulkBreakEnd(value)}
+                />
+                <button
+                  onClick={addBreakToAllDays}
+                  className="text-sm font-medium text-[#002366] hover:text-gray-800 underline ml-auto"
+                >
+                  Appliquer à tous
+                </button>
+              </div>
+
               {/* Schedule Details */}
               <div className="space-y-4">
                 {schedules.filter(s => s.isOpen).map((schedule, index) => {
@@ -556,7 +611,7 @@ const GestionHoraires = () => {
                         onClick={() => addBreak(originalIndex)}
                         className="text-sm text-gray-500 hover:text-gray-900 underline ml-4"
                       >
-                        Ajouter une plage d&apos;ouverture
+                        Ajouter une pause
                       </button>
                       
                       {/* Breaks */}
