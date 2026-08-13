@@ -755,6 +755,17 @@ export default function HeroAbout() {
                       params.append('category', detectedCategory);
                     }
                   }
+
+                  // Include categories checked in the prestations dropdown (AND semantics)
+                  if (selectedCategories.length > 0) {
+                    const existing = params.get('category');
+                    const merged = Array.from(
+                      new Set([...(existing ? existing.split(',') : []), ...selectedCategories])
+                    );
+                    if (merged.length > 0) {
+                      params.set('category', merged.join(','));
+                    }
+                  }
                   
                   // Only add location if provided
                   if (location.trim()) {

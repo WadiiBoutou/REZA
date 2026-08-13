@@ -369,22 +369,9 @@ function LuxurySearchResultsContent() {
 			});
 		}
 
-		// Filter by categories — AND semantics: the salon must match EVERY
-		// selected category (either via its own category or one of its services).
-		if (filterValues.categories && filterValues.categories.length > 0) {
-			filtered = filtered.filter(salon => {
-				const salonCategory = salon.category || '';
-				const salonServices = (salon.services || []).map((s: string) => String(s).toLowerCase());
-				return filterValues.categories.every(cat => {
-					const c = cat.toLowerCase();
-					return (
-						salonCategory.toLowerCase().includes(c) ||
-						c.includes(salonCategory.toLowerCase()) ||
-						salonServices.some((s: string) => s.includes(c) || c.includes(s))
-					);
-				});
-			});
-		}
+		// Categories are filtered by the backend (AND semantics on the merged
+		// URL + modal categories). No client-side re-filter here — matching
+		// service NAMES against categories would wrongly drop valid salons.
 
 		// Filter by distance radius (client-side fallback)
 		if (userLocation && filterValues.distance > 0) {

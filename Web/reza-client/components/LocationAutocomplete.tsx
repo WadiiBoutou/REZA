@@ -108,7 +108,7 @@ export default function LocationAutocomplete({
       {open && suggestions.length > 0 && (
         <ul
           role="listbox"
-          className="absolute left-0 right-0 top-full mt-2 z-50 max-h-64 overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-lg py-1"
+          className="absolute left-0 top-full mt-2 z-50 max-h-64 overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-lg py-1 min-w-[280px] whitespace-nowrap"
         >
           {suggestions.map((city, idx) => (
             <li key={city} role="option" aria-selected={idx === highlight}>
@@ -130,7 +130,7 @@ export default function LocationAutocomplete({
       )}
 
       {open && value.trim() && suggestions.length === 0 && (
-        <div className="absolute left-0 right-0 top-full mt-2 z-50 rounded-2xl border border-gray-200 bg-white shadow-lg px-4 py-3 text-sm text-gray-500">
+        <div className="absolute left-0 top-full mt-2 z-50 rounded-2xl border border-gray-200 bg-white shadow-lg px-4 py-3 text-sm text-gray-500 min-w-[280px] whitespace-nowrap">
           Aucune ville trouvée
         </div>
       )}
