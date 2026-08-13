@@ -46,10 +46,19 @@ export default function ModalFilters({ open, filterValues, setFilterValues, onCl
         : new Date(filterValues.selectedDate);
       setCurrentMonth(new Date(date.getFullYear(), date.getMonth(), 1));
     }
-  }, [filterValues.selectedDate, open]);
+  }, [filterValues.selectedDate, open]);	// Lock background scroll while the filter modal is open — the panel itself
+	// (overflow-y-auto) stays scrollable, the page behind cannot move.
+	useEffect(() => {
+		if (!open) return;
+		const previous = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+		return () => {
+			document.body.style.overflow = previous;
+		};
+	}, [open]);
 
-  // Real categories = exactly what admins can select in the Pro app
-  const [categories, setCategories] = useState<string[]>([]);
+	// Real categories = exactly what admins can select in the Pro app
+	const [categories, setCategories] = useState<string[]>([]);
   useEffect(() => {
     if (!open || categories.length > 0) return;
     api.getCategories().then((res) => {
