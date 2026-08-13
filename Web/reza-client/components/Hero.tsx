@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, MapPin, Scissors, HandMetal, Sparkles, Paintbrush, User, ArrowRight, X, QrCode, Palette, Footprints, Flame, Gem, Flower2, Cloud, Heart, Check } from 'lucide-react';
+import { Search, MapPin, Scissors, Sparkles, User, ArrowRight, X, QrCode, Palette, Footprints, Flame, Gem, Flower2, Cloud, Heart, Check, Brush, HeartHandshake } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import api from '../lib/api';
@@ -65,6 +65,7 @@ export default function HeroAbout() {
   const [loadingCities, setLoadingCities] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const locationDropdownRef = useRef<HTMLDivElement>(null);
+  const searchDropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   // Default popular searches (fallback)
@@ -84,13 +85,13 @@ export default function HeroAbout() {
   const categoryIcons: Record<string, React.ReactNode> = {
     'Coiffeur': <Scissors />,
     'Couleur': <Palette />,
-    'Barbier': <HandMetal />,
+    'Barbier': <RazorIcon />,
     'Manucure': <Sparkles />,
     'Pédicure': <Footprints />,
     'Épilation': <Flame />,
     'Esthétique': <Gem />,
-    'Maquillage': <Paintbrush />,
-    'Massage': <HandMetal />,
+    'Maquillage': <Brush />,
+    'Massage': <HeartHandshake />,
     'Spa': <Flower2 />,
     'Hammam': <Cloud />,
     'Soin': <Heart />,
@@ -316,6 +317,22 @@ export default function HeroAbout() {
       )
     : locationSuggestions;
 
+  // Close the search dropdown only when the user clicks outside of it —
+  // interacting with the dropdown itself (categories, "Voir plus") never closes it.
+  useEffect(() => {
+    if (!showSearchDropdown) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (searchDropdownRef.current && !searchDropdownRef.current.contains(target)) {
+        setShowSearchDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSearchDropdown]);
+
   // Handle click outside to close dropdown - improved logic
   useEffect(() => {
     if (!showLocationDropdown) return;
@@ -380,7 +397,7 @@ export default function HeroAbout() {
           <div className="bg-white rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-gray-100 p-2 w-full relative z-20">
             <div className="flex flex-col md:flex-row items-center w-full">
               {/* Search Input */}
-              <div className="flex-1 relative w-full mb-2 md:mb-0">
+              <div ref={searchDropdownRef} className="flex-1 relative w-full mb-2 md:mb-0">
                 <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 z-10" />
                 <input
                   type="text"
@@ -388,7 +405,6 @@ export default function HeroAbout() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onFocus={() => setShowSearchDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
                   className="w-full pl-14 pr-4 py-4 rounded-l-full focus:outline-none transition-all text-gray-900 placeholder-gray-800 font-medium text-base bg-transparent"
                 />
                 
