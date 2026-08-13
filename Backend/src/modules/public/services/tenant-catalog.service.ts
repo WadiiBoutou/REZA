@@ -359,6 +359,7 @@ export class TenantCatalogService {
               id: true,
               firstName: true,
               lastName: true,
+              email: true,
               avatar: true
             }
           },
@@ -394,15 +395,45 @@ export class TenantCatalogService {
       }
     });
 
-    const transformedReviews = reviews.map((r) => ({
-      ...r,
-      client: r.client
-        ? { ...r.client, avatar: transformImageUrl(r.client.avatar ?? null) }
-        : r.client,
-      employee: r.employee
-        ? { ...r.employee, avatar: transformImageUrl(r.employee.avatar ?? null) }
-        : r.employee
-    }));
+    // A client can exist as several rows (one per salon they booked at). If the
+    // row attached to a review has no avatar but another row with the same
+    // email does (e.g. the profile picture was uploaded from another salon's
+    // context), fall back to that avatar so initials don't show when a photo
+    // actually exists.
+    const missingAvatarEmails = [...new Set(
+      reviews
+        .map((r) => r.client)
+        .filter((c) => !!c && !c.avatar && !!c.email)
+        .map((c) => (c as { email: string }).email)
+    )];
+    let avatarByEmail: Map<string, string> = new Map();
+    if (missingAvatarEmails.length > 0) {
+      const withAvatar = await prisma.client.findMany({
+        where: { email: { in: missingAvatarEmails }, avatar: { not: null } },
+        select: { email: true, avatar: true }
+      });
+      avatarByEmail = new Map(
+        withAvatar
+          .filter((c) => c.email && c.avatar)
+          .map((c) => [c.email as string, c.avatar as string])
+      );
+    }
+
+    const transformedReviews = reviews.map((r) => {
+      let clientAvatar = r.client?.avatar ?? null;
+      if (!clientAvatar && r.client?.email && avatarByEmail.has(r.client.email)) {
+        clientAvatar = avatarByEmail.get(r.client.email) as string;
+      }
+      return {
+        ...r,
+        client: r.client
+          ? { ...r.client, avatar: transformImageUrl(clientAvatar) }
+          : r.client,
+        employee: r.employee
+          ? { ...r.employee, avatar: transformImageUrl(r.employee.avatar ?? null) }
+          : r.employee
+      };
+    });
 
     return {
       reviews: transformedReviews,

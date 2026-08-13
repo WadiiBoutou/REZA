@@ -675,12 +675,12 @@ export default function SalonDetail() {
                 const showPrev = total > 2;
                 const showNext = total > 1;
                 return (
-                  <div className="flex items-center justify-center gap-2 sm:gap-4 h-[420px] sm:h-[600px] lg:h-[720px]">
+                  <div className="flex items-center justify-center gap-2 sm:gap-4">
                     {/* Previous image — small side peek, less space */}
                     {showPrev && (
                       <button
                         onClick={prevImage}
-                        className="relative w-[16%] h-[76%] rounded-2xl overflow-hidden shrink-0 cursor-pointer group opacity-50 hover:opacity-100 transition-all duration-300 translate-x-2 sm:translate-x-4 z-10 hidden sm:block"
+                        className="relative w-[14%] sm:w-[16%] h-[300px] sm:h-[380px] lg:h-[460px] rounded-2xl overflow-hidden shrink-0 cursor-pointer group opacity-50 hover:opacity-100 transition-all duration-300 translate-x-2 sm:translate-x-4 z-10 hidden sm:block"
                         aria-label="Image précédente"
                       >
                         <img
@@ -690,25 +690,27 @@ export default function SalonDetail() {
                         />
                       </button>
                     )}
-                    {/* Highlighted image — dominant, shows the FULL photo (object-contain
-                        so it is never cropped vertically), fading in smoothly on change. */}
+                    {/* Highlighted image — dominant. The container has NO fixed
+                        height: the image renders at its natural aspect ratio
+                        (w-full h-auto), so it is never cropped vertically and
+                        never letterboxed with empty bars. */}
                     <button
                       onClick={() => setShowLightbox(true)}
-                      className="relative flex-1 max-w-[72%] h-full rounded-3xl overflow-hidden cursor-pointer z-20 shadow-xl group bg-gray-50"
+                      className="relative flex-1 max-w-[72%] rounded-3xl overflow-hidden cursor-pointer z-20 shadow-xl group bg-gray-50"
                       aria-label="Agrandir la photo"
                     >
                       <img
                         key={cur}
                         src={salonData.images[cur]}
                         alt={`${salonData.name} principale`}
-                        className="w-full h-full object-contain hero-fade group-hover:scale-[1.02] transition-transform duration-700"
+                        className="w-full h-auto object-contain hero-fade group-hover:scale-[1.02] transition-transform duration-700"
                       />
                     </button>
                     {/* Next image — small side peek, less space */}
                     {showNext && (
                       <button
                         onClick={nextImage}
-                        className="relative w-[16%] h-[76%] rounded-2xl overflow-hidden shrink-0 cursor-pointer group opacity-50 hover:opacity-100 transition-all duration-300 -translate-x-2 sm:-translate-x-4 z-10 hidden sm:block"
+                        className="relative w-[14%] sm:w-[16%] h-[300px] sm:h-[380px] lg:h-[460px] rounded-2xl overflow-hidden shrink-0 cursor-pointer group opacity-50 hover:opacity-100 transition-all duration-300 -translate-x-2 sm:-translate-x-4 z-10 hidden sm:block"
                         aria-label="Image suivante"
                       >
                         <img
