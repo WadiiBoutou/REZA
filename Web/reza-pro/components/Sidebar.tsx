@@ -1017,6 +1017,26 @@ const CaisseSidebar = ({
   selectedPeriod: string;
   setSelectedPeriod: (v: string) => void;
 }) => {
+  // Dynamic payment methods: only the methods the salon actually configured
+  // (any language / spelling) appear in the filter — never a hardcoded list.
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getAcceptedPaymentMethods()
+      .then((res) => {
+        if (!cancelled && res.methods && res.methods.length > 0) {
+          setPaymentMethods(res.methods);
+        }
+      })
+      .catch(() => {
+        /* keep defaults */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const methods = paymentMethods.length > 0 ? paymentMethods : ['Espèces', 'Carte', 'Virement', 'Chèque'];
   return (
     <div className="flex-1 overflow-y-auto p-6">
       <div className="space-y-6">
@@ -1034,10 +1054,11 @@ const CaisseSidebar = ({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Toutes</SelectItem>
-                  <SelectItem value="Espèces">Espèces</SelectItem>
-                  <SelectItem value="Carte">Carte</SelectItem>
-                  <SelectItem value="Virement">Virement</SelectItem>
-                  <SelectItem value="Chèque">Chèque</SelectItem>
+                  {methods.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

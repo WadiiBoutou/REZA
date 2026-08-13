@@ -236,6 +236,24 @@ function LuxurySearchResultsContent() {
 		}
 	}, [searchParams]);
 
+	// Keep the URL in sync with the search bar: clearing the input removes the
+	// ?query= param (instead of leaving a stale one that re-fills on navigation).
+	useEffect(() => {
+		if (typeof window === 'undefined') return;
+		const params = new URLSearchParams(window.location.search);
+		const current = params.get('query') || params.get('q') || '';
+		if (current === query) return;
+		if (query) {
+			params.set('query', query);
+		} else {
+			params.delete('query');
+			params.delete('q');
+		}
+		const qs = params.toString();
+		router.replace(qs ? `${window.location.pathname}?${qs}` : window.location.pathname, { scroll: false });
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [query]);
+
 	// Location ask: show soft prompt on search (don't fake Casablanca coords).
 	// Auto-retry only if user already granted earlier this session.
 	useEffect(() => {
@@ -259,8 +277,11 @@ function LuxurySearchResultsContent() {
 		const fetchTenants = async () => {
 			try {
 				setLoading(true);
-				// Use category from URL if available, otherwise use filter categories
-				const categoryToUse = categoryFromUrl || filterValues.categories[0] || undefined;
+				// All selected categories (URL + filter panel) joined — the backend
+				// applies AND semantics: salons must match EVERY selected category.
+				const urlCats = (categoryFromUrl || '').split(',').map((c) => c.trim()).filter(Boolean);
+				const allCats = Array.from(new Set([...urlCats, ...filterValues.categories]));
+				const categoryParam = allCats.length > 0 ? allCats.join(',') : undefined;
 				// Only pass query if it's not empty (trim whitespace)
 				const searchQuery = query && query.trim() ? query.trim() : undefined;
 				const geo =
@@ -273,7 +294,7 @@ function LuxurySearchResultsContent() {
 						: undefined;
 				const response = await api.searchTenants(
 					searchQuery,
-					categoryToUse,
+					categoryParam,
 					location && location.trim() ? location.trim() : undefined,
 					50,
 					geo
@@ -348,14 +369,20 @@ function LuxurySearchResultsContent() {
 			});
 		}
 
-		// Filter by categories (multiple categories)
+		// Filter by categories — AND semantics: the salon must match EVERY
+		// selected category (either via its own category or one of its services).
 		if (filterValues.categories && filterValues.categories.length > 0) {
 			filtered = filtered.filter(salon => {
 				const salonCategory = salon.category || '';
-				return filterValues.categories.some(cat => 
-					salonCategory.toLowerCase().includes(cat.toLowerCase()) ||
-					cat.toLowerCase().includes(salonCategory.toLowerCase())
-				);
+				const salonServices = (salon.services || []).map((s: string) => String(s).toLowerCase());
+				return filterValues.categories.every(cat => {
+					const c = cat.toLowerCase();
+					return (
+						salonCategory.toLowerCase().includes(c) ||
+						c.includes(salonCategory.toLowerCase()) ||
+						salonServices.some((s: string) => s.includes(c) || c.includes(s))
+					);
+				});
 			});
 		}
 
@@ -1342,6 +1369,7 @@ function LuxurySearchResultsContent() {
 					selectedTime: filterValues.selectedTime,
 					rating: filterValues.rating,
 					bestPro: filterValues.bestPro,
+					categories: filterValues.categories,
 				}}
 				setFilterValues={(vals: any) => setFilterValues({ ...filterValues, ...vals })}
 				onClose={() => setShowFilters(false)}

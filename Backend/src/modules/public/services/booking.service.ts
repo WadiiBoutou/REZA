@@ -100,7 +100,7 @@ export class BookingService {
 
       const tenant = await prisma.tenant.findFirst({
         where: {
-          OR: [{ subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
+          OR: [{ slug: tenantId }, { subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
           isActive: true,
           subscriptionActive: true,
         },
@@ -972,7 +972,7 @@ export class BookingService {
     const tenant = await prisma.tenant.findFirst({
       where: {
         OR: [
-          { subdomain: tenantId },
+          { slug: tenantId }, { subdomain: tenantId },
           { domain: tenantId },
           { id: tenantId }
         ],
@@ -1274,7 +1274,7 @@ export class BookingService {
 
     const tenant = await prisma.tenant.findFirst({
       where: {
-        OR: [{ subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
+        OR: [{ slug: tenantId }, { subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
         isActive: true,
       },
       include: { settings: true },
@@ -1552,7 +1552,7 @@ export class BookingService {
 
       const tenant = await prisma.tenant.findFirst({
         where: {
-          OR: [{ subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
+          OR: [{ slug: tenantId }, { subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
           isActive: true,
         },
         select: { id: true },
@@ -1901,7 +1901,7 @@ export class BookingService {
     } else {
       tenant = await prisma.tenant.findFirst({
         where: {
-          OR: [{ subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
+          OR: [{ slug: tenantId }, { subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
           isActive: true,
         },
         select: { id: true },
@@ -2161,7 +2161,7 @@ export class BookingService {
   ) {
     const tenant = await prisma.tenant.findFirst({
       where: {
-        OR: [{ subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
+        OR: [{ slug: tenantId }, { subdomain: tenantId }, { domain: tenantId }, { id: tenantId }],
         isActive: true,
       },
       select: { id: true },

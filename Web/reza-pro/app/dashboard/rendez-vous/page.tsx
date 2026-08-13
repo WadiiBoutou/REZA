@@ -3504,24 +3504,26 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
               <label className="block text-xs font-medium text-gray-500 mb-1.5">
                 Mode de paiement
               </label>
-              <select
+              <Select
                 value={finalizeModal.paymentMethod}
                 disabled={finalizeModal.loading}
-                onChange={(e) =>
+                onValueChange={(v) =>
                   setFinalizeModal((prev) =>
-                    prev
-                      ? { ...prev, paymentMethod: e.target.value as FinalizePaymentMethod }
-                      : null
+                    prev ? { ...prev, paymentMethod: v as FinalizePaymentMethod } : null
                   )
                 }
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {acceptedPaymentMethods.map((method) => (
-                  <option key={method} value={API_PAYMENT_KEY[method] || 'CASH'}>
-                    {method}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900">
+                  <SelectValue placeholder="Mode de paiement" />
+                </SelectTrigger>
+                <SelectContent>
+                  {acceptedPaymentMethods.map((method) => (
+                    <SelectItem key={method} value={API_PAYMENT_KEY[method] || 'CASH'}>
+                      {method}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="px-6 pb-6 flex flex-col gap-2">
               {finalizeModal.appointment.bookingGroupId && (finalizeModal.appointment.bookingGroupParticipantCount ?? 0) > 1 && (
@@ -3646,20 +3648,24 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                 <label className="block text-xs font-medium text-gray-500 mb-1.5">
                   Mode de paiement
                 </label>
-                <select
+                <Select
                   value={groupReviewModal.paymentMethod}
                   disabled={groupReviewModal.loading}
-                  onChange={(e) =>
-                    setGroupReviewModal((prev) => prev ? { ...prev, paymentMethod: e.target.value as FinalizePaymentMethod } : null)
+                  onValueChange={(v) =>
+                    setGroupReviewModal((prev) => prev ? { ...prev, paymentMethod: v as FinalizePaymentMethod } : null)
                   }
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {acceptedPaymentMethods.map((method) => (
-                    <option key={method} value={API_PAYMENT_KEY[method] || 'CASH'}>
-                      {method}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900">
+                    <SelectValue placeholder="Mode de paiement" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {acceptedPaymentMethods.map((method) => (
+                      <SelectItem key={method} value={API_PAYMENT_KEY[method] || 'CASH'}>
+                        {method}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

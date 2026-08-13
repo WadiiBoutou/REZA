@@ -11,7 +11,7 @@ export class TenantCatalogService {
     const tenant = await prisma.tenant.findFirst({
       where: {
         OR: [
-          { subdomain: tenantId },
+          { slug: tenantId }, { subdomain: tenantId },
           { domain: tenantId },
           { id: tenantId }
         ],
@@ -74,7 +74,7 @@ export class TenantCatalogService {
     const tenant = await prisma.tenant.findFirst({
       where: {
         OR: [
-          { subdomain: tenantId },
+          { slug: tenantId }, { subdomain: tenantId },
           { domain: tenantId },
           { id: tenantId }
         ],
@@ -326,7 +326,7 @@ export class TenantCatalogService {
     const tenant = await prisma.tenant.findFirst({
       where: {
         OR: [
-          { subdomain: tenantId },
+          { slug: tenantId }, { subdomain: tenantId },
           { domain: tenantId },
           { id: tenantId }
         ],

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../../../lib/prisma';
 import { hashPassword } from '../../../utils/password';
+import { slugifyName } from '../../../utils/slugify';
 import { fail } from '../utils/http';
 
 export class EarlyAccessService {
@@ -98,6 +99,12 @@ export class EarlyAccessService {
           city: data.city.trim(),
           isActive: true
         }
+      });
+
+      // Public URL slug (pretty, non-CUID client URLs)
+      await prisma.tenant.update({
+        where: { id: tenant.id },
+        data: { slug: slugifyName(tenant.name, tenant.id) },
       });
 
       // Create tenant settings (matching register endpoint behavior)

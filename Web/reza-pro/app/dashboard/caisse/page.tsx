@@ -1737,33 +1737,35 @@ function CaissePageContent({
                       {/* Payer selector */}
                       <div>
                         <label className="block text-xs font-medium text-gray-500 mb-1.5">Payé par</label>
-                        <select
-                          value={payerClientId}
-                          onChange={(e) => setPayerClientId(e.target.value)}
-                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        >
-                          {groupDetails.participants
-                            .filter((p: any) => p.clientId)
-                            .map((p: any) => (
-                              <option key={p.clientId} value={p.clientId}>
-                                {p.displayName}{p.isBooker ? ' (Réservant)' : ''}
-                              </option>
-                            ))}
-                        </select>
+                        <Select value={payerClientId} onValueChange={setPayerClientId}>
+                          <SelectTrigger className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900">
+                            <SelectValue placeholder="Choisir" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {groupDetails.participants
+                              .filter((p: any) => p.clientId)
+                              .map((p: any) => (
+                                <SelectItem key={p.clientId} value={p.clientId}>
+                                  {p.displayName}{p.isBooker ? ' (Réservant)' : ''}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
                       </div>
 
                       {/* Payment method */}
                       <div>
                         <label className="block text-xs font-medium text-gray-500 mb-1.5">Mode de paiement</label>
-                        <select
-                          value={groupPaymentMethod}
-                          onChange={(e) => setGroupPaymentMethod(e.target.value)}
-                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        >
-                          {acceptedPaymentMethods.map((method) => (
-                            <option key={method} value={method}>{method}</option>
-                          ))}
-                        </select>
+                        <Select value={groupPaymentMethod} onValueChange={setGroupPaymentMethod}>
+                          <SelectTrigger className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900">
+                            <SelectValue placeholder="Choisir" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {acceptedPaymentMethods.map((method) => (
+                              <SelectItem key={method} value={method}>{method}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   )}

@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { useAuth, type Salon } from '@/contexts/AuthContext';
 import { getImageUrl } from '@/lib/utils';
 import { SalonFilterControl } from '@/components/SalonFilterControl';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import type { LatLng } from '@/components/SalonLocationPicker';
 
@@ -218,19 +219,19 @@ export default function MesSalonsPage() {
           value={form.address}
           onChange={(e) => setForm({ ...form, address: e.target.value })}
         />
-        <select
-          className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/30 bg-white"
-          value={form.category}
-          onChange={(e) => setForm({ ...form, category: e.target.value })}
-          required
-        >
-          <option value="">Catégorie *</option>
-          {CATEGORIES.map((cat) => (
-            <option key={cat} value={cat}>
-              {cat}
-            </option>
-          ))}
-        </select>
+        <Select value={form.category || 'none'} onValueChange={(v) => setForm({ ...form, category: v === 'none' ? '' : v })}>
+          <SelectTrigger className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm bg-white">
+            <SelectValue placeholder="Catégorie *" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Catégorie *</SelectItem>
+            {CATEGORIES.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                {cat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <div className="md:col-span-2">
           <textarea
             className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/30 resize-none"

@@ -4,6 +4,7 @@ import EditAppointmentModal from './EditAppointmentModal';
 import DeleteModal from './dialogue/deletemodal';
 import api from '../../lib/api';
 import { formatMoroccoDate, getImageUrl } from '../../lib/utils';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../components/UI/select';
 
 const PAGE_SIZE = 8;
 
@@ -1013,14 +1014,18 @@ const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
         {onSortChange && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 font-light">Trier par:</span>
-            <select
+            <Select
               value={currentSort}
-              onChange={(e) => onSortChange(e.target.value as 'createdAt' | 'startTime')}
-              className="px-3 py-2 text-xs bg-white border border-gray-200 rounded-full text-gray-900 font-light focus:outline-none focus:border-gray-900 transition-colors cursor-pointer"
+              onValueChange={(v) => onSortChange(v as 'createdAt' | 'startTime')}
             >
-              <option value="createdAt">Date de réservation</option>
-              <option value="startTime">Date du rendez-vous</option>
-            </select>
+              <SelectTrigger className="h-9 rounded-full px-3 py-2 text-xs text-gray-900 font-light">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="createdAt">Date de réservation</SelectItem>
+                <SelectItem value="startTime">Date du rendez-vous</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         )}
       </div>

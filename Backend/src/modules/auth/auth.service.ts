@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { prisma } from '../../lib/prisma';
 import { hashPassword, comparePassword } from '../../utils/password';
 import { generateToken } from '../../utils/jwt';
+import { slugifyName } from '../../utils/slugify';
 import { sendMail } from '../../utils/mailer';
 import { LoginInput, RegisterInput, ForgotPasswordInput, ResetPasswordInput } from './auth.schema';
 import { accountService } from '../account/account.service';
@@ -155,6 +156,12 @@ export class AuthService {
           // New salons stay hidden from clients until the account subscribes
           subscriptionActive: false
         }
+      });
+
+      // Public URL slug (pretty, non-CUID client URLs)
+      await prisma.tenant.update({
+        where: { id: newTenant.id },
+        data: { slug: slugifyName(newTenant.name, newTenant.id) },
       });
 
       const onboardingData = {

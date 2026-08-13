@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { generateToken } from '../../utils/jwt';
+import { slugifyName } from '../../utils/slugify';
 import { accountService } from '../account/account.service';
 
 export interface CreateSalonInput {
@@ -163,6 +164,12 @@ export class SalonService {
         subscriptionActive: false,
         accountId: account.id,
       },
+    });
+
+    // Public URL slug (pretty, non-CUID client URLs)
+    await prisma.tenant.update({
+      where: { id: tenant.id },
+      data: { slug: slugifyName(tenant.name, tenant.id) },
     });
 
     await prisma.tenantSettings.create({

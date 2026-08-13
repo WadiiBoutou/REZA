@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, MapPin, Scissors, HandMetal, Sparkles, Paintbrush, User, ArrowRight, X, QrCode } from 'lucide-react';
+import { Search, MapPin, Scissors, HandMetal, Sparkles, Paintbrush, User, ArrowRight, X, QrCode, Palette, Footprints, Flame, Gem, Flower2, Cloud, Heart, Check } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import api from '../lib/api';
@@ -76,6 +76,41 @@ export default function HeroAbout() {
   ];
 
   const [popularSearches, setPopularSearches] = useState(defaultPopularSearches);
+  // Full canonical category list (same as what admins can select in the Pro app)
+  const [categoriesList, setCategoriesList] = useState<Array<{ name: string; count: number }>>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [showAllCategories, setShowAllCategories] = useState(false);
+
+  const categoryIcons: Record<string, React.ReactNode> = {
+    'Coiffeur': <Scissors />,
+    'Couleur': <Palette />,
+    'Barbier': <HandMetal />,
+    'Manucure': <Sparkles />,
+    'Pédicure': <Footprints />,
+    'Épilation': <Flame />,
+    'Esthétique': <Gem />,
+    'Maquillage': <Paintbrush />,
+    'Massage': <HandMetal />,
+    'Spa': <Flower2 />,
+    'Hammam': <Cloud />,
+    'Soin': <Heart />,
+  };
+
+  const toggleCategory = (name: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]
+    );
+  };
+
+  const applyCategories = () => {
+    if (selectedCategories.length === 0) return;
+    const params = new URLSearchParams();
+    // Comma-separated categories → backend AND semantics (salons matching ALL).
+    params.set('category', selectedCategories.join(','));
+    if (location.trim()) params.set('location', location.trim());
+    setShowSearchDropdown(false);
+    router.push(`/search-results?${params.toString()}`);
+  };
 
   // Fetch categories and create dynamic popular searches
   useEffect(() => {
@@ -83,7 +118,10 @@ export default function HeroAbout() {
       try {
         const categoriesResponse = await api.getCategories();
         const fetchedCategories = categoriesResponse.categories || [];
-        
+
+        // Full canonical list (with real salon counts) for the category grid
+        setCategoriesList(fetchedCategories);
+
         // Map main categories to popular searches
         const mainCategories = ['Coiffeur', 'Barbier', 'Manucure', 'Institut de beauté'];
         const iconMap: Record<string, React.ReactElement> = {
@@ -360,42 +398,68 @@ export default function HeroAbout() {
                     <div className="p-3">
                       {searchQuery.trim().length === 0 ? (
                         <>
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 py-2">
-                            Recherches populaires
-                          </p>
-                          <div className="space-y-1">
-                            {popularSearches.map((item, index) => (
+                          <div className="flex items-center justify-between px-3 py-2">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                              Catégories de prestations
+                            </p>
+                            {selectedCategories.length > 0 && (
                               <button
-                                key={index}
-                                onClick={() => {
-                                  setSearchQuery(item.title);
-                                  setShowSearchDropdown(false);
-                                  // Redirect to search results with category filter
-                                  const params = new URLSearchParams();
-                                  params.append('query', item.title);
-                                  if (item.category) {
-                                    params.append('category', item.category);
-                                  }
-                                  if (location.trim()) {
-                                    params.append('location', location.trim());
-                                  }
-                                  router.push(`/search-results?${params.toString()}`);
-                                }}
-                                className="w-full flex items-center gap-4 px-3 py-3 rounded-xl hover:bg-gray-50 active:bg-gray-100 transition-all duration-200 group"
+                                type="button"
+                                onClick={() => setSelectedCategories([])}
+                                className="text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors"
                               >
-                                <div className="w-10 h-10 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl text-xl group-hover:scale-110 transition-transform duration-200">
-                                  {item.icon}
-                                </div>
-                                <div className="flex-1 text-left">
-                                  <p className="font-medium text-gray-900 text-sm">{item.title}</p>
-                                  <p className="text-xs text-gray-500">{item.subtitle}</p>
-                                </div>
-                                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <ArrowRight className="w-4 h-4 text-gray-400" />
-                                </div>
+                                Effacer
                               </button>
-                            ))}
+                            )}
                           </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 px-1 pb-1">
+                            {(showAllCategories ? categoriesList : categoriesList.slice(0, 8)).map((cat) => {
+                              const active = selectedCategories.includes(cat.name);
+                              return (
+                                <button
+                                  key={cat.name}
+                                  type="button"
+                                  onClick={() => toggleCategory(cat.name)}
+                                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-left group ${
+                                    active ? 'bg-gray-900 text-white' : 'hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <span className={`w-9 h-9 flex items-center justify-center rounded-xl text-lg shrink-0 transition-colors ${
+                                    active ? 'bg-white/15 text-white' : 'bg-gray-50 text-gray-700 group-hover:scale-105'
+                                  }`}>
+                                    {categoryIcons[cat.name] || <Sparkles />}
+                                  </span>
+                                  <span className="flex-1 min-w-0 text-left">
+                                    <span className="block text-sm font-medium truncate">{cat.name}</span>
+                                    <span className={`block text-[11px] ${active ? 'text-white/70' : 'text-gray-400'}`}>
+                                      {cat.count > 0 ? `${cat.count} salon${cat.count > 1 ? 's' : ''}` : 'Découvrir'}
+                                    </span>
+                                  </span>
+                                  {active && <Check className="w-4 h-4 shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {categoriesList.length > 8 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllCategories((v) => !v)}
+                              className="w-full py-2.5 text-xs font-medium text-gray-500 hover:text-gray-800 border-t border-gray-100 transition-colors"
+                            >
+                              {showAllCategories ? 'Voir moins' : `Voir plus de catégories (${categoriesList.length - 8})`}
+                            </button>
+                          )}
+                          {selectedCategories.length > 0 && (
+                            <div className="border-t border-gray-100 p-3">
+                              <button
+                                type="button"
+                                onClick={applyCategories}
+                                className="w-full py-2.5 rounded-full bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-all"
+                              >
+                                Rechercher ({selectedCategories.length}) — {selectedCategories.join(', ')}
+                              </button>
+                            </div>
+                          )}
                         </>
                       ) : loadingSuggestions ? (
                         <div className="px-3 py-4 text-center text-sm text-gray-500">

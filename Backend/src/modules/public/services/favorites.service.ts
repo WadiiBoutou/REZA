@@ -104,7 +104,7 @@ export class FavoritesService {
     const tenant = await prisma.tenant.findFirst({
       where: {
         OR: [
-          { subdomain: tenantId },
+          { slug: tenantId }, { subdomain: tenantId },
           { domain: tenantId },
           { id: tenantId }
         ],

@@ -470,11 +470,14 @@ export function normalizeMoroccanPhone(phone: string): string {
  * Backend public routes accept subdomain | domain | id.
  */
 export function getSalonSlug(salon: {
+  slug?: string | null;
   subdomain?: string | null;
   domain?: string | null;
   id?: string | null;
 } | null | undefined): string {
   if (!salon) return '';
+  const slug = salon.slug?.trim();
+  if (slug) return slug;
   const sub = salon.subdomain?.trim();
   if (sub) return sub;
   const domain = salon.domain?.trim();
@@ -484,6 +487,7 @@ export function getSalonSlug(salon: {
 
 /** Path for salon detail page, e.g. `/salon/barber-studio` */
 export function getSalonHref(salon: {
+  slug?: string | null;
   subdomain?: string | null;
   domain?: string | null;
   id?: string | null;

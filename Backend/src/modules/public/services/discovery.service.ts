@@ -2,6 +2,7 @@ import { prisma } from '../../../lib/prisma';
 import { calculateBusinessStatus } from '../utils/businessStatus';
 import { transformImageUrl } from '../../../utils/imageUrl';
 import { fail } from '../utils/http';
+import { SALON_CATEGORIES } from '../utils/serviceCategories';
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371;
@@ -137,6 +138,7 @@ export class DiscoveryService {
     return {
       tenant: {
         id: tenant.id,
+        slug: tenant.slug,
         name: tenant.name,
         subdomain: tenant.subdomain,
         domain: tenant.domain,
@@ -257,31 +259,31 @@ export class DiscoveryService {
     }
 
     if (categories.length > 0) {
-      // OR semantics across the selected categories. Per-element `equals` with
-      // `mode: 'insensitive'` is used instead of `{ in: categories }` because
-      // Prisma's `mode` is ignored on `in` queries for standard PostgreSQL
-      // text columns. A salon matches if:
-      //   a) its top-level category equals any selected category, OR
-      //   b) it offers at least one BOOKABLE/VISIBLE service whose category
-      //      equals any selected category.
-      const tenantCategoryOR = categories.map((c) => ({
-        category: { equals: c, mode: 'insensitive' as const },
-      }));
-      const serviceCategoryOR = categories.map((c) => ({
-        services: {
-          some: {
-            category: { equals: c, mode: 'insensitive' as const },
-            visibility: { in: ['BOOKABLE', 'VISIBLE'] },
+      // AND semantics ACROSS the selected categories (a salon must match EVERY
+      // selected category — either via its top-level category or via a
+      // BOOKABLE/VISIBLE service of that category). Selecting "Coiffeur" and
+      // "Barbier" shows salons offering both, not either.
+      // Per-element `equals` with `mode: 'insensitive'` is used instead of
+      // `{ in: categories }` because Prisma's `mode` is ignored on `in` queries
+      // for standard PostgreSQL text columns.
+      const catConditions = categories.map((c) => ({
+        OR: [
+          { category: { equals: c, mode: 'insensitive' as const } },
+          {
+            services: {
+              some: {
+                category: { equals: c, mode: 'insensitive' as const },
+                visibility: { in: ['BOOKABLE', 'VISIBLE'] },
+              },
+            },
           },
-        },
+        ],
       }));
-      const catMatch = [...tenantCategoryOR, ...serviceCategoryOR];
       if (where.OR) {
-        // Search is present: keep AND semantics (search AND categories) while
-        // the category strategies stay OR'd inside their own group.
-        where.AND = [...(where.AND ?? []), { OR: catMatch }];
+        // Search is present: search AND (category1 AND category2 AND …)
+        where.AND = [...(where.AND ?? []), ...catConditions];
       } else {
-        where.OR = catMatch;
+        where.AND = catConditions;
       }
     }
 
@@ -369,6 +371,7 @@ export class DiscoveryService {
 
         return {
           id: tenant.id,
+          slug: tenant.slug,
           name: tenant.name,
           subdomain: tenant.subdomain,
           domain: tenant.domain,
@@ -444,39 +447,26 @@ export class DiscoveryService {
 
   async getCategories() {
     try {
-    const categories = await prisma.service.findMany({
-      where: {
-        visibility: { in: ['BOOKABLE', 'VISIBLE'] }
-      },
-      select: {
-        category: true
-      },
-      distinct: ['category']
-    });
-
-    // Count services per category
-    const categoriesWithCount = await Promise.all(
-      categories.map(async (cat) => {
-        if (!cat.category) return null;
-        const count = await prisma.service.count({
-          where: {
-            category: cat.category,
-            visibility: { in: ['BOOKABLE', 'VISIBLE'] }
-          }
-        });
-        return {
-          name: cat.category,
-          count
-        };
-      })
-    );
-
-    return {
-      categories: categoriesWithCount.filter(Boolean).sort((a, b) => b!.count - a!.count)
-    };
-  } catch (error) {
-    throw error;
-  }
+      // Canonical list = exactly what admins can select in the Pro app.
+      // Counts reflect real BOOKABLE/VISIBLE services per category (0 when none).
+      const grouped = await prisma.service.groupBy({
+        by: ['category'],
+        where: { visibility: { in: ['BOOKABLE', 'VISIBLE'] } },
+        _count: { _all: true },
+      });
+      const countByCategory: Record<string, number> = {};
+      for (const g of grouped) {
+        if (g.category) countByCategory[g.category] = g._count._all;
+      }
+      return {
+        categories: SALON_CATEGORIES.map((name) => ({
+          name,
+          count: countByCategory[name] ?? 0,
+        })),
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 
   async getFeaturedServices(query: Record<string, unknown>) {
@@ -571,7 +561,8 @@ export class DiscoveryService {
           select: {
             id: true,
             firstName: true,
-            lastName: true
+            lastName: true,
+            avatar: true
           }
         },
         tenant: {
@@ -589,7 +580,7 @@ export class DiscoveryService {
       city: '',
       rating: review.rating,
       text: review.comment || '',
-      avatar: review.client.firstName?.charAt(0) || 'U',
+      avatar: review.client.avatar ? transformImageUrl(review.client.avatar) : null,
       date: new Date(review.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
       type: 'Client'
     }));

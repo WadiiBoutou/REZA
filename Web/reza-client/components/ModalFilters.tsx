@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight, Star } from 'lucide-react';
 import { Checkbox } from './UI/checkbox';
 import { getMoroccoToday } from '../lib/utils';
+import api from '../lib/api';
 
 interface ModalFiltersProps {
   open: boolean;
@@ -11,6 +12,7 @@ interface ModalFiltersProps {
     selectedTime: string | null;
     rating: number | null;
     bestPro: boolean;
+    categories: string[];
   };
   setFilterValues: (values: any) => void;
   onClose: () => void;
@@ -45,6 +47,27 @@ export default function ModalFilters({ open, filterValues, setFilterValues, onCl
       setCurrentMonth(new Date(date.getFullYear(), date.getMonth(), 1));
     }
   }, [filterValues.selectedDate, open]);
+
+  // Real categories = exactly what admins can select in the Pro app
+  const [categories, setCategories] = useState<string[]>([]);
+  useEffect(() => {
+    if (!open || categories.length > 0) return;
+    api.getCategories().then((res) => {
+      const list = (res.categories || []).map((c: any) => c.name).filter(Boolean);
+      if (list.length > 0) setCategories(list);
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const toggleCategory = (name: string) => {
+    const current = filterValues.categories || [];
+    setFilterValues({
+      ...filterValues,
+      categories: current.includes(name)
+        ? current.filter((c) => c !== name)
+        : [...current, name],
+    });
+  };
 
   if (!open) return null;
 
@@ -273,6 +296,42 @@ export default function ModalFilters({ open, filterValues, setFilterValues, onCl
                     Afficher en premier les professionnels avec les meilleures avis
                   </span>
                 </label>
+              </div>
+
+              {/* Categories — multi-select; a salon must match ALL selected (AND) */}
+              <div className="border-t border-gray-100 pt-6 mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm text-gray-700 font-normal">Catégories</span>
+                  {filterValues.categories && filterValues.categories.length > 0 && (
+                    <button
+                      onClick={() => setFilterValues({ ...filterValues, categories: [] })}
+                      className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
+                    >
+                      Effacer
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map((cat) => {
+                    const active = (filterValues.categories || []).includes(cat);
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => toggleCategory(cat)}
+                        className={`px-3 py-1.5 rounded-full border text-sm transition-all ${
+                          active
+                            ? 'bg-black text-white border-black'
+                            : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    );
+                  })}
+                  {categories.length === 0 && (
+                    <p className="text-xs text-gray-400">Chargement…</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>

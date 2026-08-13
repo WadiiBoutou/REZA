@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Search, Edit2, Trash2, Copy, Eye, EyeOff, ChevronDown, X, Check, Clock, Palette, List, Settings, ArrowUpDown, Filter } from 'lucide-react';
 import { Sketch } from '@uiw/react-color';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { Checkbox } from "@/components/ui/checkbox";
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1138,18 +1139,15 @@ const ServiceModal = ({
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Salon <span className="text-red-500">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     value={createTenantId}
-                    onChange={(e) => onCreateTenantIdChange?.(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  >
-                    <option value="">Choisir un salon</option>
-                    {salonOptions.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={(v) => onCreateTenantIdChange?.(v)}
+                    options={salonOptions.map((s) => ({ value: s.id, label: s.name }))}
+                    placeholder="Choisir un salon"
+                    searchPlaceholder="Rechercher un salon…"
+                    emptyLabel="Aucun salon trouvé"
+                    className="w-full"
+                  />
                 </div>
               )}
               <div>

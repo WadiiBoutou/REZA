@@ -8,6 +8,7 @@ import LoadingOverlay from '@/components/ui/LoadingOverlay';
 import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 
 // Animated Text Component
 const AnimatedText = ({ className = "" }: { className?: string }) => {
@@ -77,6 +78,15 @@ const StatItem = ({ number, label }: { number: string; label: string }) => (
     <div className="text-sm text-blue-100 font-medium">{label}</div>
   </div>
 );
+
+const SIGNUP_CITIES = [
+  'Agadir', 'Al Hoceïma', 'Azrou', 'Beni Mellal', 'Berkane', 'Boujdour',
+  'Casablanca', 'Chefchaouen', 'Dakhla', 'El Jadida', 'Errachidia', 'Essaouira',
+  'Fès', 'Figuig', 'Guelmim', 'Ifrane', 'Kénitra', 'Khemisset', 'Khénifra',
+  'Larache', 'Laâyoune', 'Marrakech', 'Meknès', 'Mohammedia', 'Nador',
+  'Ouarzazate', 'Oujda', 'Rabat', 'Safi', 'Salé', 'Settat', 'Sidi Ifni',
+  'Tanger', 'Tan-Tan', 'Taza', 'Tétouan', 'Tiznit',
+];
 
 function LoginPageContent() {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -619,51 +629,16 @@ function LoginPageContent() {
                     <label htmlFor="city" className="block text-sm font-bold text-gray-900 mb-2">
                       Ville <span className="text-red-500">*</span>
                     </label>
-                    <select
-                      id="city"
+                    <SearchableSelect
                       value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      className="w-full px-6 py-3 bg-white border border-gray-200 rounded-full focus:ring-1 focus:ring-[#082259] outline-none transition-all text-gray-900 text-base font-medium"
-                    >
-                      <option value="">Sélectionner une ville</option>
-                      <option value="Agadir">Agadir</option>
-                      <option value="Al Hoceïma">Al Hoceïma</option>
-                      <option value="Azrou">Azrou</option>
-                      <option value="Beni Mellal">Beni Mellal</option>
-                      <option value="Berkane">Berkane</option>
-                      <option value="Boujdour">Boujdour</option>
-                      <option value="Casablanca">Casablanca</option>
-                      <option value="Chefchaouen">Chefchaouen</option>
-                      <option value="Dakhla">Dakhla</option>
-                      <option value="El Jadida">El Jadida</option>
-                      <option value="Errachidia">Errachidia</option>
-                      <option value="Essaouira">Essaouira</option>
-                      <option value="Fès">Fès</option>
-                      <option value="Figuig">Figuig</option>
-                      <option value="Guelmim">Guelmim</option>
-                      <option value="Ifrane">Ifrane</option>
-                      <option value="Kénitra">Kénitra</option>
-                      <option value="Khemisset">Khemisset</option>
-                      <option value="Khénifra">Khénifra</option>
-                      <option value="Larache">Larache</option>
-                      <option value="Laâyoune">Laâyoune</option>
-                      <option value="Marrakech">Marrakech</option>
-                      <option value="Meknès">Meknès</option>
-                      <option value="Mohammedia">Mohammedia</option>
-                      <option value="Nador">Nador</option>
-                      <option value="Ouarzazate">Ouarzazate</option>
-                      <option value="Oujda">Oujda</option>
-                      <option value="Rabat">Rabat</option>
-                      <option value="Safi">Safi</option>
-                      <option value="Salé">Salé</option>
-                      <option value="Settat">Settat</option>
-                      <option value="Sidi Ifni">Sidi Ifni</option>
-                      <option value="Tanger">Tanger</option>
-                      <option value="Tan-Tan">Tan-Tan</option>
-                      <option value="Taza">Taza</option>
-                      <option value="Tétouan">Tétouan</option>
-                      <option value="Tiznit">Tiznit</option>
-                    </select>
+                      onValueChange={setCity}
+                      options={SIGNUP_CITIES.map((c) => ({ value: c, label: c }))}
+                      placeholder="Sélectionner une ville"
+                      searchPlaceholder="Rechercher une ville…"
+                      emptyLabel="Aucune ville trouvée"
+                      triggerClassName="px-4 py-3 rounded-full border border-gray-200 bg-white text-gray-900 text-base font-medium"
+                      className="w-full"
+                    />
                     {fieldErrors.city && (
                       <p className="mt-2 text-sm text-red-500">{fieldErrors.city}</p>
                     )}

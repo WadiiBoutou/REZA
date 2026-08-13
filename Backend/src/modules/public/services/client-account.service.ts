@@ -32,25 +32,30 @@ export class ClientAccountService {
       });
     }
 
-    // Update client information
-    // Log avatar value for debugging
+    // Update client information. A client email can map to SEVERAL Client rows
+    // (one per salon booking) — the avatar/name must land on ALL of them so
+    // every review and salon file shows the real image, not just the newest row.
     log.log('[Update Client Profile] Avatar value received:', avatar ? 'present' : 'null/undefined', typeof avatar);
-    
+
     const updateData: any = {
       firstName: firstName !== undefined ? firstName.trim() : undefined,
       lastName: lastName !== undefined ? lastName.trim() : undefined,
       phone: phone !== undefined ? phone.trim() : undefined,
       address: address !== undefined ? address.trim() : undefined,
     };
-    
+
     // Handle avatar separately to ensure it's properly set
     if (avatar !== undefined) {
       updateData.avatar = avatar || null;
     }
-    
-    const updatedClient = await prisma.client.update({
-      where: { id: client.id },
+
+    await prisma.client.updateMany({
+      where: { email: decodeURIComponent(email) },
       data: updateData,
+    });
+
+    const updatedClient = await prisma.client.findUnique({
+      where: { id: client.id },
       select: {
         id: true,
         firstName: true,

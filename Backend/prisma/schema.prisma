@@ -122,6 +122,7 @@ model SubscriptionPayment {
 model Tenant {
   id        String  @id @default(cuid())
   name      String
+  slug      String? @unique // Public URL slug (pretty, non-CUID URLs for the client site)
   subdomain String? @unique // Optional subdomain for tenant
   domain    String? @unique // Optional custom domain
   email     String

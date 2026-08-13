@@ -7,6 +7,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getImageUrl } from '@/lib/utils';
 import SalonScopeNotice from '@/components/SalonScopeNotice';
 import SalonLocationPicker from '@/components/SalonLocationPicker';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import toast from 'react-hot-toast';
 
 // Brand icons (lucide has no X / TikTok / WhatsApp logos)
@@ -435,16 +437,17 @@ const InformationsLandingPage = () => {
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Catégorie principale *
           </label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366]"
-          >
-            <option value="">Sélectionner une catégorie</option>
-            {categories.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
+          <Select value={category || 'none'} onValueChange={(v) => setCategory(v === 'none' ? '' : v)}>
+            <SelectTrigger className="w-full rounded-xl border border-gray-300 bg-white">
+              <SelectValue placeholder="Sélectionner une catégorie" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Sélectionner une catégorie</SelectItem>
+              {categories.map(cat => (
+                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Short Description */}
@@ -617,17 +620,16 @@ const InformationsLandingPage = () => {
             Ville
           </label>
           <div className="flex items-center gap-3">
-            <MapPin className="w-5 h-5 text-gray-400" />
-            <select
+            <MapPin className="w-5 h-5 text-gray-400 shrink-0" />
+            <SearchableSelect
               value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366]"
-            >
-              <option value="">Sélectionner une ville</option>
-              {moroccanCities.map(cityName => (
-                <option key={cityName} value={cityName}>{cityName}</option>
-              ))}
-            </select>
+              onValueChange={setCity}
+              options={moroccanCities.map((c) => ({ value: c, label: c }))}
+              placeholder="Sélectionner une ville"
+              searchPlaceholder="Rechercher une ville…"
+              emptyLabel="Aucune ville trouvée"
+              className="flex-1"
+            />
           </div>
         </div>
 

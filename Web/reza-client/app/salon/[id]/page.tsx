@@ -45,6 +45,7 @@ import { useAvailability } from '../../../hooks/useAvailability';
 import { useAuth } from '../../../context/AuthContext';
 import toast, { Toaster } from 'react-hot-toast';
 import { formatMoroccoDate, getRelativeDate, formatTimeForDisplay, getImageUrl, getSalonSlug } from '../../../lib/utils';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../../components/UI/select';
 
 export default function SalonDetail() {
   const params = useParams();
@@ -480,6 +481,15 @@ export default function SalonDetail() {
 
   return (
     <div className="min-h-screen bg-white">
+      <style>{`
+        @keyframes heroFade {
+          from { opacity: 0.2; transform: scale(0.985); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .hero-fade {
+          animation: heroFade 0.45s ease-out;
+        }
+      `}</style>
       <Toaster 
         position="top-center"
         toastOptions={{
@@ -545,7 +555,6 @@ export default function SalonDetail() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
-                    <span className="font-bold text-gray-900">Nouveau</span>
                     <Star className="w-4 h-4 text-gray-300" />
                     <span>(0 avis)</span>
                   </div>
@@ -656,8 +665,6 @@ export default function SalonDetail() {
             </div>
           ) : (
             <div className="relative">
-              {/* Clamp the index defensively so a shrunken image list (e.g. an
-                  admin removed photos) never renders an out-of-range image. */}
               {(() => {
                 const total = salonData.images.length;
                 const cur = Math.min(selectedImage, total - 1);
@@ -668,12 +675,12 @@ export default function SalonDetail() {
                 const showPrev = total > 2;
                 const showNext = total > 1;
                 return (
-                  <div className="flex items-center justify-center gap-2 sm:gap-4 h-[340px] sm:h-[520px] lg:h-[640px]">
-                    {/* Previous image — dangling on the left, smaller */}
+                  <div className="flex items-center justify-center gap-2 sm:gap-4 h-[420px] sm:h-[600px] lg:h-[720px]">
+                    {/* Previous image — small side peek, less space */}
                     {showPrev && (
                       <button
                         onClick={prevImage}
-                        className="relative w-1/4 sm:w-[28%] h-[82%] rounded-2xl overflow-hidden shrink-0 cursor-pointer group opacity-60 hover:opacity-100 transition-all duration-300 translate-x-3 sm:translate-x-5 z-10 hidden sm:block"
+                        className="relative w-[16%] h-[76%] rounded-2xl overflow-hidden shrink-0 cursor-pointer group opacity-50 hover:opacity-100 transition-all duration-300 translate-x-2 sm:translate-x-4 z-10 hidden sm:block"
                         aria-label="Image précédente"
                       >
                         <img
@@ -683,23 +690,25 @@ export default function SalonDetail() {
                         />
                       </button>
                     )}
-                    {/* Highlighted (primary) image — big, center-front. object-cover fills the hero area so no letterbox bars appear when image aspect differs from container. */}
+                    {/* Highlighted image — dominant, shows the FULL photo (object-contain
+                        so it is never cropped vertically), fading in smoothly on change. */}
                     <button
                       onClick={() => setShowLightbox(true)}
-                      className="relative flex-1 max-w-[62%] h-full rounded-2xl overflow-hidden cursor-pointer z-20 shadow-xl group bg-gray-100"
+                      className="relative flex-1 max-w-[72%] h-full rounded-3xl overflow-hidden cursor-pointer z-20 shadow-xl group bg-gray-50"
                       aria-label="Agrandir la photo"
                     >
                       <img
+                        key={cur}
                         src={salonData.images[cur]}
                         alt={`${salonData.name} principale`}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                        className="w-full h-full object-contain hero-fade group-hover:scale-[1.02] transition-transform duration-700"
                       />
                     </button>
-                    {/* Next image — dangling on the right, smaller */}
+                    {/* Next image — small side peek, less space */}
                     {showNext && (
                       <button
                         onClick={nextImage}
-                        className="relative w-1/4 sm:w-[28%] h-[82%] rounded-2xl overflow-hidden shrink-0 cursor-pointer group opacity-60 hover:opacity-100 transition-all duration-300 -translate-x-3 sm:-translate-x-5 z-10 hidden sm:block"
+                        className="relative w-[16%] h-[76%] rounded-2xl overflow-hidden shrink-0 cursor-pointer group opacity-50 hover:opacity-100 transition-all duration-300 -translate-x-2 sm:-translate-x-4 z-10 hidden sm:block"
                         aria-label="Image suivante"
                       >
                         <img
@@ -1113,7 +1122,6 @@ export default function SalonDetail() {
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-gray-900">Nouveau</span>
                         <div className="flex items-center gap-0.5">
                           {[1, 2, 3, 4, 5].map((star) => (
                             <Star key={star} className="w-4 h-4 text-gray-200" />
@@ -1235,8 +1243,8 @@ export default function SalonDetail() {
               </div>
                 {/* Social Media */}
                 {salonData.socialMedia && Object.keys(salonData.socialMedia).length > 0 && (
-                  <div className="mt-6 bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
-                    <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 sm:mb-6">Réseaux sociaux</h3>
+                  <div className="mt-6 bg-white border border-gray-200 rounded-3xl p-6">
+                    <h3 className="text-base font-bold text-gray-900 mb-4">Réseaux sociaux</h3>
                     <div className="flex flex-wrap gap-2 sm:gap-3">
                       {salonData.socialMedia.instagram && (
                         <a 
@@ -1310,8 +1318,8 @@ export default function SalonDetail() {
 
                 {/* Map embed = OSM (no key); external link = Google Maps only */}
                 {(salonData.coordinates || salonData.googleMapsLink) && (
-                  <div className="mt-6 bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
-                    <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 sm:mb-6">Localisation</h3>
+                  <div className="mt-6 bg-white border border-gray-200 rounded-3xl p-6">
+                    <h3 className="text-base font-bold text-gray-900 mb-4">Localisation</h3>
                     <div className="flex flex-wrap gap-3 sm:gap-4 mb-3 sm:mb-4">
                       <a
                         href={
@@ -1341,8 +1349,8 @@ export default function SalonDetail() {
                 )}
 
                 {/* Hours */}
-                <div className="mt-6 bg-white border rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8">
-                  <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-4 sm:mb-6">Horaires</h3>
+                <div className="mt-6 bg-white border border-gray-200 rounded-3xl p-6">
+                  <h3 className="text-base font-bold text-gray-900 mb-4">Horaires</h3>
                   <div className="space-y-2 sm:space-y-3">
                     {Object.entries(salonData.hours).map(([day, hours]) => (
                       <div key={day} className="flex justify-between text-xs sm:text-sm">
@@ -1842,22 +1850,25 @@ function ReviewForm({ tenantId, user, employees, onReviewSubmitted }: { tenantId
           <label htmlFor="review-employee" className="block text-sm font-medium text-gray-900 mb-3">
             Employé concerné (optionnel)
           </label>
-          <select
-            id="review-employee"
-            value={employeeId}
-            onChange={(e) => setEmployeeId(e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#111827] focus:border-transparent text-gray-900 bg-white"
+          <Select
+            value={employeeId || 'none'}
+            onValueChange={(v) => setEmployeeId(v === 'none' ? '' : v)}
           >
-            <option value="">— Sélectionner un employé —</option>
-            {selectableEmployees.map((emp: any) => {
-              const empName = `${emp.firstName || ''} ${emp.lastName || ''}`.trim();
-              return (
-                <option key={emp.id} value={emp.id}>
-                  {empName || 'Employé'}
-                </option>
-              );
-            })}
-          </select>
+            <SelectTrigger className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900">
+              <SelectValue placeholder="— Sélectionner un employé —" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Sélectionner un employé —</SelectItem>
+              {selectableEmployees.map((emp: any) => {
+                const empName = `${emp.firstName || ''} ${emp.lastName || ''}`.trim();
+                return (
+                  <SelectItem key={emp.id} value={emp.id}>
+                    {empName || 'Employé'}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
         </div>
       )}
 

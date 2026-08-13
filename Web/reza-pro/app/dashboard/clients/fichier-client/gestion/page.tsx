@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 
 const AVATAR_MAX_SIZE = 5 * 1024 * 1024; // 5 Mo
 const AVATAR_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
@@ -820,21 +821,17 @@ export default function ClientsGestionPage() {
                 {!editingClient && isSalonFilterMulti && (
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">Salon *</label>
-                    <select
+                    <SearchableSelect
                       value={createTenantId}
-                      onChange={(e) => setCreateTenantId(e.target.value)}
-                      required
-                      className="w-full px-4 py-2.5 rounded-full bg-gray-50 border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900"
-                    >
-                      <option value="">Choisir un salon</option>
-                      {salons
+                      onValueChange={setCreateTenantId}
+                      options={salons
                         .filter((s) => effectiveSalonIds.includes(s.id))
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                    </select>
+                        .map((s) => ({ value: s.id, label: s.name }))}
+                      placeholder="Choisir un salon"
+                      searchPlaceholder="Rechercher un salon…"
+                      emptyLabel="Aucun salon trouvé"
+                      className="w-full"
+                    />
                   </div>
                 )}
                 {/* Avatar */}
