@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, Suspense } from 'react';
-import { Search, MapPin, Star, Clock, ArrowRight, SlidersHorizontal, Heart, Navigation, ListFilter } from 'lucide-react';
+import { Search, MapPin, Star, Clock, ArrowRight, SlidersHorizontal, Heart, Navigation, ListFilter, ChevronLeft, ChevronRight, Maximize2, Minimize2, X } from 'lucide-react';
 import ModalFilters from '../../components/ModalFilters';
 import RezaNavbar from '../../components/Header';
 import Footer from '../../components/Footer';
@@ -77,6 +77,9 @@ function LuxurySearchResultsContent() {
 	const [results, setResults] = useState<any[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [selectedSalon, setSelectedSalon] = useState<string | null>(null);
+	const [selectedSalonDetails, setSelectedSalonDetails] = useState<any | null>(null);
+	const [galleryIndex, setGalleryIndex] = useState(0);
+	const [mapFullscreen, setMapFullscreen] = useState(false);
 	const [showFilters, setShowFilters] = useState(false);
 	const [sortBy, setSortBy] = useState('recommended');
 	const [likedSalons, setLikedSalons] = useState(new Set<string>());
@@ -317,6 +320,12 @@ function LuxurySearchResultsContent() {
 	// Filter results based on filter values
 	const getFilteredResults = () => {
 		let filtered = [...results];
+
+			// Filter by availability: any concrete date/time choice only keeps salons
+		// that actually accept online reservations (exact slot is checked at booking).
+		if (filterValues.availability && filterValues.availability !== 'anytime') {
+			filtered = filtered.filter(salon => salon.onlineReservationEnabled !== false);
+		}
 
 		// Filter by rating
 		if (filterValues.rating !== null && filterValues.rating > 0) {
@@ -607,6 +616,20 @@ function LuxurySearchResultsContent() {
 		return () => window.clearTimeout(t);
 	}, [showMobileMap, mapReady]);
 
+	// Reflow map when entering/leaving fullscreen
+	useEffect(() => {
+		const map = leafletMapRef.current;
+		if (!map || !mapReady) return;
+		const t = window.setTimeout(() => {
+			try {
+				map.invalidateSize();
+			} catch {
+				/* ignore */
+			}
+		}, 120);
+		return () => window.clearTimeout(t);
+	}, [mapFullscreen, mapReady]);
+
 	// Update map markers when filtered results change
 	useEffect(() => {
 		if (!mapReady || loading) return;
@@ -660,7 +683,8 @@ function LuxurySearchResultsContent() {
 				marker.on('mouseout', () => setSelectedSalon(null));
 				marker.on('click', () => {
 					setSelectedSalon(salon.id);
-					router.push(getSalonHref(salon));
+					setGalleryIndex(0);
+					setSelectedSalonDetails(salon);
 				});
 
 				marker.addTo(markersLayerRef.current);
@@ -891,7 +915,7 @@ function LuxurySearchResultsContent() {
 												onChange={(e) => setQuery(e.target.value)}
 											/>
 										</div>
-										<div className="flex items-center gap-2 sm:gap-3 bg-white rounded-full px-3 sm:px-4 py-1 border border-gray-300 hover:border-gray-400 transition-all flex-1 sm:flex-initial relative z-[100] shadow-sm min-w-0">
+										<div className="flex items-center gap-2 sm:gap-3 bg-white rounded-full px-3 sm:px-4 py-1 border border-gray-300 hover:border-gray-400 transition-all flex-1 sm:flex-initial relative z-[200] shadow-sm min-w-0">
 											<div className="flex-1 min-w-0">
 												<LocationAutocomplete
 													value={location}
@@ -1141,17 +1165,20 @@ function LuxurySearchResultsContent() {
 
 				{/* Right Side - Map: sticky desktop panel; fixed fullscreen on mobile toggle */}
 				<div
-					className={`${
-						showMobileMap
-							? 'fixed inset-x-0 top-20 bottom-0 z-[1] block w-full lg:static lg:inset-auto'
-							: 'hidden'
-					} lg:block lg:w-[45%] lg:flex-shrink-0 lg:sticky lg:top-20 lg:h-[calc(100vh-5rem)] lg:self-start lg:z-[1] bg-[#e8ebe6]`}
+					className={
+						mapFullscreen
+							? 'fixed inset-0 z-[100] block w-full bg-[#e8ebe6]'
+							: `${showMobileMap
+									? 'fixed inset-x-0 top-20 bottom-0 z-[1] block w-full lg:static lg:inset-auto'
+									: 'hidden'
+								} lg:block lg:w-[45%] lg:flex-shrink-0 lg:sticky lg:top-20 lg:h-[calc(100vh-5rem)] lg:self-start lg:z-[1] bg-[#e8ebe6]`
+					}
 				>
-				<div className="relative w-full h-full">
+				<div className={`relative w-full h-full ${mapFullscreen ? '' : 'rounded-2xl overflow-hidden'}`}>
 					<div
 						id="map"
 						ref={mapRef}
-						className="w-full h-full min-h-[calc(100vh-5rem)] lg:min-h-0"
+						className={`w-full h-full ${mapFullscreen ? '' : 'min-h-[calc(100vh-5rem)] lg:min-h-0'}`}
 						style={{ zIndex: 1 }}
 					/>
 					{/* Overlay when results exist but none have GPS coordinates */}
@@ -1163,6 +1190,24 @@ function LuxurySearchResultsContent() {
 								<p className="text-xs text-gray-500 mt-1">Les salons n&apos;ont pas encore ajouté leur localisation</p>
 							</div>
 						</div>
+					)}
+					{/* Fullscreen toggle — bottom right */}
+					<button
+						type="button"
+						onClick={() => setMapFullscreen(v => !v)}
+						className="absolute bottom-4 right-4 z-[100] w-10 h-10 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-100 transition-all"
+						title={mapFullscreen ? 'Réduire la carte' : 'Plein écran'}
+					>
+						{mapFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+					</button>
+					{mapFullscreen && (
+						<button
+							type="button"
+							onClick={() => setMapFullscreen(false)}
+							className="absolute top-4 right-4 z-[100] px-4 py-2 rounded-full bg-white shadow-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-100"
+						>
+							Fermer la carte
+						</button>
 					)}
 				</div>
 			</div>
@@ -1185,6 +1230,108 @@ function LuxurySearchResultsContent() {
 					)}
 				</button>
 			</div>
+
+			{/* Salon mini-details modal (opened from map pins) */}
+			{selectedSalonDetails && (() => {
+				const salon = selectedSalonDetails;
+				const gallery = [salon.coverImage, salon.logo, ...(Array.isArray(salon.images) ? salon.images : [])]
+					.map((img: string | null | undefined) => getImageUrl(img))
+					.filter((u: string) => Boolean(u));
+				const gallerySrcs = Array.from(new Set(gallery));
+				const safeIndex = gallerySrcs.length > 0 ? Math.min(galleryIndex, gallerySrcs.length - 1) : 0;
+				return (
+					<div
+						className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+						onClick={() => setSelectedSalonDetails(null)}
+					>
+						<div
+							className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fadeInUp"
+							onClick={(e) => e.stopPropagation()}
+						>
+							{/* Image carousel */}
+							<div className="relative h-56 sm:h-64 bg-gray-100">
+								{gallerySrcs.length > 0 ? (
+									<img
+										src={gallerySrcs[safeIndex]}
+										alt={salon.name}
+										className="w-full h-full object-cover"
+									/>
+								) : (
+									<div className="w-full h-full flex items-center justify-center">
+										<MapPin className="w-10 h-10 text-gray-300" />
+									</div>
+								)}
+								<button
+									type="button"
+									onClick={() => setSelectedSalonDetails(null)}
+									className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/90 shadow-sm flex items-center justify-center text-gray-700 hover:bg-white transition-all"
+									aria-label="Fermer"
+								>
+									<X size={18} />
+								</button>
+								{gallerySrcs.length > 1 && (
+									<>
+										<button
+											type="button"
+											onClick={(e) => {
+												e.stopPropagation();
+												setGalleryIndex((i) => (i - 1 + gallerySrcs.length) % gallerySrcs.length);
+											}}
+											className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 shadow-sm flex items-center justify-center text-gray-700 hover:bg-white transition-all"
+											aria-label="Image précédente"
+										>
+											<ChevronLeft size={20} />
+										</button>
+										<button
+											type="button"
+												onClick={(e) => {
+													e.stopPropagation();
+													setGalleryIndex((i) => (i + 1) % gallerySrcs.length);
+												}}
+												className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 shadow-sm flex items-center justify-center text-gray-700 hover:bg-white transition-all"
+												aria-label="Image suivante"
+											>
+											<ChevronRight size={20} />
+										</button>
+										<span className="absolute bottom-3 right-3 bg-black/60 text-white text-[11px] font-medium px-2.5 py-1 rounded-full">
+											{safeIndex + 1} / {gallerySrcs.length}
+										</span>
+									</>
+								)}
+							</div>
+
+							<div className="p-5 sm:p-6">
+								<h3 className="text-xl font-medium text-gray-900">{salon.name}</h3>
+								<div className="flex items-center gap-3 mt-2 flex-wrap">
+									<div className="flex items-center gap-1.5">
+										<Star className="w-4 h-4 fill-[#111827] text-[#111827]" />
+										<span className="text-sm font-semibold text-gray-900">{(salon.rating || 0).toFixed(1)}</span>
+										<span className="text-xs text-gray-400">({salon.reviews || 0} avis)</span>
+									</div>
+								</div>
+								<p className="flex items-center gap-1.5 text-sm text-gray-500 mt-2">
+									<MapPin className="w-4 h-4 shrink-0" />
+									<span>{salon.address || salon.city || 'Casablanca'}</span>
+								</p>
+								{salon.shortDescription && (
+									<p className="text-sm text-gray-600 mt-3 leading-relaxed">{salon.shortDescription}</p>
+								)}
+								<button
+									type="button"
+									onClick={() => {
+										setSelectedSalonDetails(null);
+										router.push(getSalonHref(salon));
+									}}
+									className="mt-5 w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#111827] text-white text-sm font-medium hover:bg-[#1f2937] transition-all"
+								>
+									<span>Aller au salon</span>
+									<ArrowRight className="w-4 h-4" />
+								</button>
+							</div>
+						</div>
+					</div>
+				);
+			})()}
 
 			{/* External Filter Modal */}
 			<ModalFilters

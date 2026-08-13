@@ -223,6 +223,15 @@ export class TenantService {
       throw { status: 400, error: 'Validation error', message: 'Emails must be an array' };
     }
 
+    // Cap at 5 emails — a salon should not blast more than 5 addresses per RDV.
+    if (emails.length > 5) {
+      throw {
+        status: 400,
+        error: 'Validation error',
+        message: 'Vous pouvez configurer au maximum 5 adresses email pour les notifications de rendez-vous.',
+      };
+    }
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     for (const email of emails) {
       if (typeof email !== 'string' || !emailRegex.test(email)) {

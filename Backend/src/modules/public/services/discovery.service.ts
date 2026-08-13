@@ -384,6 +384,13 @@ export class DiscoveryService {
           city: tenant.city,
           googleMapsLink: tenant.googleMapsLink,
           tags: tenant.tags || [],
+          images: [
+            ...(((tenant.settings as any)?.coverImages || []) as string[]),
+            ...(((tenant.settings as any)?.photos || []) as string[]),
+          ]
+            .map((img: string) => transformImageUrl(img))
+            .filter(Boolean),
+
           rating: reviewStats._avg.rating || 0,
           reviews: reviewStats._count.rating || 0,
           services: services.map(s => s.name),

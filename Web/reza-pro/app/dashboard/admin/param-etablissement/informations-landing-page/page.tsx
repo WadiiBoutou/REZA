@@ -67,7 +67,7 @@ const InformationsLandingPage = () => {
     tiktok: '',
     whatsapp: ''
   });
-  const [featured, setFeatured] = useState(false);
+
   
   // Display controls
   const [showMap, setShowMap] = useState(true);
@@ -165,7 +165,7 @@ const InformationsLandingPage = () => {
         tiktok: sm.tiktok || '',
         whatsapp: sm.whatsapp || ''
       });
-      setFeatured(settings.featured || false);
+
       
       // Set display controls
       setShowMap(settings.showMap !== false);
@@ -210,7 +210,6 @@ const InformationsLandingPage = () => {
         badges: badges.length > 0 ? badges : [],
         coverImages: coverImages.filter((c) => c !== primaryCover),
         socialMedia: Object.values(socialMedia).some(v => v) ? socialMedia : undefined,
-        featured,
         showMap,
         showOpeningHours,
         showOnlineReservation,
@@ -451,7 +450,7 @@ const InformationsLandingPage = () => {
         {/* Short Description */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Descriptioncon
+            Description
           </label>
           <textarea
             value={shortDescription}
@@ -957,24 +956,6 @@ const InformationsLandingPage = () => {
               Permet aux clients de réserver en ligne via votre page publique
             </p>
           </div>
-        </div>
-
-        {/* Featured */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={featured}
-              onChange={(e) => setFeatured(e.target.checked)}
-              className="w-5 h-5 text-[#002366] border-gray-300 rounded focus:ring-[#002366]"
-            />
-            <span className="text-sm font-medium text-gray-700">
-              Mettre en avant sur la landing page
-            </span>
-          </label>
-          <p className="text-xs text-gray-500 mt-2 ml-8">
-            Si activé, votre établissement sera mis en avant sur la page d'accueil Reza
-          </p>
         </div>
 
         {/* Save Button */}

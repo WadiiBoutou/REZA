@@ -7,6 +7,7 @@ import fs from 'fs';
 import os from 'os';
 import { prisma } from './lib/prisma';
 import * as log from './utils/logger';
+import { initRealtime } from './utils/realtime';
 
 // Import routes
 import authRoutes from './modules/auth/auth.routes';
@@ -189,6 +190,9 @@ const server = app.listen(Number(PORT), '0.0.0.0', () => {
     updateMobileIp();
   }
 });
+
+// Real-time notifications (Socket.IO) — attach to the same HTTP server
+initRealtime(server);
 
 function updateMobileIp() {
   // Resolve the LAN IP from network interfaces

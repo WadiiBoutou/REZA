@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
+import { getRealtimeSocket, disconnectRealtime } from '@/lib/realtime';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { SalonFilterControl } from '@/components/SalonFilterControl';
 
@@ -1150,6 +1151,28 @@ export default function Sidebar() {
 		}
 	}, [isAuthenticated, notificationTab, showNotificationSidebar]);
 
+	// Live notifications: Socket.IO push + a 30s polling fallback so the badge
+	// and list stay fresh even if the socket drops (proxy, sleep, etc).
+	useEffect(() => {
+		if (!isAuthenticated) return;
+
+		const socket = getRealtimeSocket();
+		const onNewNotification = () => {
+			fetchNotifications();
+		};
+		socket?.on('notification:new', onNewNotification);
+
+		const poll = window.setInterval(() => {
+			fetchNotifications();
+		}, 30000);
+
+		return () => {
+			socket?.off('notification:new', onNewNotification);
+			window.clearInterval(poll);
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [isAuthenticated]);
+
 	const fetchNotifications = async () => {
 		try {
 			setLoadingNotifications(true);
@@ -1248,6 +1271,7 @@ export default function Sidebar() {
 	};
 
 	const confirmLogout = () => {
+		disconnectRealtime();
 		logout();
 		router.push('/login');
 	};
@@ -1314,10 +1338,12 @@ export default function Sidebar() {
 						)}
 
 						{/* Notifications */}
-						<button className="relative p-2.5 rounded-full text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all" onClick={() => setShowNotificationSidebar(true)}>
+						<button className="relative p-2.5 rounded-full text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all" onClick={() => setShowNotificationSidebar(true)} title="Notifications">
 							<Bell size={20} strokeWidth={2} />
 							{unreadCount > 0 && (
-								<span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
+								<span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
+									{unreadCount > 99 ? '+99' : unreadCount}
+								</span>
 							)}
 						</button>
 						

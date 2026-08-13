@@ -412,9 +412,13 @@ export default function MonAbonnementPage() {
                       min="0.01"
                       step="0.01"
                       value={declareAmount}
-                      onChange={(e) => setDeclareAmount(e.target.value)}
-                      className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#002366]/30"
+                      readOnly
+                      title="Le montant est calculé automatiquement d'après votre facture"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-100 px-4 py-2.5 text-sm text-gray-700 cursor-not-allowed focus:outline-none"
                     />
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      Le montant déclaré doit correspondre à votre facture ({due.toLocaleString('fr-FR')} {currency}).
+                    </p>
                   </div>
                 </div>
                 <div>

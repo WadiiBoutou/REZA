@@ -1,4 +1,5 @@
 import { prisma } from '../../../lib/prisma';
+import { createNotification } from '../../../utils/notify';
 import { sendMail } from '../../../utils/mailer';
 import { formatDateForNotification } from '../../../utils/dateTime';
 import { validateAppointmentRules } from '../../../utils/schedulingValidation';
@@ -790,7 +791,7 @@ export class BookingService {
         if (tenantUsers.length > 0) {
           await Promise.all(
             tenantUsers.map((user) =>
-              prisma.notification.create({
+              createNotification({
                 data: {
                   tenantId: tenant.id,
                   userId: user.id,
@@ -848,7 +849,7 @@ export class BookingService {
               });
               await Promise.all(
                 tenantUsers.map((u) =>
-                  prisma.notification.create({
+                  createNotification({
                     data: {
                       tenantId: tenant.id,
                       userId: u.id,

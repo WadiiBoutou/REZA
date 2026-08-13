@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma';
+import { createNotification } from '../../utils/notify';
 import {
   checkEmployeeWorkingHoursAndBreaks,
   validateAppointmentRules,
@@ -478,7 +479,7 @@ export class AppointmentService {
         const timezone = tenantSettings?.timezone || 'Africa/Casablanca';
         const appointmentDate = formatDateForNotification(appointment.startTime.toISOString(), timezone);
 
-        await prisma.notification.create({
+        await createNotification({
           data: {
             tenantId,
             userId: null,

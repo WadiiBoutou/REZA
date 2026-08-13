@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma';
+import { createNotification } from '../../utils/notify';
 import { salonClientsFilter } from '../../utils/salonScope';
 import { CreateReviewInput, UpdateReviewStatusInput } from './review.schema';
 import * as log from '../../utils/logger';
@@ -102,7 +103,7 @@ export class ReviewService {
       if (tenantUsers.length > 0) {
         await Promise.all(
           tenantUsers.map(user =>
-            prisma.notification.create({
+            createNotification({
               data: {
                 tenantId,
                 userId: user.id,
@@ -121,7 +122,7 @@ export class ReviewService {
           )
         );
       } else {
-        await prisma.notification.create({
+        await createNotification({
           data: {
             tenantId,
             userId: null,

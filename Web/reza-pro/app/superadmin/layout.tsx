@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ShieldCheck, LogOut, Bell, CheckCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
+import { getRealtimeSocket, disconnectRealtime } from '@/lib/realtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,8 +54,16 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
     if (loading || !isAuthenticated || user?.role !== 'SUPER_ADMIN') return;
     setNotifLoading(true);
     loadNotifications().finally(() => setNotifLoading(false));
-    const t = setInterval(() => loadNotifications(), 60000);
-    return () => clearInterval(t);
+
+    // Live: Socket.IO push + 20s polling fallback
+    const socket = getRealtimeSocket();
+    const onNewNotification = () => loadNotifications();
+    socket?.on('notification:new', onNewNotification);
+    const t = setInterval(() => loadNotifications(), 20000);
+    return () => {
+      socket?.off('notification:new', onNewNotification);
+      clearInterval(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, isAuthenticated, user?.role]);
 
@@ -140,8 +149,8 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
               >
                 <Bell size={19} />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
-                    {unreadCount > 9 ? '9+' : unreadCount}
+                  <span className="absolute top-0 right-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
+                    {unreadCount > 99 ? '+99' : unreadCount}
                   </span>
                 )}
               </button>
@@ -191,6 +200,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
 
             <button
               onClick={async () => {
+                disconnectRealtime();
                 await logout();
                 router.push('/login');
               }}

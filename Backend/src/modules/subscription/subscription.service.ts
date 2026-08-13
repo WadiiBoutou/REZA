@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma';
+import { createNotification } from '../../utils/notify';
 import { accountService } from '../account/account.service';
 import * as log from '../../utils/logger';
 
@@ -395,7 +396,7 @@ export class SubscriptionService {
           }).join(', ') || ctx.salons.map((s) => s.name).join(', ');
         await Promise.all(
           superAdmins.map((sa) =>
-            prisma.notification.create({
+            createNotification({
               data: {
                 tenantId,
                 userId: sa.id,

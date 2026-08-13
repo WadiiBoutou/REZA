@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../../../lib/prisma';
+import { createNotification } from '../../../utils/notify';
 import { createPublicReviewSchema } from '../schemas/public.schema';
 import { transformImageUrl } from '../../../utils/imageUrl';
 import { resolveEmployeeUserId } from '../../../utils/resolveEmployeeUserId';
@@ -157,7 +158,7 @@ export class ClientReviewsService {
       if (tenantUsers.length > 0) {
         await Promise.all(
           tenantUsers.map(user =>
-            prisma.notification.create({
+            createNotification({
               data: {
                 tenantId: tenant.id,
                 userId: user.id,
@@ -177,7 +178,7 @@ export class ClientReviewsService {
         );
       } else {
         // If no users found, create a general notification (userId = null means for all)
-        await prisma.notification.create({
+        await createNotification({
           data: {
             tenantId: tenant.id,
             userId: null,

@@ -49,6 +49,11 @@ const NotificationRDVPage = () => {
   };
 
   const handleAddEmail = async () => {
+    if (emails.length >= 5) {
+      toast.error('Vous pouvez configurer au maximum 5 adresses email pour les notifications de rendez-vous');
+      return;
+    }
+
     if (!newEmail.trim()) {
       toast.error('Veuillez saisir une adresse email');
       return;
@@ -162,14 +167,14 @@ const NotificationRDVPage = () => {
                   value={newEmail}
                   onChange={e => setNewEmail(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  disabled={saving}
+                  disabled={saving || emails.length >= 5}
                   className="flex-1 px-4 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-[#002366]/20 focus:border-[#002366] text-sm text-gray-700 bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  placeholder="exemple@email.com"
+                  placeholder={emails.length >= 5 ? 'Limite de 5 emails atteinte' : 'exemple@email.com'}
                 />
                 <button
                   type="button"
                   onClick={handleAddEmail}
-                  disabled={saving}
+                  disabled={saving || emails.length >= 5}
                   className="px-5 py-3 bg-[#002366] text-white text-sm font-medium rounded-full hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                 >
                   {saving ? (
@@ -180,6 +185,9 @@ const NotificationRDVPage = () => {
                   Ajouter
                 </button>
               </div>
+              <p className="text-xs text-gray-400 mt-2">
+                {emails.length}/5 adresse{emails.length > 1 ? 's' : ''} configurée{emails.length > 1 ? 's' : ''} — maximum 5.
+              </p>
             </div>
             <div className="space-y-3">
               {emails.length === 0 ? (

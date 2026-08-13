@@ -220,8 +220,8 @@ const RezaNavbar = () => {
                     >
                       <Bell size={18} strokeWidth={2} />
                       {unreadNotificationsCount > 0 && (
-                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#8b7260] text-white text-[10px] font-semibold rounded-full flex items-center justify-center border-2 border-[#f5f7f3]">
-                          {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                        <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-[#8b7260] text-white text-[10px] font-semibold rounded-full flex items-center justify-center border-2 border-[#f5f7f3]">
+                          {unreadNotificationsCount > 99 ? '+99' : unreadNotificationsCount}
                         </span>
                       )}
                     </button>
@@ -476,8 +476,8 @@ const RezaNavbar = () => {
                     <div className="relative">
                       <Bell size={18} className="text-gray-700" strokeWidth={2} />
                       {unreadNotificationsCount > 0 && (
-                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#8b7260] text-white text-[9px] font-semibold rounded-full flex items-center justify-center">
-                          {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#8b7260] text-white text-[9px] font-semibold rounded-full flex items-center justify-center">
+                          {unreadNotificationsCount > 99 ? '+99' : unreadNotificationsCount}
                         </span>
                       )}
                     </div>
