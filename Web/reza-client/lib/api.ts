@@ -97,6 +97,12 @@ class ApiClient {
     );
   }
 
+  async getEmployeeStats(tenantId: string, employeeId: string) {
+    return this.request<{ completedAppointments: number; clientsServed: number }>(
+      `/public/tenant/${tenantId}/employees/${employeeId}/stats`
+    );
+  }
+
   // Featured "elite" professionals across subscribed salons (homepage team section)
   async getFeaturedEmployees(limit: number = 8) {
     return this.request<{ employees: any[] }>(

@@ -90,6 +90,7 @@ export default function SalonDetail() {
   });
 
   const [selectedEmployeeForDetail, setSelectedEmployeeForDetail] = useState<any | null>(null);
+  const [employeeStats, setEmployeeStats] = useState<Record<string, { completedAppointments: number; clientsServed: number }>>({});
   const [employeeActiveTab, setEmployeeActiveTab] = useState<'profil' | 'prestations' | 'avis'>('profil');
   const [bookingPreferredEmployeeId, setBookingPreferredEmployeeId] = useState<string | null>(null);
 
@@ -151,6 +152,26 @@ export default function SalonDetail() {
 
     fetchSalonData();
   }, [salonId]);
+
+  // Real stats for the employee detail modal — fetched live from the DB each
+  // time a professional's profile is opened (completed RDVs + clients served).
+  useEffect(() => {
+    const member = selectedEmployeeForDetail;
+    if (!member?.id || !salonId) return;
+    const empId = member.id;
+    let cancelled = false;
+    api
+      .getEmployeeStats(salonId, empId)
+      .then((stats) => {
+        if (!cancelled) setEmployeeStats((prev) => ({ ...prev, [empId]: stats }));
+      })
+      .catch((err) => {
+        console.error('Error fetching employee stats:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEmployeeForDetail, salonId]);
 
   // Preselect a service (+ optional employee) from the homepage "Réserver"
   // links: /salon/:id?employeeId=...&serviceId=... — opens the booking flow
@@ -1462,9 +1483,7 @@ export default function SalonDetail() {
       {/* Professional Detail Modal */}
       {selectedEmployeeForDetail && (() => {
         const member = selectedEmployeeForDetail;
-        const randSeed = member.id ? member.id.charCodeAt(0) : 7;
-        const completedRdv = 120 + (randSeed * 3) % 250;
-        const clientsServed = Math.floor(completedRdv * 0.7) + (randSeed % 10);
+        const stats = employeeStats[member.id];
         
         const empReviews = reviews.filter((r: any) => 
           r.text?.toLowerCase().includes(member.firstName?.toLowerCase() || '')
@@ -1580,11 +1599,11 @@ export default function SalonDetail() {
                     <div className="space-y-4">
                       <div className="flex items-center justify-between py-2 border-b border-gray-50">
                         <span className="text-gray-600 text-base">Rendez-vous terminés</span>
-                        <span className="font-bold text-gray-900 text-base">{completedRdv}</span>
+                        <span className="font-bold text-gray-900 text-base">{stats ? stats.completedAppointments : '—'}</span>
                       </div>
                       <div className="flex items-center justify-between py-2 border-b border-gray-50">
                         <span className="text-gray-600 text-base">Clients servis</span>
-                        <span className="font-bold text-gray-900 text-base">{clientsServed}</span>
+                        <span className="font-bold text-gray-900 text-base">{stats ? stats.clientsServed : '—'}</span>
                       </div>
                     </div>
                     

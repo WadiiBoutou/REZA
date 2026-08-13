@@ -176,6 +176,95 @@ export class TenantCatalogService {
   }
   }
 
+  /**
+   * Real employee stats for the public salon page:
+   *   completedAppointments — appointments marked COMPLETED
+   *   clientsServed         — distinct clients among those appointments
+   * Public Employee rows are linked to the agenda User rows by email (fallback:
+   * full name) — the same mapping the scheduler uses — because appointments
+   * store the User id (legacy employeeId or per-service item).
+   */
+  async getEmployeeStats(tenantId: string, employeeId: string) {
+    // Verify tenant exists and is active
+    const tenant = await prisma.tenant.findFirst({
+      where: {
+        OR: [
+          { slug: tenantId }, { subdomain: tenantId },
+          { domain: tenantId },
+          { id: tenantId }
+        ],
+        isActive: true
+      },
+      select: { id: true }
+    });
+
+    if (!tenant) {
+      fail(404, {
+        error: 'Tenant not found'
+      });
+    }
+
+    const employee = await prisma.employee.findFirst({
+      where: { id: employeeId, tenantId: tenant.id },
+      select: { id: true, firstName: true, lastName: true, email: true }
+    });
+    if (!employee) {
+      fail(404, {
+        error: 'Employee not found'
+      });
+    }
+
+    // Map Employee -> agenda User (appointments reference the User id)
+    let userId: string | null = null;
+    const tenantUsers = await prisma.user.findMany({
+      where: { tenantId: tenant.id },
+      select: { id: true, email: true, firstName: true, lastName: true }
+    });
+    if (employee.email) {
+      const byEmail = tenantUsers.find(
+        (u) => u.email && u.email.toLowerCase() === (employee.email as string).toLowerCase()
+      );
+      if (byEmail) userId = byEmail.id;
+    }
+    if (!userId) {
+      const byName = tenantUsers.find(
+        (u) =>
+          u.firstName.toLowerCase() === employee.firstName.toLowerCase() &&
+          u.lastName.toLowerCase() === employee.lastName.toLowerCase()
+      );
+      if (byName) userId = byName.id;
+    }
+
+    // No linked User means no appointments can reference this employee
+    if (!userId) {
+      return { completedAppointments: 0, clientsServed: 0 };
+    }
+
+    // Count both the legacy top-level employeeId and the per-service items
+    const where = {
+      tenantId: tenant.id,
+      status: 'COMPLETED' as const,
+      OR: [
+        { employeeId: userId },
+        { services: { some: { employeeId: userId } } }
+      ]
+    };
+
+    const [completedAppointments, clientRows] = await Promise.all([
+      prisma.appointment.count({ where }),
+      prisma.appointment.findMany({
+        where,
+        select: { clientId: true },
+        distinct: ['clientId']
+      })
+    ]);
+
+    return {
+      completedAppointments,
+      clientsServed: clientRows.length
+    };
+  }
+
   /** Free employee threshold from the platform billing config (defaults to 2). */
   private async getFreeEmployeeThreshold(): Promise<number> {
     try {

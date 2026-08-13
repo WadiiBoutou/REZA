@@ -15,6 +15,9 @@ router.get('/tenant/:tenantId/employees', (req, res, next) =>
 router.get('/tenant/:tenantId/reviews', (req, res, next) =>
   publicController.getTenantReviews(req, res, next)
 );
+router.get('/tenant/:tenantId/employees/:employeeId/stats', (req, res, next) =>
+  publicController.getEmployeeStats(req, res, next)
+);
 router.post('/reviews', (req, res, next) => publicController.createReview(req, res, next));
 router.get('/tenants', (req, res, next) => publicController.searchTenants(req, res, next));
 router.get('/categories', (req, res, next) => publicController.getCategories(req, res, next));

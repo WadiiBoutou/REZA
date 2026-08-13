@@ -67,6 +67,16 @@ export class PublicController {
     }
   }
 
+  async getEmployeeStats(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await tenantCatalogService.getEmployeeStats(req.params.tenantId, req.params.employeeId);
+      res.json(result);
+    } catch (error) {
+      if (handlePublicError(error, res, next)) return;
+      next(error);
+    }
+  }
+
   async createReview(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await clientReviewsService.createReview(req.body);
