@@ -371,6 +371,14 @@ export default function SalonDetail() {
     onlineBooking: salon.settings?.onlineBooking || 'open'
   } : null;
 
+  // Live open/closed state + today's closing time — derived from the salon's
+  // REAL schedule. `nextAvailable` is computed backend-side from the same
+  // businessHours used for the Horaires panel (no more hardcoded values).
+  const TODAY_DAY_NAMES = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+  const isOpenNow = typeof salon?.nextAvailable === 'string' && salon.nextAvailable.startsWith('Ouvert');
+  const todayHoursStr = salonData?.hours ? (salonData.hours as Record<string, string>)[TODAY_DAY_NAMES[new Date().getDay()]] : null;
+  const todayCloseTime = todayHoursStr && todayHoursStr !== 'Fermé' ? todayHoursStr.split(' - ')[1] : null;
+
   // Prestations filtered by the active category + search term (each category
   // paginated independently below).
   const visibleCategories = salonData
@@ -581,7 +589,9 @@ export default function SalonDetail() {
                   </div>
                 )}
                 <span>·</span>
-                <span className="text-emerald-600 font-semibold">Ouvert</span>
+                <span className={`font-semibold ${isOpenNow ? 'text-emerald-600' : 'text-gray-400'}`}>
+                  {isOpenNow ? 'Ouvert' : 'Fermé'}
+                </span>
                 <span>·</span>
                 <span>{salonData.address}</span>
                 {salon?.googleMapsLink && (
@@ -1168,7 +1178,12 @@ export default function SalonDetail() {
                     <div className="flex items-start gap-4">
                       <Clock className="w-5 h-5 text-gray-900 flex-shrink-0" />
                       <div className="leading-tight">
-                        <span className="font-semibold text-[#00875A]">Ouvert</span> <span className="text-gray-600">jusqu&apos;à 19:00</span>
+                        <span className={`font-semibold ${isOpenNow ? 'text-[#00875A]' : 'text-red-500'}`}>
+                          {isOpenNow ? 'Ouvert' : 'Fermé'}
+                        </span>{' '}
+                        {isOpenNow && todayCloseTime && (
+                          <span className="text-gray-600">jusqu&apos;à {todayCloseTime}</span>
+                        )}
                       </div>
                     </div>
 

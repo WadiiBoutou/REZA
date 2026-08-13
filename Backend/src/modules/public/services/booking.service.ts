@@ -2,7 +2,7 @@ import { prisma } from '../../../lib/prisma';
 import { createNotification } from '../../../utils/notify';
 import { sendMail } from '../../../utils/mailer';
 import { formatDateForNotification } from '../../../utils/dateTime';
-import { validateAppointmentRules } from '../../../utils/schedulingValidation';
+import { validateAppointmentRules, getBusinessHoursForDate } from '../../../utils/schedulingValidation';
 import { resolveEmployeeUserId } from '../../../utils/resolveEmployeeUserId';
 import { schedulingService } from '../../appointment/scheduling.service';
 import { getServicePrice } from '../../../utils/appointmentServiceItems';
@@ -1004,22 +1004,15 @@ export class BookingService {
       return { slots: [] }; // Blocked/closed on this day
     }
 
-    const defaultHours = {
-      monday: { open: '09:00', close: '18:00' },
-      tuesday: { open: '09:00', close: '18:00' },
-      wednesday: { open: '09:00', close: '18:00' },
-      thursday: { open: '09:00', close: '18:00' },
-      friday: { open: '09:00', close: '18:00' },
-      saturday: { open: '09:00', close: '18:00' },
-      sunday: null
-    };
-
+    // Resolve the day's REAL opening hours from the stored schedule. Supports the
+    // current `schedules[]` format (French day names, what the Pro dashboard saves)
+    // and the legacy day-keyed format. NO default fallback: a salon that didn't
+    // configure hours gets no slots rather than fake 09:00-18:00 ones that
+    // contradict the hours shown on its public page.
     const selectedDate = new Date(dateStr);
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const dayName = dayNames[selectedDate.getDay()];
-    const hours = businessHours[dayName] || defaultHours[dayName as keyof typeof defaultHours];
+    const hours = getBusinessHoursForDate(businessHours, selectedDate);
 
-    if (!hours || !hours.open || !hours.close) {
+    if (!hours) {
       return { slots: [] }; // Closed on this day
     }
 
@@ -1298,17 +1291,6 @@ export class BookingService {
     // Early exit: without any services there's nothing to check
     if (serviceIdsArray.length === 0) return { days: [] };
 
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const defaultHours: Record<string, { open: string; close: string } | null> = {
-      monday: { open: '09:00', close: '18:00' },
-      tuesday: { open: '09:00', close: '18:00' },
-      wednesday: { open: '09:00', close: '18:00' },
-      thursday: { open: '09:00', close: '18:00' },
-      friday: { open: '09:00', close: '18:00' },
-      saturday: { open: '09:00', close: '18:00' },
-      sunday: null,
-    };
-
     const fromDate = new Date(from as string);
     const toDate = new Date(to as string);
     const now = new Date();
@@ -1345,10 +1327,8 @@ export class BookingService {
         continue;
       }
 
-      const dayIndex = cursorDay.getDay();
-      const dayName = dayNames[dayIndex];
-      const hours = businessHours[dayName] || defaultHours[dayName];
-      if (!hours || !hours.open || !hours.close) {
+      const hours = getBusinessHoursForDate(businessHours, cursorDay);
+      if (!hours) {
         cursorDay.setDate(cursorDay.getDate() + 1);
         continue;
       }

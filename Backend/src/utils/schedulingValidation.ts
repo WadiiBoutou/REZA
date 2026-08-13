@@ -63,6 +63,55 @@ export function getDayOfWeekInTimezone(date: Date, timeZone: string = 'Africa/Ca
   return days[dayStr] ?? date.getDay();
 }
 
+const FRENCH_DAY_NAMES = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+const ENGLISH_DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+export interface DayHours {
+  open: string;
+  close: string;
+}
+
+/**
+ * Resolve the salon's opening hours for a specific date from the stored
+ * `businessHours` object.
+ *
+ * Handles the CURRENT format (a `schedules` array with French day names,
+ * `isOpen`/`openTime`/`closeTime` per day — what the Pro dashboard saves)
+ * and the LEGACY format (English day-keyed object). Day-of-week is resolved
+ * in the given timezone so the server's UTC clock never shifts the day.
+ *
+ * Returns null when the day is closed or no hours are configured.
+ */
+export function getBusinessHoursForDate(
+  businessHours: any,
+  date: Date,
+  timeZone: string = 'Africa/Casablanca'
+): DayHours | null {
+  if (!businessHours || typeof businessHours !== 'object') return null;
+
+  const dayIndex = getDayOfWeekInTimezone(date, timeZone);
+
+  // Current format: schedules[] with French day names
+  const schedules = businessHours.schedules;
+  if (Array.isArray(schedules) && schedules.length > 0) {
+    const frenchName = FRENCH_DAY_NAMES[dayIndex];
+    const schedule = schedules.find((s: any) => {
+      const name = String(s?.day || '').trim().toLowerCase();
+      return name === frenchName.toLowerCase();
+    });
+    if (!schedule || schedule.isOpen === false) return null;
+    if (schedule.openTime && schedule.closeTime) {
+      return { open: schedule.openTime, close: schedule.closeTime };
+    }
+    return null;
+  }
+
+  // Legacy format: English day keys
+  const hours = businessHours[ENGLISH_DAY_NAMES[dayIndex]];
+  if (hours?.open && hours?.close) return { open: hours.open, close: hours.close };
+  return null;
+}
+
 export interface WorkingHoursCheckResult {
   isAvailable: boolean;
   status?: 400 | 409;
@@ -265,23 +314,10 @@ export async function validateAppointmentRules(params: ValidationParams) {
   }
 
   if (settings && settings.businessHours) {
-    const businessHours = settings.businessHours as Record<
-      string,
-      { open?: string; close?: string } | null
-    >;
-    const dayNames = [
-      'sunday',
-      'monday',
-      'tuesday',
-      'wednesday',
-      'thursday',
-      'friday',
-      'saturday',
-    ];
-    const dayName = dayNames[startTime.getDay()];
-    const hours = businessHours[dayName];
+    const timeZone = settings.timezone || 'Africa/Casablanca';
+    const dayHours = getBusinessHoursForDate(settings.businessHours, startTime, timeZone);
 
-    if (!hours || !hours.open || !hours.close) {
+    if (!dayHours) {
       return {
         isValid: false,
         status: 400,
@@ -290,21 +326,19 @@ export async function validateAppointmentRules(params: ValidationParams) {
       };
     }
 
-    const [openHour, openMin] = hours.open.split(':').map(Number);
-    const [closeHour, closeMin] = hours.close.split(':').map(Number);
+    const startMinutes = getMinutesSinceMidnight(startTime, timeZone);
+    const endMinutes = getMinutesSinceMidnight(endTime, timeZone);
+    const [openHour, openMin] = dayHours.open.split(':').map(Number);
+    const [closeHour, closeMin] = dayHours.close.split(':').map(Number);
+    const openTotal = openHour * 60 + openMin;
+    const closeTotal = closeHour * 60 + closeMin;
 
-    const openTime = new Date(startTime);
-    openTime.setHours(openHour, openMin, 0, 0);
-
-    const closeTime = new Date(startTime);
-    closeTime.setHours(closeHour, closeMin, 0, 0);
-
-    if (startTime < openTime || endTime > closeTime) {
+    if (startMinutes < openTotal || endMinutes > closeTotal) {
       return {
         isValid: false,
         status: 400,
         error: 'Outside business hours',
-        message: `Les rendez-vous doivent être planifiés entre ${hours.open} et ${hours.close}.`,
+        message: `Les rendez-vous doivent être planifiés entre ${dayHours.open} et ${dayHours.close}.`,
       };
     }
   }

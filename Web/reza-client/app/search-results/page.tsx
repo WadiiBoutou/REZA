@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, Suspense } from 'react';
-import { Search, MapPin, Star, Clock, ArrowRight, SlidersHorizontal, Heart, Navigation, ListFilter, ChevronLeft, ChevronRight, Maximize2, Minimize2, X } from 'lucide-react';
+import { Search, MapPin, Star, Clock, ArrowRight, SlidersHorizontal, Heart, Navigation, ListFilter, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import ModalFilters from '../../components/ModalFilters';
 import RezaNavbar from '../../components/Header';
 import Footer from '../../components/Footer';
@@ -78,7 +78,6 @@ function LuxurySearchResultsContent() {
 	const [selectedSalon, setSelectedSalon] = useState<string | null>(null);
 	const [selectedSalonDetails, setSelectedSalonDetails] = useState<any | null>(null);
 	const [galleryIndex, setGalleryIndex] = useState(0);
-	const [mapFullscreen, setMapFullscreen] = useState(false);
 	const [showFilters, setShowFilters] = useState(false);
 	const [sortBy, setSortBy] = useState('recommended');
 	const [likedSalons, setLikedSalons] = useState(new Set<string>());
@@ -649,28 +648,6 @@ function LuxurySearchResultsContent() {
 		}, 50);
 		return () => window.clearTimeout(t);
 	}, [showMobileMap, mapReady]);
-
-	// Reflow map when entering/leaving fullscreen (tiles only render once
-	// the container is measured — retry across frames so the swap always lands)
-	useEffect(() => {
-		const map = leafletMapRef.current;
-		if (!map || !mapReady) return;
-		const run = () => {
-			try {
-				map.invalidateSize({ animate: false });
-			} catch {
-				/* ignore */
-			}
-		};
-		const raf = requestAnimationFrame(run);
-		const t1 = window.setTimeout(run, 100);
-		const t2 = window.setTimeout(run, 400);
-		return () => {
-			cancelAnimationFrame(raf);
-			window.clearTimeout(t1);
-			window.clearTimeout(t2);
-		};
-	}, [mapFullscreen, mapReady]);
 
 	// Close the pin card when clicking the map itself
 	useEffect(() => {
@@ -1283,22 +1260,18 @@ function LuxurySearchResultsContent() {
 					</div>
 				</div>
 
-				{/* Right Side - Map: sticky desktop panel; fixed fullscreen on mobile toggle */}
+				{/* Right Side - Map: sticky desktop panel; mobile toggle replaces the list */}
 				<div
-					className={
-						mapFullscreen
-							? 'fixed inset-0 z-[100] block w-full'
-							: `${showMobileMap
-									? 'fixed inset-x-0 top-20 bottom-0 z-[1] block w-full lg:static lg:inset-auto'
-									: 'hidden'
-								} lg:block lg:w-[45%] lg:flex-shrink-0 lg:sticky lg:top-28 lg:h-[calc(100vh-7rem)] lg:self-start lg:z-[1] lg:mt-8 lg:pr-4 lg:pb-4`
-					}
+					className={`${showMobileMap
+						? 'fixed inset-x-0 top-20 bottom-0 z-[1] block w-full lg:static lg:inset-auto'
+						: 'hidden'
+					} lg:block lg:w-[45%] lg:flex-shrink-0 lg:sticky lg:top-28 lg:h-[calc(100vh-7rem)] lg:self-start lg:z-[1] lg:mt-8 lg:pr-4 lg:pb-4`}
 				>
-				<div className={`relative w-full h-full ${mapFullscreen ? '' : 'rounded-2xl overflow-hidden'}`}>
+				<div className="relative w-full h-full rounded-2xl overflow-hidden">
 					<div
 						id="map"
 						ref={mapRef}
-						className={`w-full h-full ${mapFullscreen ? '' : 'min-h-[calc(100vh-5rem)] lg:min-h-0'}`}
+						className="w-full h-full min-h-[calc(100vh-5rem)] lg:min-h-0"
 						style={{ zIndex: 1 }}
 					/>
 					{/* Overlay when results exist but none have GPS coordinates */}
@@ -1413,23 +1386,6 @@ function LuxurySearchResultsContent() {
 							</div>
 						);
 					})()}
-					<button
-						type="button"
-						onClick={() => setMapFullscreen(v => !v)}
-						className="absolute bottom-4 right-4 z-[100] w-10 h-10 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-100 transition-all"
-						title={mapFullscreen ? 'Réduire la carte' : 'Plein écran'}
-					>
-						{mapFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-					</button>
-					{mapFullscreen && (
-						<button
-							type="button"
-							onClick={() => setMapFullscreen(false)}
-							className="absolute top-4 right-4 z-[100] px-4 py-2 rounded-full bg-white shadow-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-100"
-						>
-							Fermer la carte
-						</button>
-					)}
 				</div>
 			</div>
 

@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { resolveEmployeeUserId } from '../../utils/resolveEmployeeUserId';
+import { getBusinessHoursForDate } from '../../utils/schedulingValidation';
 import * as log from '../../utils/logger';
 import type { AppointmentStatus } from '../../../prisma/generated/prisma/client';
 
@@ -645,10 +646,8 @@ export class SchedulingService {
       if (blockedDates.includes(date)) {
         return { available: false, reason: 'Établissement fermé ce jour (jour bloqué).' };
       }
-      const hours = businessHours as Record<string, { open?: string; close?: string } | null>;
-      const dayKey = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayIndex];
-      const dayHours = hours[dayKey];
-      if (!dayHours?.open || !dayHours?.close) {
+      const dayHours = getBusinessHoursForDate(businessHours, dayDate);
+      if (!dayHours) {
         return { available: false, reason: 'Établissement fermé ce jour.' };
       }
       const openMinutes = minutesSinceMidnight(dayHours.open);
