@@ -103,6 +103,7 @@ function LuxurySearchResultsContent() {
 	const markersRef = useRef<any[]>([]);
 	const hasFitBoundsOnceRef = useRef(false);
 	const [mapReady, setMapReady] = useState(false);
+	const [popupAnchor, setPopupAnchor] = useState<{ x: number; y: number } | null>(null);
 	const router = useRouter();
 	const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 	const [geoLoading, setGeoLoading] = useState(false);
@@ -630,19 +631,71 @@ function LuxurySearchResultsContent() {
 		return () => window.clearTimeout(t);
 	}, [showMobileMap, mapReady]);
 
-	// Reflow map when entering/leaving fullscreen
+	// Reflow map when entering/leaving fullscreen (tiles only render once
+	// the container is measured — retry across frames so the swap always lands)
 	useEffect(() => {
 		const map = leafletMapRef.current;
 		if (!map || !mapReady) return;
-		const t = window.setTimeout(() => {
+		const run = () => {
 			try {
-				map.invalidateSize();
+				map.invalidateSize({ animate: false });
 			} catch {
 				/* ignore */
 			}
-		}, 120);
-		return () => window.clearTimeout(t);
+		};
+		const raf = requestAnimationFrame(run);
+		const t1 = window.setTimeout(run, 100);
+		const t2 = window.setTimeout(run, 400);
+		return () => {
+			cancelAnimationFrame(raf);
+			window.clearTimeout(t1);
+			window.clearTimeout(t2);
+		};
 	}, [mapFullscreen, mapReady]);
+
+	// Close the pin card when clicking the map itself
+	useEffect(() => {
+		const map = leafletMapRef.current;
+		if (!map || !mapReady) return;
+		const close = () => setSelectedSalonDetails(null);
+		map.on('click', close);
+		return () => {
+			map.off('click', close);
+		};
+	}, [mapReady]);
+
+	// Anchor the pin card above the selected marker, following map moves
+	useEffect(() => {
+		const map = leafletMapRef.current;
+		if (!map || !mapReady || !selectedSalonDetails) {
+			setPopupAnchor(null);
+			return;
+		}
+		const salon = selectedSalonDetails;
+		const update = () => {
+			if (!salon.coordinates?.lat || !salon.coordinates?.lng) {
+				setPopupAnchor(null);
+				return;
+			}
+			try {
+				const pt = map.latLngToContainerPoint([salon.coordinates.lat, salon.coordinates.lng]);
+				const size = map.getSize();
+				const x = Math.max(170, Math.min(pt.x, size.x - 170));
+				setPopupAnchor({ x, y: pt.y });
+			} catch {
+				/* ignore */
+			}
+		};
+		update();
+		map.on('move', update);
+		map.on('zoom', update);
+		map.on('moveend', update);
+		return () => {
+			map.off('move', update);
+			map.off('zoom', update);
+			map.off('moveend', update);
+		};
+	}, [mapReady, selectedSalonDetails]);
 
 	// Update map markers when filtered results change
 	useEffect(() => {
@@ -671,15 +724,27 @@ function LuxurySearchResultsContent() {
 				const latLng: [number, number] = [salon.coordinates.lat, salon.coordinates.lng];
 				bounds.push(latLng);
 
-				// Build price label for the marker (Fresha-style pill)
-				const priceLabel = salon.priceRange?.min != null
-					? `${Math.round(salon.priceRange.min)} MAD`
-					: salon.price || null;
+				// Marker label: star rating by default; price range only when the
+				// user sorts by Prix (then min-max, or a single number when equal)
+				const showPrice = sortBy === 'price';
+				let markerLabel: string | null = null;
+				if (showPrice) {
+					const r = salon.priceRange;
+					if (r?.min != null && r?.max != null && r.min !== r.max) {
+						markerLabel = `${Math.round(r.min)}-${Math.round(r.max)} MAD`;
+					} else if (r?.min != null) {
+						markerLabel = `${Math.round(r.min)} MAD`;
+					} else if (salon.price) {
+						markerLabel = salon.price;
+					}
+				} else if (typeof salon.rating === 'number' && salon.rating > 0) {
+					markerLabel = `★ ${salon.rating.toFixed(1)}`;
+				}
 
 				const isSelected = selectedSalon === salon.id;
-				const markerHtml = priceLabel
+				const markerHtml = markerLabel
 					? `<div class="reza-map-marker${isSelected ? ' reza-map-marker--selected' : ''}">
-						<span class="reza-map-price">${priceLabel}</span>
+						<span class="reza-map-price">${markerLabel}</span>
 					</div>`
 					: `<div class="reza-map-marker${isSelected ? ' reza-map-marker--selected' : ''}">
 						<span class="reza-map-dot"></span>
@@ -736,7 +801,7 @@ function LuxurySearchResultsContent() {
 		return () => {
 			cancelled = true;
 		};
-	}, [filteredResults, loading, mapReady, selectedSalon]);
+	}, [filteredResults, loading, mapReady, selectedSalon, sortBy]);
 
 	// Note: marker selected state is handled in the main markers effect (via reza-map-marker--selected class)
 
@@ -1181,11 +1246,11 @@ function LuxurySearchResultsContent() {
 				<div
 					className={
 						mapFullscreen
-							? 'fixed inset-0 z-[100] block w-full bg-[#e8ebe6]'
+							? 'fixed inset-0 z-[100] block w-full'
 							: `${showMobileMap
 									? 'fixed inset-x-0 top-20 bottom-0 z-[1] block w-full lg:static lg:inset-auto'
 									: 'hidden'
-								} lg:block lg:w-[45%] lg:flex-shrink-0 lg:sticky lg:top-20 lg:h-[calc(100vh-5rem)] lg:self-start lg:z-[1] bg-[#e8ebe6]`
+								} lg:block lg:w-[45%] lg:flex-shrink-0 lg:sticky lg:top-28 lg:h-[calc(100vh-7rem)] lg:self-start lg:z-[1] lg:mt-8 lg:pr-4 lg:pb-4`
 					}
 				>
 				<div className={`relative w-full h-full ${mapFullscreen ? '' : 'rounded-2xl overflow-hidden'}`}>
@@ -1205,7 +1270,111 @@ function LuxurySearchResultsContent() {
 							</div>
 						</div>
 					)}
-					{/* Fullscreen toggle — bottom right */}
+					{/* Pin card — opens right above the clicked ticket, follows the marker */}
+					{selectedSalonDetails && popupAnchor && (() => {
+						const salon = selectedSalonDetails;
+						const gallery = [salon.coverImage, salon.logo, ...(Array.isArray(salon.images) ? salon.images : [])]
+							.map((img: string | null | undefined) => getImageUrl(img))
+							.filter((u: string) => Boolean(u));
+						const gallerySrcs = Array.from(new Set(gallery));
+						const safeIndex = gallerySrcs.length > 0 ? Math.min(galleryIndex, gallerySrcs.length - 1) : 0;
+						const above = popupAnchor.y > 420;
+						return (
+							<div
+								className="absolute z-[500] w-80"
+								style={{
+									left: popupAnchor.x,
+									top: popupAnchor.y,
+									transform: above ? 'translate(-50%, calc(-100% - 14px))' : 'translate(-50%, 18px)',
+								}}
+							>
+								<div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-fadeInUp">
+									{/* Image carousel */}
+									<div className="relative h-44 bg-gray-100">
+										{gallerySrcs.length > 0 ? (
+											<img
+												src={gallerySrcs[safeIndex]}
+												alt={salon.name}
+												className="w-full h-full object-cover"
+											/>
+										) : (
+											<div className="w-full h-full flex items-center justify-center">
+												<MapPin className="w-8 h-8 text-gray-300" />
+											</div>
+										)}
+										<button
+											type="button"
+											onClick={() => setSelectedSalonDetails(null)}
+											className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-white/90 shadow-sm flex items-center justify-center text-gray-700 hover:bg-white transition-all"
+											aria-label="Fermer"
+										>
+											<X size={16} />
+										</button>
+										{gallerySrcs.length > 1 && (
+											<>
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation();
+														setGalleryIndex((i) => (i - 1 + gallerySrcs.length) % gallerySrcs.length);
+													}}
+													className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 shadow-sm flex items-center justify-center text-gray-700 hover:bg-white transition-all"
+													aria-label="Image précédente"
+												>
+													<ChevronLeft size={18} />
+												</button>
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation();
+														setGalleryIndex((i) => (i + 1) % gallerySrcs.length);
+													}}
+													className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 shadow-sm flex items-center justify-center text-gray-700 hover:bg-white transition-all"
+													aria-label="Image suivante"
+												>
+													<ChevronRight size={18} />
+												</button>
+												<span className="absolute bottom-2.5 right-2.5 bg-black/60 text-white text-[10px] font-medium px-2 py-0.5 rounded-full">
+													{safeIndex + 1} / {gallerySrcs.length}
+												</span>
+											</>
+										)}
+									</div>
+
+									<div className="p-4">
+										<h3 className="text-base font-medium text-gray-900 leading-snug">{salon.name}</h3>
+										<div className="flex items-center gap-1.5 mt-1.5">
+											<Star className="w-3.5 h-3.5 fill-[#111827] text-[#111827]" />
+											<span className="text-sm font-semibold text-gray-900">{(salon.rating || 0).toFixed(1)}</span>
+											<span className="text-xs text-gray-400">({salon.reviews || 0} avis)</span>
+										</div>
+										<p className="flex items-center gap-1.5 text-xs text-gray-500 mt-1.5">
+											<MapPin className="w-3.5 h-3.5 shrink-0" />
+											<span className="truncate">{salon.address || salon.city || 'Casablanca'}</span>
+										</p>
+										{salon.shortDescription && (
+											<p className="text-xs text-gray-600 mt-2 leading-relaxed line-clamp-2">{salon.shortDescription}</p>
+										)}
+										<button
+											type="button"
+											onClick={() => {
+												setSelectedSalonDetails(null);
+												router.push(getSalonHref(salon));
+											}}
+											className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-[#111827] text-white text-xs font-medium hover:bg-[#1f2937] transition-all"
+										>
+											<span>Aller au salon</span>
+											<ArrowRight className="w-3.5 h-3.5" />
+										</button>
+									</div>
+								</div>
+								{/* Pointer to the ticket */}
+								<div
+									className={`absolute left-1/2 w-3 h-3 bg-white border-gray-200 -translate-x-1/2 rotate-45 ${above ? '-bottom-1.5 border-b border-r' : '-top-1.5 border-t border-l'}`}
+								/>
+							</div>
+						);
+					})()}
 					<button
 						type="button"
 						onClick={() => setMapFullscreen(v => !v)}
@@ -1245,107 +1414,6 @@ function LuxurySearchResultsContent() {
 				</button>
 			</div>
 
-			{/* Salon mini-details modal (opened from map pins) */}
-			{selectedSalonDetails && (() => {
-				const salon = selectedSalonDetails;
-				const gallery = [salon.coverImage, salon.logo, ...(Array.isArray(salon.images) ? salon.images : [])]
-					.map((img: string | null | undefined) => getImageUrl(img))
-					.filter((u: string) => Boolean(u));
-				const gallerySrcs = Array.from(new Set(gallery));
-				const safeIndex = gallerySrcs.length > 0 ? Math.min(galleryIndex, gallerySrcs.length - 1) : 0;
-				return (
-					<div
-						className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-						onClick={() => setSelectedSalonDetails(null)}
-					>
-						<div
-							className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fadeInUp"
-							onClick={(e) => e.stopPropagation()}
-						>
-							{/* Image carousel */}
-							<div className="relative h-56 sm:h-64 bg-gray-100">
-								{gallerySrcs.length > 0 ? (
-									<img
-										src={gallerySrcs[safeIndex]}
-										alt={salon.name}
-										className="w-full h-full object-cover"
-									/>
-								) : (
-									<div className="w-full h-full flex items-center justify-center">
-										<MapPin className="w-10 h-10 text-gray-300" />
-									</div>
-								)}
-								<button
-									type="button"
-									onClick={() => setSelectedSalonDetails(null)}
-									className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/90 shadow-sm flex items-center justify-center text-gray-700 hover:bg-white transition-all"
-									aria-label="Fermer"
-								>
-									<X size={18} />
-								</button>
-								{gallerySrcs.length > 1 && (
-									<>
-										<button
-											type="button"
-											onClick={(e) => {
-												e.stopPropagation();
-												setGalleryIndex((i) => (i - 1 + gallerySrcs.length) % gallerySrcs.length);
-											}}
-											className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 shadow-sm flex items-center justify-center text-gray-700 hover:bg-white transition-all"
-											aria-label="Image précédente"
-										>
-											<ChevronLeft size={20} />
-										</button>
-										<button
-											type="button"
-												onClick={(e) => {
-													e.stopPropagation();
-													setGalleryIndex((i) => (i + 1) % gallerySrcs.length);
-												}}
-												className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 shadow-sm flex items-center justify-center text-gray-700 hover:bg-white transition-all"
-												aria-label="Image suivante"
-											>
-											<ChevronRight size={20} />
-										</button>
-										<span className="absolute bottom-3 right-3 bg-black/60 text-white text-[11px] font-medium px-2.5 py-1 rounded-full">
-											{safeIndex + 1} / {gallerySrcs.length}
-										</span>
-									</>
-								)}
-							</div>
-
-							<div className="p-5 sm:p-6">
-								<h3 className="text-xl font-medium text-gray-900">{salon.name}</h3>
-								<div className="flex items-center gap-3 mt-2 flex-wrap">
-									<div className="flex items-center gap-1.5">
-										<Star className="w-4 h-4 fill-[#111827] text-[#111827]" />
-										<span className="text-sm font-semibold text-gray-900">{(salon.rating || 0).toFixed(1)}</span>
-										<span className="text-xs text-gray-400">({salon.reviews || 0} avis)</span>
-									</div>
-								</div>
-								<p className="flex items-center gap-1.5 text-sm text-gray-500 mt-2">
-									<MapPin className="w-4 h-4 shrink-0" />
-									<span>{salon.address || salon.city || 'Casablanca'}</span>
-								</p>
-								{salon.shortDescription && (
-									<p className="text-sm text-gray-600 mt-3 leading-relaxed">{salon.shortDescription}</p>
-								)}
-								<button
-									type="button"
-									onClick={() => {
-										setSelectedSalonDetails(null);
-										router.push(getSalonHref(salon));
-									}}
-									className="mt-5 w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#111827] text-white text-sm font-medium hover:bg-[#1f2937] transition-all"
-								>
-									<span>Aller au salon</span>
-									<ArrowRight className="w-4 h-4" />
-								</button>
-							</div>
-						</div>
-					</div>
-				);
-			})()}
 
 			{/* External Filter Modal */}
 			<ModalFilters
