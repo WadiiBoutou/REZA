@@ -10,7 +10,7 @@ import type { GuestParticipant, FamilyMemberOption } from './GroupParticipantsSe
 import AddServiceModal from './AddServiceModal';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
-import { getMoroccoToday, getMoroccoDate, isMoroccoToday, isMoroccoPast, formatMoroccoDate, formatMoroccoTime, formatMoroccoDateTime, createDateFromMoroccoDateTime, isValidMoroccanPhone, getMoroccanPhoneError } from '../../lib/utils';
+import { getMoroccoToday, getMoroccoDate, isMoroccoToday, isMoroccoPast, formatMoroccoDate, formatMoroccoTime, formatMoroccoDateTime, createDateFromMoroccoDateTime, getPhoneNumberError } from '../../lib/utils';
 import {
   clearBookingForProche,
   peekBookingForProche,
@@ -964,6 +964,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
       if (!(bookingData.firstName || '').trim()) newErrors.firstName = true;
       if (!(bookingData.lastName || '').trim()) newErrors.lastName = true;
       if (!(bookingData.phone || '').trim()) newErrors.phone = true;
+      else if (getPhoneNumberError((bookingData.phone || '').trim())) newErrors.phone = true;
       if (
         (bookingData.email || '').trim() &&
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bookingData.email || '')
@@ -1063,7 +1064,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
       setGuestFormError('Le numéro de téléphone est requis');
       return;
     }
-    const phoneErr = getMoroccanPhoneError(phone);
+    const phoneErr = getPhoneNumberError(phone);
     if (phoneErr) {
       setGuestFormError(phoneErr);
       return;
@@ -1938,6 +1939,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
                     } text-sm focus:outline-none focus:border-black`}
                     placeholder="0612345678"
                   />
+                  {errors.phone && (
+                    <p className="mt-1 text-xs text-rose-500">
+                      {(bookingData.phone || '').trim() ? getPhoneNumberError((bookingData.phone || '').trim()) : 'Le numéro de téléphone est requis'}
+                    </p>
+                  )}
                 </div>
 
                 <div>

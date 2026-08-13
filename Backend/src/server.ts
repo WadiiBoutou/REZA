@@ -36,6 +36,11 @@ import { tenantMiddleware } from './middleware/tenantMiddleware';
 
 const staffMiddleware = [authMiddleware, tenantMiddleware];
 
+// Force Morocco timezone for the whole process — availability, slots and
+// booking times are computed from local wall-clock (getHours/getDay), so the
+// server timezone MUST be Africa/Casablanca or bookings reject real slots.
+process.env.TZ = process.env.TZ || 'Africa/Casablanca';
+
 // Load environment variables
 dotenv.config();
 

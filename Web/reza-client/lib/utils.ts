@@ -454,6 +454,53 @@ export function getMoroccanPhoneError(phone: string): string {
 }
 
 /**
+ * Validate a phone number from any country (international structure only,
+ * not country-specific). Accepts digits with optional leading +, and
+ * separators (space, dash, dot, parentheses). 7 to 15 digits (E.164 range).
+ * @param phone - Phone number to validate
+ * @returns true if valid, false otherwise
+ */
+export function isValidPhoneNumber(phone: string): boolean {
+  if (!phone || phone.trim().length === 0) {
+    return false;
+  }
+
+  const cleaned = phone.replace(/[\s\-().]/g, '');
+
+  if (!/^\+?\d+$/.test(cleaned)) {
+    return false;
+  }
+
+  if (!/^\+?\d{7,15}$/.test(cleaned)) {
+    return false;
+  }
+
+  const digits = cleaned.replace('+', '');
+  if (!/\d{2,}/.test(digits)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Get validation error message for a generic phone number
+ * @param phone - Phone number to validate
+ * @returns Error message if invalid, empty string if valid
+ */
+export function getPhoneNumberError(phone: string): string {
+  if (!phone || phone.trim().length === 0) {
+    return '';
+  }
+
+  if (!isValidPhoneNumber(phone)) {
+    return 'Format de numéro invalide. Entrez un vrai numéro de téléphone.';
+  }
+
+  return '';
+}
+
+/**
  * Normalize Moroccan phone number by removing spaces, dashes, and parentheses
  * Keeps the original format (+212 or 0)
  * @param phone - Phone number to normalize
