@@ -37,6 +37,15 @@ export class NotificationController {
       next(error);
     }
   }
+
+  async deleteAllNotifications(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await notificationService.deleteAllNotifications(req.tenantId!);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const notificationController = new NotificationController();

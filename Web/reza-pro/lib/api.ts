@@ -1313,6 +1313,12 @@ class ApiClient {
     });
   }
 
+  async deleteAllNotifications() {
+    return this.request<{ success: boolean; deletedCount: number }>('/notifications', {
+      method: 'DELETE',
+    });
+  }
+
   // Business hours and scheduling endpoints (pass salonIds to scope to one salon)
   async getBusinessHours(opts?: { salonIds?: string | string[] }) {
     return this.request<any>('/tenant/settings/business-hours', {

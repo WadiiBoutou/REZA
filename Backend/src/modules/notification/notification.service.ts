@@ -125,6 +125,23 @@ export class NotificationService {
       message: 'All notifications marked as read'
     };
   }
+
+  /**
+   * Hard-delete every notification of the tenant ("Tout effacer").
+   * Scoped to the tenant — the caller is already authenticated and
+   * tenant-scoped via the staff middleware on /api/notifications.
+   */
+  async deleteAllNotifications(tenantId: string) {
+    const deleted = await prisma.notification.deleteMany({
+      where: { tenantId },
+    });
+
+    return {
+      success: true,
+      message: 'All notifications deleted',
+      deletedCount: deleted.count,
+    };
+  }
 }
 
 export const notificationService = new NotificationService();

@@ -1229,6 +1229,20 @@ export default function Sidebar() {
 		}
 	};
 
+	const handleClearAllNotifications = async () => {
+		if (notifications.length === 0) return;
+		if (!window.confirm('Effacer toutes les notifications ? Cette action est irréversible.')) return;
+		try {
+			await api.deleteAllNotifications();
+			// Update local state
+			setNotifications([]);
+			setGroupedNotifications({});
+			setUnreadCount(0);
+		} catch (error) {
+			console.error('Error clearing all notifications:', error);
+		}
+	};
+
 	// Helper function to get icon for notification type
 	const getNotificationIcon = (type: string) => {
 		switch (type) {
@@ -1622,6 +1636,14 @@ export default function Sidebar() {
 						className="w-full py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 					>
 						Marquer tout comme lu
+					</button>
+					<button
+						onClick={handleClearAllNotifications}
+						disabled={notifications.length === 0}
+						className="w-full py-2.5 text-sm font-medium text-red-500 hover:text-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+					>
+						<Trash2 size={14} />
+						Tout effacer
 					</button>
 				</div>
 			</div>

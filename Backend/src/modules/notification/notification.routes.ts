@@ -21,4 +21,10 @@ router.patch('/:id/read', (req, res, next) => notificationController.markNotific
  */
 router.patch('/read-all', (req, res, next) => notificationController.markAllNotificationsAsRead(req, res, next));
 
+/**
+ * DELETE /api/notifications
+ * Delete all notifications for the current tenant
+ */
+router.delete('/', (req, res, next) => notificationController.deleteAllNotifications(req, res, next));
+
 export default router;
