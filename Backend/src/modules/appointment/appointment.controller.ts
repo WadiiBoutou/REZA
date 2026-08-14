@@ -8,11 +8,13 @@ import { isSalonRequiredError, resolveWriteTenantId } from '../../utils/salonSco
 export class AppointmentController {
   async getAppointments(req: Request, res: Response, next: NextFunction) {
     try {
-      const { startDate, endDate, clientId, employeeId, serviceId, status, page = '1', limit = '50' } = req.query;
+      const { startDate, endDate, cancelledStartDate, cancelledEndDate, clientId, employeeId, serviceId, status, page = '1', limit = '50' } = req.query;
       
       const filters = {
         startDate: startDate as string,
         endDate: endDate as string,
+        cancelledStartDate: cancelledStartDate as string,
+        cancelledEndDate: cancelledEndDate as string,
         clientId: clientId as string,
         employeeId: employeeId as string,
         serviceId: serviceId as string,

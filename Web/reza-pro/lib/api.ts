@@ -933,6 +933,8 @@ class ApiClient {
   async getAppointments(params?: {
     startDate?: string;
     endDate?: string;
+    cancelledStartDate?: string;
+    cancelledEndDate?: string;
     clientId?: string;
     employeeId?: string;
     serviceId?: string;
@@ -943,6 +945,8 @@ class ApiClient {
     const query = new URLSearchParams();
     if (params?.startDate) query.append('startDate', params.startDate);
     if (params?.endDate) query.append('endDate', params.endDate);
+    if (params?.cancelledStartDate) query.append('cancelledStartDate', params.cancelledStartDate);
+    if (params?.cancelledEndDate) query.append('cancelledEndDate', params.cancelledEndDate);
     if (params?.clientId) query.append('clientId', params.clientId);
     if (params?.employeeId) query.append('employeeId', params.employeeId);
     if (params?.serviceId) query.append('serviceId', params.serviceId);

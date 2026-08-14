@@ -130,6 +130,23 @@ export class AppointmentService {
       }
     }
 
+    // Cancelled appointments are filtered by the cancellation date (cancelledAt),
+    // NOT startTime — a just-cancelled future RDV has its startTime in the future
+    // and would fall outside any past-window on startTime.
+    if (filters.cancelledStartDate || filters.cancelledEndDate) {
+      where.cancelledAt = {};
+      if (filters.cancelledStartDate) {
+        const start = new Date(filters.cancelledStartDate);
+        start.setHours(0, 0, 0, 0);
+        where.cancelledAt.gte = start;
+      }
+      if (filters.cancelledEndDate) {
+        const end = new Date(filters.cancelledEndDate);
+        end.setHours(23, 59, 59, 999);
+        where.cancelledAt.lte = end;
+      }
+    }
+
     if (filters.clientId) where.clientId = filters.clientId;
     if (filters.employeeId) {
       where.OR = [

@@ -22,15 +22,16 @@ export default function CancelledAppointments() {
   const fetchCancelledAppointments = async () => {
     try {
       setLoading(true);
-      // Get cancelled appointments from last 30 days
+      // Get appointments cancelled in the last 30 days (filtered by cancelledAt,
+      // not startTime — a just-cancelled future RDV has its startTime in the future).
       const endDate = new Date();
       const startDate = new Date();
       startDate.setDate(endDate.getDate() - 30);
 
       const response = await api.getAppointments({
         status: 'CANCELLED',
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
+        cancelledStartDate: startDate.toISOString(),
+        cancelledEndDate: endDate.toISOString(),
         limit: 100
       });
 
