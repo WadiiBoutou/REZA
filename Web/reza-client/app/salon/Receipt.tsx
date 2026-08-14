@@ -24,6 +24,7 @@ type ParticipantSummary = {
   name: string;
   services: Service[];
   subtotal: number;
+  time?: string;
 };
 
 type ReceiptProps = {
@@ -130,9 +131,7 @@ const Receipt: React.FC<ReceiptProps> = ({
         </div>
         <p className="text-white/90 text-sm">
           Votre demande a été envoyée. L&apos;établissement confirmera bientôt votre rendez-vous.
-          {bookingData.paymentMethod === 'card'
-            ? ' Vous recevrez une confirmation par email.'
-            : ' Paiement sur place à l\'arrivée.'}
+          {bookingData.paymentMethod === 'card' && ' Vous recevrez une confirmation par email.'}
         </p>
       </div>
 
@@ -208,16 +207,15 @@ const Receipt: React.FC<ReceiptProps> = ({
                   })}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span>HEURE RDV</span>
-              <span>{bookingData.time}</span>
-            </div>
           </div>
 
           {isGroup ? (
             receiptSummary!.participants.map((participant, pIdx) => (
               <div key={pIdx} className="border-b border-black pb-3">
-                <p className="mb-2 font-bold">{participant.name.toUpperCase()}</p>
+                <div className="flex justify-between mb-1">
+                  <p className="font-bold">{participant.name.toUpperCase()}</p>
+                  {participant.time && <span>{participant.time}</span>}
+                </div>
                 {renderServices(participant.services)}
                 <div className="flex justify-between mt-2 pt-2 border-t border-dashed border-black">
                   <span>SOUS-TOTAL</span>
@@ -227,7 +225,10 @@ const Receipt: React.FC<ReceiptProps> = ({
             ))
           ) : (
             <div className="border-b border-black pb-3">
-              <p className="mb-2 font-bold">SERVICES</p>
+              <div className="flex justify-between mb-1">
+                <p className="font-bold">SERVICES</p>
+                {bookingData.time && <span>{bookingData.time}</span>}
+              </div>
               {renderServices(selectedServices)}
               <div className="flex justify-between mt-3 pt-2 border-t border-dashed border-black">
                 <span>DUREE TOTALE</span>
@@ -235,23 +236,6 @@ const Receipt: React.FC<ReceiptProps> = ({
               </div>
             </div>
           )}
-
-          <div className="border-b border-black pb-3">
-            <div className="flex justify-between mb-1">
-              <span>PAIEMENT</span>
-              <span>{bookingData.paymentMethod === 'card' ? 'CARTE' : 'SUR PLACE'}</span>
-            </div>
-            {bookingData.paymentMethod === 'card' && bookingData.cardNumber && (
-              <div className="flex justify-between text-[10px] text-black">
-                <span>CARTE N°</span>
-                <span>**** **** **** {bookingData.cardNumber.slice(-4)}</span>
-              </div>
-            )}
-            <div className="flex justify-between mt-1">
-              <span>STATUT</span>
-              <span>{bookingData.paymentMethod === 'card' ? 'PAYE' : 'A PAYER'}</span>
-            </div>
-          </div>
 
           <div className="border-b-2 border-black pb-3">
             <div className="flex justify-between text-base font-bold">

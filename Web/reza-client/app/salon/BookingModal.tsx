@@ -1395,6 +1395,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
         const pricingParticipants = (bookingResponse.pricing?.participants || []).map((p: any) => ({
           name: p.displayName as string,
           subtotal: p.subtotal as number,
+          time: p.startTime ? formatMoroccoTime(p.startTime) : undefined,
           services: flatServices.filter((s) => p.serviceIds?.includes(s.id)),
         }));
         setReceiptSummary({
