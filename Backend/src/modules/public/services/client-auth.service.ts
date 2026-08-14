@@ -228,7 +228,16 @@ export class ClientAuthService {
   }
 
   async registerClient(body: any) {
-    const { email, firstName, lastName, phone, password } = body;
+    const { email, firstName, lastName, phone, password, avatar, dateOfBirth } = body;
+
+    // Optional fields: only accept a valid ISO date for dateOfBirth (harmless
+    // to store nothing when missing) and a URL/string for avatar.
+    let parsedDateOfBirth: Date | null = null;
+    if (dateOfBirth) {
+      const d = new Date(dateOfBirth);
+      if (!isNaN(d.getTime())) parsedDateOfBirth = d;
+    }
+    const parsedAvatar = typeof avatar === 'string' && avatar.trim() ? avatar.trim() : null;
 
     if (!email || !firstName || !lastName) {
       fail(400, {
@@ -277,6 +286,8 @@ export class ClientAuthService {
           lastName: lastName.trim(),
           phone: phone || existingClient.phone,
           password: hashedPassword,
+          ...(parsedAvatar ? { avatar: parsedAvatar } : {}),
+          ...(parsedDateOfBirth ? { dateOfBirth: parsedDateOfBirth } : {}),
         },
       });
 
@@ -302,6 +313,8 @@ export class ClientAuthService {
         email: normalizedEmail,
         phone: phone || '',
         password: hashedPassword,
+        avatar: parsedAvatar,
+        dateOfBirth: parsedDateOfBirth,
         status: 'ACTIVE',
         verifyEmailToken: hashToken(verifyToken),
         verifyEmailExpires: new Date(Date.now() + VERIFY_TOKEN_TTL_MS),

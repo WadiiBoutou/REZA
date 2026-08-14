@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
-import { Eye, EyeOff, Mail, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
+import { Eye, EyeOff, Mail, ArrowLeft, Camera, Loader2 } from 'lucide-react';
 import CurvySlideButton from '@/components/ui/CurvySlideButton';
 import { Checkbox } from '@/components/ui/checkbox';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
-import { api } from '@/lib/api';
+import { api, API_BASE_URL } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
@@ -97,6 +97,9 @@ function LoginPageContent() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [organizationName, setOrganizationName] = useState('');
   const [city, setCity] = useState('');
   const [keepLoggedIn, setKeepLoggedIn] = useState(false);
@@ -230,6 +233,31 @@ function LoginPageContent() {
         return;
       }
 
+      const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('avatar', file);
+        try {
+          setUploadingAvatar(true);
+          setError('');
+          const res = await fetch(`${API_BASE_URL}/public/auth/upload-avatar`, {
+            method: 'POST',
+            body: formData,
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.message || "Erreur lors de l'upload de l'image");
+          }
+          setAvatarUrl(data.avatar);
+        } catch (err: any) {
+          setError(err.message || "Erreur lors de l'upload de l'image");
+        } finally {
+          setUploadingAvatar(false);
+          if (e.target) e.target.value = '';
+        }
+      };
+
       setLoading(true);
       try {
         const result = await register({
@@ -238,6 +266,7 @@ function LoginPageContent() {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           phone: undefined,
+          avatar: avatarUrl || undefined, // Optional
           // Create new organization during registration
           createTenant: true,
           tenantName: organizationName.trim(),
@@ -679,6 +708,41 @@ function LoginPageContent() {
                       {fieldErrors.lastName && (
                         <p className="mt-2 text-sm text-red-500">{fieldErrors.lastName}</p>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Avatar - Only for Signup (optional) */}
+                {mode === 'signup' && (
+                  <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={uploadingAvatar}
+                      className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-dashed border-gray-300 hover:border-[#082259] transition-colors flex items-center justify-center bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                      aria-label="Ajouter une photo de profil"
+                    >
+                      {avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={avatarUrl} alt="Photo de profil" className="w-full h-full object-cover" />
+                      ) : uploadingAvatar ? (
+                        <Loader2 className="animate-spin text-gray-400" size={20} />
+                      ) : (
+                        <Camera size={20} className="text-gray-400" />
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900 mb-1">
+                        Photo de profil <span className="font-normal text-gray-400">(optionnel)</span>
+                      </p>
+                      <p className="text-xs text-gray-400">Cliquez sur le cercle pour ajouter une photo</p>
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleAvatarUpload}
+                      />
                     </div>
                   </div>
                 )}

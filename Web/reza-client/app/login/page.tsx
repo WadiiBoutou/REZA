@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Eye, EyeOff, Mail, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, Mail, ArrowLeft, Camera, Loader2 } from 'lucide-react';
 import CurvySlideButton from '@/components/UI/CurvySlideButton';
 import { Checkbox } from "@/components/UI/checkbox";
 import LoadingOverlay from '@/components/UI/LoadingOverlay';
@@ -87,6 +87,10 @@ function LoginPageContent() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [keepLoggedIn, setKeepLoggedIn] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -101,6 +105,32 @@ function LoginPageContent() {
   const { login, isAuthenticated, logout } = useAuth();
   const router = useRouter();
 
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+    const formData = new FormData();
+    formData.append('avatar', file);
+    try {
+      setUploadingAvatar(true);
+      setError('');
+      const res = await fetch(`${API_URL}/public/auth/upload-avatar`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Erreur lors de l'upload de l'image");
+      }
+      setAvatarUrl(data.avatar);
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de l'upload de l'image");
+    } finally {
+      setUploadingAvatar(false);
+      if (e.target) e.target.value = '';
+    }
+  };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) {
@@ -211,7 +241,9 @@ function LoginPageContent() {
             firstName: currentFirstName.trim(),
             lastName: currentLastName.trim(),
             phone: '', // Phone is optional for registration
-            password: trimmedPassword // Use trimmed password
+            password: trimmedPassword, // Use trimmed password
+            avatar: avatarUrl || undefined, // Optional
+            dateOfBirth: dateOfBirth || undefined // Optional (YYYY-MM-DD)
           }),
         });
 
@@ -654,6 +686,58 @@ function LoginPageContent() {
                       )}
                     </div>
                   </div>
+                )}
+
+                {/* Avatar + Date de naissance - Only for Signup (both optional) */}
+                {mode === 'signup' && (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <button
+                        type="button"
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={uploadingAvatar}
+                        className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-dashed border-gray-300 hover:border-[#082259] transition-colors flex items-center justify-center bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                        aria-label="Ajouter une photo de profil"
+                      >
+                        {avatarUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={avatarUrl} alt="Photo de profil" className="w-full h-full object-cover" />
+                        ) : uploadingAvatar ? (
+                          <Loader2 className="animate-spin text-gray-400" size={20} />
+                        ) : (
+                          <Camera size={20} className="text-gray-400" />
+                        )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-gray-900 mb-1">
+                          Photo de profil <span className="font-normal text-gray-400">(optionnel)</span>
+                        </p>
+                        <p className="text-xs text-gray-400">Cliquez sur le cercle pour ajouter une photo</p>
+                        <input
+                          ref={avatarInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleAvatarUpload}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="dateOfBirth" className="block text-sm font-bold text-gray-900 mb-2">
+                        Date de naissance <span className="font-normal text-gray-400">(optionnel)</span>
+                      </label>
+                      <input
+                        id="dateOfBirth"
+                        name="dateOfBirth"
+                        type="date"
+                        max={new Date().toISOString().split('T')[0]}
+                        value={dateOfBirth}
+                        onChange={(e) => setDateOfBirth(e.target.value)}
+                        className="w-full px-6 py-3 bg-transparent border border-gray-200 rounded-full focus:ring-1 focus:ring-[#082259] outline-none transition-all text-gray-900 placeholder-gray-400 text-base font-medium"
+                      />
+                    </div>
+                  </>
                 )}
 
                 {/* Email Input */}

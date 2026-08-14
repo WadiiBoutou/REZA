@@ -10,6 +10,7 @@ import { clientNotificationsService } from './services/client-notifications.serv
 import { familyMembersService } from './services/family-members.service';
 import { clientAuthService } from './services/client-auth.service';
 import { favoritesService } from './services/favorites.service';
+import { uploadImage } from '../../utils/cloudinary';
 import { clientAccountService } from './services/client-account.service';
 import { earlyAccessService } from './services/early-access.service';
 import { subscriptionService } from '../subscription/subscription.service';
@@ -344,6 +345,21 @@ export class PublicController {
       res.status(201).json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
+      next(error);
+    }
+  }
+
+  async uploadAvatar(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          error: 'No file uploaded',
+          message: 'Veuillez sélectionner une image',
+        });
+      }
+      const avatar = await uploadImage(req.file, 'avatars');
+      res.json({ avatar });
+    } catch (error) {
       next(error);
     }
   }

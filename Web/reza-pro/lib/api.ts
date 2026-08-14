@@ -345,6 +345,7 @@ class ApiClient {
     tenantName?: string;
     tenantEmail?: string;
     tenantCity?: string;
+    avatar?: string;
   }) {
     const data = await this.request<{ token: string; user: any }>('/auth/register', {
       method: 'POST',

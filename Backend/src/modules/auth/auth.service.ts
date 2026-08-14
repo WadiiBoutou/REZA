@@ -249,6 +249,7 @@ export class AuthService {
         firstName: input.firstName,
         lastName: input.lastName,
         phone: input.phone,
+        avatar: input.avatar || null,
         tenantId: tenantId,
         role: userRole,
         verifyEmailToken: hashToken(verifyToken),

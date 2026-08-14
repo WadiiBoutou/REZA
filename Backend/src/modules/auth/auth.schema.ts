@@ -11,6 +11,7 @@ export const registerSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   phone: z.string().optional(),
+  avatar: z.string().optional(),
   tenantId: z.string().min(1, 'Tenant ID is required for registration').optional(),
   createTenant: z.boolean().optional(),
   tenantName: z.string().min(1).optional(),

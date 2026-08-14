@@ -121,6 +121,7 @@ interface AuthContextType {
     tenantName?: string;
     tenantEmail?: string;
     tenantCity?: string;
+    avatar?: string;
   }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;

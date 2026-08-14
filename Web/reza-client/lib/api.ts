@@ -440,6 +440,8 @@ class ApiClient {
     firstName: string;
     lastName: string;
     phone?: string;
+    avatar?: string;
+    dateOfBirth?: string;
   }) {
     return this.request<{ client: any; message: string }>('/public/auth/client-register', {
       method: 'POST',

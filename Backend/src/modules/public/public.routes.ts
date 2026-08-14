@@ -1,7 +1,40 @@
 import express from 'express';
+import multer from 'multer';
 import { publicController } from './public.controller';
 
 const router = express.Router();
+
+// Public avatar upload (registration) — buffered in memory, stored on Cloudinary.
+const avatarStorage = multer.memoryStorage();
+const avatarFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Seules les images sont autorisées'));
+  }
+};
+const uploadAvatar = multer({
+  storage: avatarStorage,
+  fileFilter: avatarFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+/**
+ * POST /api/public/auth/upload-avatar
+ * Upload an avatar image during registration (Cloudinary). Returns the URL
+ * to send along in the client/user register payload.
+ */
+router.post('/auth/upload-avatar', (req, res, next) => {
+  uploadAvatar.single('avatar')(req, res, (err) => {
+    if (err) {
+      const message = err instanceof multer.MulterError
+        ? (err.code === 'LIMIT_FILE_SIZE' ? 'L\'image est trop volumineuse (max 5 Mo)' : err.message)
+        : (err.message || 'Erreur lors de l\'upload de l\'image');
+      return res.status(400).json({ error: 'Upload error', message });
+    }
+    next();
+  });
+}, publicController.uploadAvatar);
 
 router.get('/tenant/:identifier', (req, res, next) =>
   publicController.getTenantByIdentifier(req, res, next)
