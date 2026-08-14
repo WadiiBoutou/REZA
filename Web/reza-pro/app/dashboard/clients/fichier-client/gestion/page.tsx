@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Pencil, Trash2, Search, X, Phone, Mail, User as UserIcon, MapPin, Calendar, Loader2, Camera } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, X, Phone, Mail, User as UserIcon, MapPin, Calendar, Loader2, Camera, Venus, Mars } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -25,6 +25,7 @@ interface BackendClient {
   phone: string;
   address: string | null;
   avatar: string | null;
+  gender: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
   notes: string | null;
   createdAt: string;
@@ -129,6 +130,7 @@ export default function ClientsGestionPage() {
     email: '',
     phone: '',
     address: '',
+    gender: '',
     avatar: undefined as string | undefined,
     status: 'Active' as 'Active' | 'Inactive',
     notes: '',
@@ -262,6 +264,7 @@ export default function ClientsGestionPage() {
       email: '',
       phone: '',
       address: '',
+      gender: '',
       avatar: undefined,
       status: 'Active',
       notes: '',
@@ -281,6 +284,7 @@ export default function ClientsGestionPage() {
       email: client.email,
       phone: client.phone,
       address: client.address || '',
+      gender: (client as any).gender || '',
       avatar: client.avatar || undefined,
       status: client.status,
       notes,
@@ -339,6 +343,7 @@ export default function ClientsGestionPage() {
           email: formData.email || undefined,
           phone: formData.phone,
           address: formData.address || undefined,
+          gender: formData.gender || undefined,
           avatar: formData.avatar !== undefined ? formData.avatar : null,
           status: formData.status === 'Active' ? 'ACTIVE' : 'INACTIVE',
           notes: (formData.notes?.replace(/__ACO:(AUTO|MANUAL)/g, '').trim() || '') + (formData.autoConfirmOverride !== 'default' ? `\n__ACO:${formData.autoConfirmOverride === 'auto' ? 'AUTO' : 'MANUAL'}` : '') || undefined
@@ -357,6 +362,7 @@ export default function ClientsGestionPage() {
           email: formData.email || undefined,
           phone: formData.phone,
           address: formData.address || undefined,
+          gender: formData.gender || undefined,
           avatar: formData.avatar || undefined,
           status: formData.status === 'Active' ? 'ACTIVE' : 'INACTIVE',
           notes: (formData.notes?.replace(/__ACO:(AUTO|MANUAL)/g, '').trim() || '') + (formData.autoConfirmOverride !== 'default' ? `\n__ACO:${formData.autoConfirmOverride === 'auto' ? 'AUTO' : 'MANUAL'}` : '') || undefined,
@@ -974,6 +980,31 @@ export default function ClientsGestionPage() {
                         className="w-full px-4 py-2.5 rounded-full bg-gray-50 border border-gray-200 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all"
                         placeholder="15 Rue de la Paix, Paris"
                       />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Genre <span className="text-gray-400 font-normal">(optionnel)</span>
+                      </label>
+                      <div className="flex gap-3">
+                        {[
+                          { value: 'female', label: 'Femme', Icon: Venus },
+                          { value: 'male', label: 'Homme', Icon: Mars },
+                        ].map(({ value, label, Icon }) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, gender: formData.gender === value ? '' : value })}
+                            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium transition-all ${
+                              formData.gender === value
+                                ? 'bg-gray-900 text-white border-2 border-gray-900'
+                                : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            <Icon size={16} />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>

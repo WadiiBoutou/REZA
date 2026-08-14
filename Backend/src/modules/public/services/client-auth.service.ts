@@ -228,7 +228,7 @@ export class ClientAuthService {
   }
 
   async registerClient(body: any) {
-    const { email, firstName, lastName, phone, password, avatar, dateOfBirth } = body;
+    const { email, firstName, lastName, phone, password, avatar, dateOfBirth, gender } = body;
 
     // Optional fields: only accept a valid ISO date for dateOfBirth (harmless
     // to store nothing when missing) and a URL/string for avatar.
@@ -238,11 +238,12 @@ export class ClientAuthService {
       if (!isNaN(d.getTime())) parsedDateOfBirth = d;
     }
     const parsedAvatar = typeof avatar === 'string' && avatar.trim() ? avatar.trim() : null;
+    const parsedGender = typeof gender === 'string' && (gender === 'male' || gender === 'female') ? gender : null;
 
-    if (!email || !firstName || !lastName) {
+    if (!email || !firstName || !lastName || !phone || !String(phone).trim()) {
       fail(400, {
         error: 'Missing required fields',
-        message: 'Email, first name, and last name are required.'
+        message: 'Email, prénom, nom et téléphone sont requis.'
       });
     }
 
@@ -284,10 +285,11 @@ export class ClientAuthService {
         data: {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          phone: phone || existingClient.phone,
+          phone: String(phone).trim(),
           password: hashedPassword,
           ...(parsedAvatar ? { avatar: parsedAvatar } : {}),
           ...(parsedDateOfBirth ? { dateOfBirth: parsedDateOfBirth } : {}),
+          ...(parsedGender ? { gender: parsedGender } : {}),
         },
       });
 
@@ -311,10 +313,11 @@ export class ClientAuthService {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: normalizedEmail,
-        phone: phone || '',
+        phone: String(phone).trim(),
         password: hashedPassword,
         avatar: parsedAvatar,
         dateOfBirth: parsedDateOfBirth,
+        gender: parsedGender,
         status: 'ACTIVE',
         verifyEmailToken: hashToken(verifyToken),
         verifyEmailExpires: new Date(Date.now() + VERIFY_TOKEN_TTL_MS),

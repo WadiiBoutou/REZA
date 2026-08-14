@@ -6,6 +6,7 @@ export const createClientSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().min(1),
   address: z.string().optional(),
+  gender: z.enum(['male', 'female']).optional(),
   avatar: z.string().nullable().optional(),
   dateOfBirth: z.string().datetime().optional(),
   notes: z.string().optional(),

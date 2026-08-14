@@ -186,6 +186,7 @@ export default function AccountDashboard() {
     email: string;
     phone: string;
     address: string;
+    gender: string;
     joinDate: string;
     totalBookings: number;
     avatar: string | null;
@@ -195,6 +196,7 @@ export default function AccountDashboard() {
     email: '',
     phone: '',
     address: '',
+    gender: '',
     joinDate: '',
     totalBookings: 0,
     avatar: null
@@ -247,6 +249,7 @@ export default function AccountDashboard() {
       email: '',
       phone: '',
       address: '',
+      gender: '',
       joinDate: '',
       totalBookings: 0,
       avatar: prev.avatar // Preserve existing avatar during reset
@@ -405,6 +408,7 @@ export default function AccountDashboard() {
               email: client.email || userEmail,
               phone: client.phone || '',
               address: client.address || '',
+              gender: (client as any).gender || '',
               // Only update avatar if it's actually present, otherwise keep existing value
               avatar: clientAvatar !== undefined && clientAvatar !== null ? clientAvatar : prev.avatar,
               totalBookings: appointmentsRes.appointments?.length || 0,
@@ -442,6 +446,7 @@ export default function AccountDashboard() {
             lastName: lastName,
             email: userEmail,
             phone: user.phone || '',
+            gender: (user as any).gender || '',
             totalBookings: 0
           }));
         }
@@ -1177,7 +1182,7 @@ export default function AccountDashboard() {
                   <button
                     onClick={() => {
                       setShowLogoutLoading(true);
-                      setUserData({ firstName: '', lastName: '', email: '', phone: '', address: '', joinDate: '', totalBookings: 0, avatar: null });
+                      setUserData({ firstName: '', lastName: '', email: '', phone: '', address: '', gender: '', joinDate: '', totalBookings: 0, avatar: null });
                       setAppointments([]); setClientData(null); setFamilyMembers([]); setReviews([]); setFavoritesCount(0);
                       logoutFromContext();
                       setTimeout(() => router.push('/login'), 500);

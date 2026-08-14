@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Search, Edit2, Trash2, X, Copy, Building, Camera, Loader2 } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Copy, Building, Camera, Loader2, Venus, Mars } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { Sketch } from '@uiw/react-color';
@@ -23,6 +23,8 @@ type EmployeeAgenda = {
   id: string;
   name: string;
   email: string;
+  phone: string;
+  gender: string;
   color: string;
   role: string;
   workingHours: WorkingHours[];
@@ -65,6 +67,8 @@ const transformEmployeeToAgenda = (employee: any): EmployeeAgenda => {
     id: employee.id,
     name: `${employee.firstName} ${employee.lastName}`,
     email: employee.email || '',
+    phone: employee.phone || '',
+    gender: employee.gender || '',
     color: agendaSettings.color || '#3B82F6',
     role: agendaSettings.role || '',
     workingHours: Array.isArray(workingHours) ? workingHours : defaultWorkingHours,
@@ -91,6 +95,8 @@ const transformAgendaToEmployee = (agenda: EmployeeAgenda, existingEmployee?: an
     firstName: existingEmployee?.firstName || firstName,
     lastName: existingEmployee?.lastName || lastName,
     email: agenda.email || undefined,
+    phone: agenda.phone,
+    gender: agenda.gender || undefined,
     // avatar: undefined means it was removed in the form → send null to clear it.
     // Otherwise keep the current value (uploaded or pre-existing).
     avatar: agenda.avatar !== undefined ? agenda.avatar : (existingEmployee?.avatar ?? null),
@@ -203,6 +209,8 @@ const GestionDesAgendas = () => {
       const newEmployeeData: any = {
         firstName: `${firstName} (Copie)`,
         lastName,
+        phone: originalEmployee.phone || '',
+        gender: originalEmployee.gender || undefined,
         avatar: originalEmployee.avatar || undefined,
         workingHours: agenda.workingHours,
         agendaSettings: {
@@ -719,6 +727,8 @@ const AgendaModal = ({
       id: '',
       name: '',
       email: '',
+      phone: '',
+      gender: '',
       color: '#3B82F6',
       role: '',
       workingHours: defaultWorkingHours,
@@ -768,6 +778,10 @@ const AgendaModal = ({
     }
     if (!formData.name) {
       toast.error('Veuillez remplir le nom');
+      return;
+    }
+    if (!formData.phone || !formData.phone.trim()) {
+      toast.error('Veuillez remplir le téléphone');
       return;
     }
     onSave(formData);
@@ -945,6 +959,19 @@ const AgendaModal = ({
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Téléphone <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    placeholder="06 12 34 56 78"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Email
                   </label>
                   <input
@@ -1002,6 +1029,32 @@ const AgendaModal = ({
                         </div>
                       </>
                     )}
+                  </div>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Genre <span className="text-gray-400 font-normal">(optionnel)</span>
+                  </label>
+                  <div className="flex gap-3">
+                    {[
+                      { value: 'female', label: 'Femme', Icon: Venus },
+                      { value: 'male', label: 'Homme', Icon: Mars },
+                    ].map(({ value, label, Icon }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, gender: formData.gender === value ? '' : value })}
+                        className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium transition-all ${
+                          formData.gender === value
+                            ? 'bg-gray-900 text-white border-2 border-gray-900'
+                            : 'bg-gray-50 text-gray-600 border-2 border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <Icon size={16} />
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 </div>
 

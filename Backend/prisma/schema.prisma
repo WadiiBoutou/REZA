@@ -248,7 +248,7 @@ model User {
   password  String // Hashed password
   firstName String
   lastName  String
-  phone     String?
+  phone     String
   role      UserRole @default(STAFF)
   isActive  Boolean  @default(true)
   avatar    String?
@@ -298,6 +298,7 @@ model Client {
   phone       String
   address     String?
   avatar      String? // Profile picture URL or base64
+  gender      String? // 'male' | 'female' (optional)
   password    String? // Hashed password (optional)
   dateOfBirth DateTime?
   notes       String?
@@ -453,8 +454,9 @@ model Employee {
   firstName String
   lastName  String
   email     String?
-  phone     String?
+  phone     String
   avatar    String?
+  gender    String? // 'male' | 'female' (optional)
   isActive  Boolean @default(true)
 
   // Working hours (stored as JSON for flexibility)

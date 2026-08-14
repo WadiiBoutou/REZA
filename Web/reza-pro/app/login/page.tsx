@@ -5,7 +5,7 @@ import { Eye, EyeOff, Mail, ArrowLeft, Camera, Loader2 } from 'lucide-react';
 import CurvySlideButton from '@/components/ui/CurvySlideButton';
 import { Checkbox } from '@/components/ui/checkbox';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
-import { api, API_BASE_URL } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
@@ -97,6 +97,7 @@ function LoginPageContent() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -138,6 +139,22 @@ function LoginPageContent() {
       return redirect;
     }
     return '/dashboard/rendez-vous';
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploadingAvatar(true);
+      setError('');
+      const { avatar } = await api.uploadAuthAvatar(file);
+      setAvatarUrl(avatar);
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de l'upload de l'image");
+    } finally {
+      setUploadingAvatar(false);
+      if (e.target) e.target.value = '';
+    }
   };
 
   // Pre-fill email from URL parameter
@@ -209,6 +226,7 @@ function LoginPageContent() {
       // Validation for signup
       if (!firstName.trim()) errors.firstName = 'Le prénom est requis';
       if (!lastName.trim()) errors.lastName = 'Le nom est requis';
+      if (!phone.trim()) errors.phone = 'Le téléphone est requis';
       if (!organizationName.trim()) errors.organizationName = 'Le nom de l\'établissement est requis';
       if (!city) errors.city = 'La ville est requise';
       if (!email.trim()) errors.email = 'L\'email est requis';
@@ -233,31 +251,6 @@ function LoginPageContent() {
         return;
       }
 
-      const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const formData = new FormData();
-        formData.append('avatar', file);
-        try {
-          setUploadingAvatar(true);
-          setError('');
-          const res = await fetch(`${API_BASE_URL}/public/auth/upload-avatar`, {
-            method: 'POST',
-            body: formData,
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            throw new Error(data.message || "Erreur lors de l'upload de l'image");
-          }
-          setAvatarUrl(data.avatar);
-        } catch (err: any) {
-          setError(err.message || "Erreur lors de l'upload de l'image");
-        } finally {
-          setUploadingAvatar(false);
-          if (e.target) e.target.value = '';
-        }
-      };
-
       setLoading(true);
       try {
         const result = await register({
@@ -265,7 +258,7 @@ function LoginPageContent() {
           password,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          phone: undefined,
+          phone: phone.trim(),
           avatar: avatarUrl || undefined, // Optional
           // Create new organization during registration
           createTenant: true,
@@ -289,6 +282,7 @@ function LoginPageContent() {
           setConfirmPassword('');
           setFirstName('');
           setLastName('');
+          setPhone('');
           setOrganizationName('');
           setCity('');
           setAcceptTerms(false);
@@ -709,6 +703,26 @@ function LoginPageContent() {
                         <p className="mt-2 text-sm text-red-500">{fieldErrors.lastName}</p>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* Phone - Only for Signup (required) */}
+                {mode === "signup" && (
+                  <div>
+                    <label htmlFor="phone" className="block text-sm font-bold text-gray-900 mb-2">
+                      Téléphone <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="phone"
+                      type="tel"
+                      placeholder="06 12 34 56 78"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full px-6 py-3 bg-transparent border border-gray-200 rounded-full focus:ring-1 focus:ring-[#082259] outline-none transition-all text-gray-900 placeholder-gray-400 text-base font-medium"
+                    />
+                    {fieldErrors.phone && (
+                      <p className="mt-2 text-sm text-red-500">{fieldErrors.phone}</p>
+                    )}
                   </div>
                 )}
 

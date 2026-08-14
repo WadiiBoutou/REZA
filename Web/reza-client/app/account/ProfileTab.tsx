@@ -1,4 +1,4 @@
-import { Camera } from 'lucide-react';
+import { Camera, Venus, Mars } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import SaveModal from './dialogue/savemodal';
 import api from '../../lib/api';
@@ -14,6 +14,7 @@ interface ProfileTabProps {
     address: string;
     joinDate?: string;
     avatar?: string | null;
+    gender?: string;
   };
   onUpdate?: (updatedClientData?: any) => void | Promise<void>;
 }
@@ -29,6 +30,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
     email: '',
     phone: '',
     address: '',
+    gender: '',
     profileImage: null as string | null
   });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -52,12 +54,13 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
         email: userData.email || '',
         phone: userData.phone || '',
         address: userData.address || '',
+        gender: userData.gender || '',
         profileImage: userData.avatar || null
       };
       setFormData(syncedFormData);
       setPreviewImage(userData.avatar || null);
     }
-  }, [userData.firstName, userData.lastName, userData.email, userData.phone, userData.address, userData.avatar, isEditing]);
+  }, [userData.firstName, userData.lastName, userData.email, userData.phone, userData.address, userData.gender, userData.avatar, isEditing]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -96,6 +99,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
       email: userData.email || '',
       phone: userData.phone || '',
       address: userData.address || '',
+      gender: userData.gender || '',
       profileImage: userData.avatar || null
     };
     
@@ -115,6 +119,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
       email: userData.email || '',
       phone: userData.phone || '',
       address: userData.address || '',
+      gender: userData.gender || '',
       profileImage: userData.avatar || null
     });
     setPreviewImage(userData.avatar || null);
@@ -225,6 +230,10 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
         updateData.address = '';
       }
 
+      if (formData.gender) {
+        updateData.gender = formData.gender;
+      }
+
       updateData.avatar = formData.profileImage || null;
 
       
@@ -249,6 +258,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
           email: updatedClient.email || '',
           phone: updatedClient.phone || '',
           address: (updatedClient as any).address || '',
+          gender: (updatedClient as any).gender || '',
           profileImage: savedAvatar || null,
         };
         
@@ -449,6 +459,35 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
               />
             ) : (
               <div className="text-sm font-light text-gray-900">{formData.address || userData.address || '-'}</div>
+            )}
+          </div>
+          <div className="col-span-2">
+            <div className="text-xs text-gray-400 tracking-wide uppercase mb-3">Genre</div>
+            {isEditing ? (
+              <div className="flex gap-3">
+                {[
+                  { value: 'female', label: 'Femme', Icon: Venus },
+                  { value: 'male', label: 'Homme', Icon: Mars },
+                ].map(({ value, label, Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => handleInputChange('gender', formData.gender === value ? '' : value)}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full border transition-all text-sm font-medium ${
+                      formData.gender === value
+                        ? 'border-gray-900 bg-gray-900 text-white'
+                        : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon size={16} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm font-light text-gray-900">
+                {formData.gender === 'female' ? 'Femme' : formData.gender === 'male' ? 'Homme' : '-'}
+              </div>
             )}
           </div>
         </div>

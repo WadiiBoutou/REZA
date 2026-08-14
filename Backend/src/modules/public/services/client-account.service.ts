@@ -11,7 +11,7 @@ const hashCode = (code: string) => crypto.createHash('sha256').update(code).dige
 export class ClientAccountService {
   async updateClientProfile(email: string, body: any) {
     try {
-    const { firstName, lastName, phone, address, avatar } = body;
+    const { firstName, lastName, phone, address, avatar, gender } = body;
 
     if (!email) {
       fail(400, {
@@ -47,6 +47,7 @@ export class ClientAccountService {
       lastName: lastName !== undefined ? lastName.trim() : undefined,
       phone: phone !== undefined ? phone.trim() : undefined,
       address: address !== undefined ? address.trim() : undefined,
+      gender: gender !== undefined ? gender : undefined,
     };
 
     // Handle avatar separately to ensure it's properly set
@@ -68,6 +69,7 @@ export class ClientAccountService {
         email: true,
         phone: true,
         address: true,
+        gender: true,
         avatar: true,
         tenantId: true
       } as any // Temporary cast until Prisma client is regenerated

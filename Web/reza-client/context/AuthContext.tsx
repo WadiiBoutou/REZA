@@ -9,6 +9,7 @@ interface User {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  gender?: string;
 }
 
 interface AuthContextType {
@@ -64,7 +65,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           name: `${response.client.firstName || ''} ${response.client.lastName || ''}`.trim() || email.trim().split('@')[0],
           firstName: response.client.firstName,
           lastName: response.client.lastName,
-          phone: response.client.phone
+          phone: response.client.phone,
+          gender: (response.client as any).gender || undefined
         };
         
         // "Rester connecté": persist across browser restarts (localStorage),
@@ -102,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       firstName: client.firstName || undefined,
       lastName: client.lastName || undefined,
       phone: client.phone || undefined,
+      gender: (client as any).gender || undefined,
     };
     localStorage.setItem('user', JSON.stringify(userData));
     sessionStorage.removeItem('user');

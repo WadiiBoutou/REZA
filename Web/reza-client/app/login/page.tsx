@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Eye, EyeOff, Mail, ArrowLeft, Camera, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Mail, ArrowLeft, Camera, Loader2, Phone, Venus, Mars } from 'lucide-react';
+import { isValidMoroccanPhone, getMoroccanPhoneError } from '../../lib/utils';
 import CurvySlideButton from '@/components/UI/CurvySlideButton';
 import { Checkbox } from "@/components/UI/checkbox";
 import LoadingOverlay from '@/components/UI/LoadingOverlay';
@@ -87,6 +88,8 @@ function LoginPageContent() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [gender, setGender] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -156,6 +159,7 @@ function LoginPageContent() {
       let currentEmail = email || '';
       let currentFirstName = firstName || '';
       let currentLastName = lastName || '';
+      let currentPhone = phone || '';
       
       // Also try to read from DOM as a fallback, but prioritize state
       if (e && e.currentTarget) {
@@ -175,6 +179,7 @@ function LoginPageContent() {
       // Trim all values
       const trimmedFirstName = String(currentFirstName || '').trim();
       const trimmedLastName = String(currentLastName || '').trim();
+      const trimmedPhone = String(currentPhone || '').trim();
       const trimmedEmail = String(currentEmail || '').trim();
       const trimmedPassword = String(currentPassword || '').trim();
       const trimmedConfirmPassword = String(currentConfirmPassword || '').trim();
@@ -185,6 +190,11 @@ function LoginPageContent() {
       }
       if (!trimmedLastName) {
         errors.lastName = 'Le nom est requis';
+      }
+      if (!trimmedPhone) {
+        errors.phone = 'Le téléphone est requis';
+      } else if (!isValidMoroccanPhone(trimmedPhone)) {
+        errors.phone = getMoroccanPhoneError(trimmedPhone);
       }
       if (!trimmedEmail) {
         errors.email = 'L\'email est requis';
@@ -240,10 +250,11 @@ function LoginPageContent() {
             email: currentEmail.trim(),
             firstName: currentFirstName.trim(),
             lastName: currentLastName.trim(),
-            phone: '', // Phone is optional for registration
+            phone: trimmedPhone,
             password: trimmedPassword, // Use trimmed password
             avatar: avatarUrl || undefined, // Optional
-            dateOfBirth: dateOfBirth || undefined // Optional (YYYY-MM-DD)
+            dateOfBirth: dateOfBirth || undefined, // Optional (YYYY-MM-DD)
+            gender: gender || undefined // Optional (male | female)
           }),
         });
 
@@ -684,6 +695,61 @@ function LoginPageContent() {
                       {fieldErrors.lastName && (
                         <p className="mt-2 text-sm text-red-500">{fieldErrors.lastName}</p>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Phone - Only for Signup (required) */}
+                {mode === 'signup' && (
+                  <div>
+                    <label htmlFor="phone" className="block text-sm font-bold text-gray-900 mb-2">
+                      Téléphone <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="phone"
+                        name="phone"
+                        type="tel"
+                        placeholder="06 12 34 56 78"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="w-full px-6 py-3 bg-transparent border border-gray-200 rounded-full focus:ring-1 focus:ring-[#082259] outline-none transition-all text-gray-900 placeholder-gray-400 pr-12 text-base font-medium"
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                        <Phone size={18} />
+                      </span>
+                    </div>
+                    {fieldErrors.phone && (
+                      <p className="mt-2 text-sm text-red-500">{fieldErrors.phone}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Gender - Only for Signup (optional, radio with icons) */}
+                {mode === 'signup' && (
+                  <div>
+                    <label className="block text-sm font-bold text-gray-900 mb-2">
+                      Genre <span className="font-normal text-gray-400">(optionnel)</span>
+                    </label>
+                    <div className="flex gap-3">
+                      {[
+                        { value: 'female', label: 'Femme', Icon: Venus },
+                        { value: 'male', label: 'Homme', Icon: Mars },
+                      ].map(({ value, label, Icon }) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setGender(gender === value ? '' : value)}
+                          className={`flex items-center gap-2 px-5 py-3 rounded-full border transition-all text-sm font-medium ${
+                            gender === value
+                              ? 'border-[#082259] bg-[#082259] text-white'
+                              : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                          }`}
+                        >
+                          <Icon size={16} />
+                          {label}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
