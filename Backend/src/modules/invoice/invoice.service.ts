@@ -767,7 +767,13 @@ export class InvoiceService {
     const participants = group.participants.map((p) => {
       const clientName = p.client
         ? `${p.client.firstName} ${p.client.lastName}`.trim()
-        : p.displayName;
+        : '';
+
+      // Prefer the name the participant booked under (stored displayName) over
+      // the linked client's name: a guest can be linked to someone else's client
+      // record (e.g. a shared phone number with the booker), which would make
+      // the group billing show the same person twice.
+      const displayName = (p.displayName || '').trim() || clientName || 'Participant';
 
       const services = (p.appointment?.services || []).map((si) => ({
         serviceId: si.serviceId,
@@ -785,7 +791,7 @@ export class InvoiceService {
       return {
         participantId: p.id,
         clientId: p.clientId,
-        displayName: clientName,
+        displayName,
         isBooker: p.isBooker,
         services,
         subtotal,

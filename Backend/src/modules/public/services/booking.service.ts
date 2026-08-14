@@ -254,12 +254,17 @@ export class BookingService {
         let linkedClientId: string | null = null;
 
         if (participant.clientId) {
-          const linkedClient = await prisma.client.findFirst({
-            where: { id: participant.clientId },
-          });
-          if (linkedClient) {
-            appointmentClientId = linkedClient.id;
-            linkedClientId = linkedClient.id;
+          // A guest participant is by definition a different person than the
+          // booker — never honour a link that points back at the booker's own
+          // client (e.g. a family-member record whose clientId is the booker's).
+          if (participant.clientId !== bookerClient.id) {
+            const linkedClient = await prisma.client.findFirst({
+              where: { id: participant.clientId },
+            });
+            if (linkedClient) {
+              appointmentClientId = linkedClient.id;
+              linkedClientId = linkedClient.id;
+            }
           }
         }
 
@@ -274,6 +279,22 @@ export class BookingService {
             const guestFirstName = nameParts[0] || guestName;
             const guestLastName = nameParts.slice(1).join(' ') || '';
 
+            // Names must match before we reuse an existing client: the same
+            // phone is often shared by two different people (e.g. a family
+            // member booking with the booker's number). Reusing a client whose
+            // name disagrees would merge the guest into someone else's record
+            // and make the group billing show the same person twice.
+            const guestMatches = (c: { firstName: string | null; lastName: string | null }) => {
+              if (!guestFirstName) return true; // no name given — trust phone/email
+              const cFirst = (c.firstName || '').trim().toLowerCase();
+              const cLast = (c.lastName || '').trim().toLowerCase();
+              if (!cFirst && !cLast) return true; // record has no name — trust match
+              const gFirst = guestFirstName.toLowerCase();
+              const gLast = guestLastName.toLowerCase();
+              return (cFirst === gFirst && cLast === gLast) || `${cFirst} ${cLast}`.trim() === `${gFirst} ${gLast}`.trim();
+            };
+            const isBooker = (c: { id: string }) => c.id === bookerClient.id;
+
             // 1) Try to reuse an existing client by phone (global — the same
             //    person must map to the same row no matter which salon they book)
             let guestClient = guestPhone
@@ -281,15 +302,22 @@ export class BookingService {
                   where: { phone: guestPhone },
                 })
               : null;
+            if (guestClient && (isBooker(guestClient) || !guestMatches(guestClient))) {
+              guestClient = null;
+            }
 
             // 2) Try by email if provided
             if (!guestClient && guestEmail) {
               guestClient = await prisma.client.findFirst({
                 where: { email: guestEmail.toLowerCase() },
               });
+              if (guestClient && (isBooker(guestClient) || !guestMatches(guestClient))) {
+                guestClient = null;
+              }
             }
 
-            // 3) Try by firstName+lastName (name-based dedup, global)
+            // 3) Try by firstName+lastName (name-based dedup, global) — never
+            //    into the booker's own record
             if (!guestClient) {
               guestClient = await prisma.client.findFirst({
                 where: {
@@ -297,6 +325,9 @@ export class BookingService {
                   lastName: guestLastName,
                 },
               });
+              if (guestClient && isBooker(guestClient)) {
+                guestClient = null;
+              }
             }
 
             if (!guestClient) {
