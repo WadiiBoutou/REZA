@@ -136,6 +136,9 @@ router.post('/favorites', (req, res, next) => publicController.addFavorite(req, 
 router.put('/client/:email', (req, res, next) =>
   publicController.updateClientProfile(req, res, next)
 );
+router.post('/client/:email/send-password-code', (req, res, next) =>
+  publicController.sendClientPasswordCode(req, res, next)
+);
 router.put('/client/:email/change-password', (req, res, next) =>
   publicController.changeClientPassword(req, res, next)
 );

@@ -20,30 +20,56 @@ const SettingsTab = () => {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [code, setCode] = useState('');
+  const [codeSent, setCodeSent] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
   const router = useRouter();
   const [showLogoutLoading, setShowLogoutLoading] = useState(false);
 
-  const validatePassword = () => {
-    const errors: { [key: string]: string } = {};
-    
+  // Step 1: verify the current password and email a verification code
+  const handleSendCode = async () => {
     if (!passwordForm.currentPassword) {
-      errors.currentPassword = 'Le mot de passe actuel est requis';
+      setPasswordErrors({ currentPassword: 'Le mot de passe actuel est requis' });
+      return;
     }
-    
-    if (!passwordForm.newPassword || passwordForm.newPassword.length < 8) {
-      errors.newPassword = 'Le nouveau mot de passe doit contenir au moins 8 caractères';
+
+    if (!user?.email) {
+      setPasswordError('Email utilisateur manquant');
+      return;
     }
-    
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      errors.confirmPassword = 'Les mots de passe ne correspondent pas';
+
+    setSendingCode(true);
+    setPasswordError(null);
+    setPasswordSaved(false);
+
+    try {
+      await api.sendClientPasswordCode(user.email, passwordForm.currentPassword);
+      setCodeSent(true);
+      setPasswordError(null);
+    } catch (error: any) {
+      const errorMessage = error.message || 'Erreur lors de l\'envoi du code. Veuillez réessayer.';
+      if (error.status !== 401 && error.status !== 400) {
+        console.error('[SettingsTab] Unexpected error sending code:', error);
+      }
+      setPasswordError(errorMessage);
+      setPasswordSaved(false);
+    } finally {
+      setSendingCode(false);
     }
-    
-    setPasswordErrors(errors);
-    return Object.keys(errors).length === 0;
   };
 
+  // Step 2: validate the emailed code and set the new password
   const handleSavePassword = async () => {
-    if (!validatePassword()) {
+    if (!code || code.length < 4) {
+      setPasswordErrors({ code: 'Veuillez entrer le code reçu par email' });
+      return;
+    }
+    if (!passwordForm.newPassword || passwordForm.newPassword.length < 8) {
+      setPasswordErrors({ newPassword: 'Le nouveau mot de passe doit contenir au moins 8 caractères' });
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordErrors({ confirmPassword: 'Les mots de passe ne correspondent pas' });
       return;
     }
 
@@ -57,8 +83,8 @@ const SettingsTab = () => {
     setPasswordSaved(false);
 
     try {
-      const response = await api.changeClientPassword(user.email, {
-        currentPassword: passwordForm.currentPassword,
+      await api.changeClientPassword(user.email, {
+        code,
         newPassword: passwordForm.newPassword
       });
 
@@ -70,6 +96,8 @@ const SettingsTab = () => {
         setShowPasswordForm(false);
         setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
         setPasswordErrors({});
+        setCode('');
+        setCodeSent(false);
       }, 2000);
     } catch (error: any) {
       // Extract error message from API response
@@ -148,139 +176,198 @@ const SettingsTab = () => {
             
             {showPasswordForm && (
               <div className="p-6 bg-[#f5f7f3] border-b border-gray-200">
-                {/* Make password fields in a row */}
-                <div className="flex flex-col gap-4 md:flex-row md:gap-6">
-                  <div className="flex-1">
-                    <label className="block text-xs text-gray-600 mb-2 font-medium">Mot de passe actuel</label>
-                    <div className="relative">
-                      <input
-                        type={showCurrentPassword ? 'text' : 'password'}
-                        value={passwordForm.currentPassword}
-                        onChange={e => {
-                          setPasswordForm({ ...passwordForm, currentPassword: e.target.value });
-                          setPasswordErrors({ ...passwordErrors, currentPassword: '' });
-                        }}
-                        className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none transition-colors ${
-                          passwordErrors.currentPassword ? 'border-red-300 focus:border-red-500' : 'border-gray-300 focus:border-[#8b7260]'
-                        } text-black placeholder-black`}
-                        placeholder="••••••••"
-                      />
+                {!codeSent ? (
+                  <>
+                    <p className="text-xs text-gray-500 mb-4">
+                      Un code de vérification sera envoyé à <strong>{user?.email}</strong>. Saisissez
+                      d&apos;abord votre mot de passe actuel pour recevoir le code.
+                    </p>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-2 font-medium">Mot de passe actuel</label>
+                      <div className="relative">
+                        <input
+                          type={showCurrentPassword ? 'text' : 'password'}
+                          value={passwordForm.currentPassword}
+                          onChange={e => {
+                            setPasswordForm({ ...passwordForm, currentPassword: e.target.value });
+                            setPasswordErrors({ ...passwordErrors, currentPassword: '' });
+                          }}
+                          className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none transition-colors ${
+                            passwordErrors.currentPassword ? 'border-red-300 focus:border-red-500' : 'border-gray-300 focus:border-[#8b7260]'
+                          } text-black placeholder-black`}
+                          placeholder="••••••••"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                          tabIndex={-1}
+                        >
+                          {showCurrentPassword ? (
+                            <EyeOff className="w-4 h-4" />
+                          ) : (
+                            <Eye className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                      {passwordErrors.currentPassword && (
+                        <p className="text-red-500 text-xs mt-1">{passwordErrors.currentPassword}</p>
+                      )}
+                    </div>
+                    {passwordError && (
+                      <div className="mt-4 bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 text-sm">
+                        {passwordError}
+                      </div>
+                    )}
+                    <div className="flex gap-3 pt-4">
                       <button
-                        type="button"
-                        onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                        tabIndex={-1}
+                        onClick={() => {
+                          setShowPasswordForm(false);
+                          setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+                          setPasswordErrors({});
+                          setPasswordError(null);
+                          setShowCurrentPassword(false);
+                          setShowNewPassword(false);
+                          setShowConfirmPassword(false);
+                        }}
+                        disabled={sendingCode}
+                        className="text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {showCurrentPassword ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
+                        Annuler
+                      </button>
+                      <button
+                        onClick={handleSendCode}
+                        disabled={sendingCode}
+                        className="px-5 py-2 bg-gray-900 text-white text-xs rounded-full hover:bg-[#8b7260] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {sendingCode ? 'Envoi du code...' : 'Envoyer le code'}
                       </button>
                     </div>
-                    {passwordErrors.currentPassword && (
-                      <p className="text-red-500 text-xs mt-1">{passwordErrors.currentPassword}</p>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-xs text-gray-600 mb-2 font-medium">Nouveau mot de passe</label>
-                    <div className="relative">
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-gray-500 mb-4">
+                      Un code à 6 chiffres a été envoyé à <strong>{user?.email}</strong>. Saisissez-le
+                      ci-dessous avec votre nouveau mot de passe.
+                    </p>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-2 font-medium">Code de vérification</label>
                       <input
-                        type={showNewPassword ? 'text' : 'password'}
-                        value={passwordForm.newPassword}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={code}
                         onChange={e => {
-                          setPasswordForm({ ...passwordForm, newPassword: e.target.value });
-                          setPasswordErrors({ ...passwordErrors, newPassword: '' });
+                          setCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                          setPasswordErrors({ ...passwordErrors, code: '' });
                         }}
-                        className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none transition-colors ${
-                          passwordErrors.newPassword ? 'border-red-300 focus:border-red-500' : 'border-gray-300 focus:border-[#8b7260]'
+                        className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none transition-colors tracking-[0.5em] text-center font-semibold ${
+                          passwordErrors.code ? 'border-red-300 focus:border-red-500' : 'border-gray-300 focus:border-[#8b7260]'
                         } text-black placeholder-black`}
-                        placeholder="••••••••"
+                        placeholder="••••••"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                        tabIndex={-1}
-                      >
-                        {showNewPassword ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
-                      </button>
+                      {passwordErrors.code && (
+                        <p className="text-red-500 text-xs mt-1">{passwordErrors.code}</p>
+                      )}
                     </div>
-                    {passwordErrors.newPassword && (
-                      <p className="text-red-500 text-xs mt-1">{passwordErrors.newPassword}</p>
+                    <div className="flex flex-col gap-4 mt-4 md:flex-row md:gap-6">
+                      <div className="flex-1">
+                        <label className="block text-xs text-gray-600 mb-2 font-medium">Nouveau mot de passe</label>
+                        <div className="relative">
+                          <input
+                            type={showNewPassword ? 'text' : 'password'}
+                            value={passwordForm.newPassword}
+                            onChange={e => {
+                              setPasswordForm({ ...passwordForm, newPassword: e.target.value });
+                              setPasswordErrors({ ...passwordErrors, newPassword: '' });
+                            }}
+                            className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none transition-colors ${
+                              passwordErrors.newPassword ? 'border-red-300 focus:border-red-500' : 'border-gray-300 focus:border-[#8b7260]'
+                            } text-black placeholder-black`}
+                            placeholder="••••••••"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                            tabIndex={-1}
+                          >
+                            {showNewPassword ? (
+                              <EyeOff className="w-4 h-4" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                        {passwordErrors.newPassword && (
+                          <p className="text-red-500 text-xs mt-1">{passwordErrors.newPassword}</p>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-xs text-gray-600 mb-2 font-medium">Confirmer le mot de passe</label>
+                        <div className="relative">
+                          <input
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            value={passwordForm.confirmPassword}
+                            onChange={e => {
+                              setPasswordForm({ ...passwordForm, confirmPassword: e.target.value });
+                              setPasswordErrors({ ...passwordErrors, confirmPassword: '' });
+                            }}
+                            className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none transition-colors ${
+                              passwordErrors.confirmPassword ? 'border-red-300 focus:border-red-500' : 'border-gray-300 focus:border-[#8b7260]'
+                            } text-black placeholder-black`}
+                            placeholder="••••••••"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                            tabIndex={-1}
+                          >
+                            {showConfirmPassword ? (
+                              <EyeOff className="w-4 h-4" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                        {passwordErrors.confirmPassword && (
+                          <p className="text-red-500 text-xs mt-1">{passwordErrors.confirmPassword}</p>
+                        )}
+                      </div>
+                    </div>
+                    {passwordError && (
+                      <div className="mt-4 bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 text-sm">
+                        {passwordError}
+                      </div>
                     )}
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-xs text-gray-600 mb-2 font-medium">Confirmer le mot de passe</label>
-                    <div className="relative">
-                      <input
-                        type={showConfirmPassword ? 'text' : 'password'}
-                        value={passwordForm.confirmPassword}
-                        onChange={e => {
-                          setPasswordForm({ ...passwordForm, confirmPassword: e.target.value });
-                          setPasswordErrors({ ...passwordErrors, confirmPassword: '' });
+                    <div className="flex gap-3 pt-4">
+                      <button
+                        onClick={() => {
+                          setCodeSent(false);
+                          setCode('');
+                          setPasswordError(null);
                         }}
-                        className={`w-full px-3 py-2.5 pr-10 text-sm border rounded-lg focus:outline-none transition-colors ${
-                          passwordErrors.confirmPassword ? 'border-red-300 focus:border-red-500' : 'border-gray-300 focus:border-[#8b7260]'
-                        } text-black placeholder-black`}
-                        placeholder="••••••••"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                        tabIndex={-1}
+                        disabled={changingPassword}
+                        className="text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {showConfirmPassword ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
+                        Recommencer
                       </button>
+                      <button
+                        onClick={handleSavePassword}
+                        disabled={changingPassword}
+                        className="px-5 py-2 bg-gray-900 text-white text-xs rounded-full hover:bg-[#8b7260] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {changingPassword ? 'Changement...' : 'Changer le mot de passe'}
+                      </button>
+                      {passwordSaved && (
+                        <span className="flex items-center text-green-600 text-xs">
+                          <Check className="w-4 h-4 mr-1" /> Mot de passe modifié !
+                        </span>
+                      )}
                     </div>
-                    {passwordErrors.confirmPassword && (
-                      <p className="text-red-500 text-xs mt-1">{passwordErrors.confirmPassword}</p>
-                    )}
-                  </div>
-                </div>
-                {passwordError && (
-                  <div className="mt-4 bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 text-sm">
-                    {passwordError}
-                  </div>
+                  </>
                 )}
-                <div className="flex gap-3 pt-4">
-                  <button
-                  onClick={() => {
-                    setShowPasswordForm(false);
-                    setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-                    setPasswordErrors({});
-                    setPasswordError(null);
-                    setShowCurrentPassword(false);
-                    setShowNewPassword(false);
-                    setShowConfirmPassword(false);
-                  }}
-                    disabled={changingPassword}
-                    className="text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    onClick={handleSavePassword}
-                    disabled={changingPassword}
-                    className="px-5 py-2 bg-gray-900 text-white text-xs rounded-full hover:bg-[#8b7260] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {changingPassword ? 'Changement...' : 'Enregistrer'}
-                  </button>
-                  {passwordSaved && (
-                    <span className="flex items-center text-green-600 text-xs">
-                      <Check className="w-4 h-4 mr-1" /> Mot de passe modifié !
-                    </span>
-                  )}
-                </div>
               </div>
             )}
           </div>

@@ -508,9 +508,16 @@ class ApiClient {
     });
   }
 
-  // Change client password
+  // Change client password (email-verified: a code is sent to the account email)
+  async sendClientPasswordCode(email: string, currentPassword: string) {
+    return this.request<{ message: string }>(`/public/client/${encodeURIComponent(email)}/send-password-code`, {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword }),
+    });
+  }
+
   async changeClientPassword(email: string, data: {
-    currentPassword: string;
+    code: string;
     newPassword: string;
   }) {
     return this.request<{ message: string }>(`/public/client/${encodeURIComponent(email)}/change-password`, {

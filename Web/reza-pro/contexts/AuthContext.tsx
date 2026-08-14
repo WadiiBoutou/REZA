@@ -11,6 +11,7 @@ interface User {
   role: string;
   tenantId: string | null;
   emailVerified?: boolean;
+  avatar?: string | null;
   tenant?: {
     id: string;
     name: string;
@@ -129,6 +130,8 @@ interface AuthContextType {
   refreshUser: () => Promise<void>;
   /** Sign the user in right after clicking the email confirmation link (JWT returned by backend). */
   completeVerification: (response: any) => void;
+  /** Merge a partial update into the current user (e.g. new avatar). */
+  updateUser: (patch: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -444,6 +447,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const subscriptionActive = subscription?.status === 'ACTIVE';
 
+  const updateUser = useCallback((patch: Partial<User>) => {
+    setUser(prev => (prev ? { ...prev, ...patch } : prev));
+  }, []);
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -467,7 +474,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated, 
       loading,
       refreshUser,
-      completeVerification
+      completeVerification,
+      updateUser
     }}>
       {children}
     </AuthContext.Provider>

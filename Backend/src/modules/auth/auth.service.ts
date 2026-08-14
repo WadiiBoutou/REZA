@@ -4,7 +4,7 @@ import { hashPassword, comparePassword } from '../../utils/password';
 import { generateToken } from '../../utils/jwt';
 import { slugifyName } from '../../utils/slugify';
 import { sendMail } from '../../utils/mailer';
-import { LoginInput, RegisterInput, ForgotPasswordInput, ResetPasswordInput } from './auth.schema';
+import { LoginInput, RegisterInput, ForgotPasswordInput, ResetPasswordInput, SendPasswordCodeInput, ChangePasswordInput } from './auth.schema';
 import { accountService } from '../account/account.service';
 import * as log from '../../utils/logger';
 
@@ -25,6 +25,8 @@ function getFrontendBaseUrl(req?: any): string {
 }
 
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes — recommended for password resets
+// Email OTP for password changes from the dashboard: shorter TTL is safer.
+const PASSWORD_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — recommended for email confirmation
 
 const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
@@ -588,6 +590,130 @@ export class AuthService {
     });
 
     return { message: 'Votre mot de passe a été réinitialisé avec succès. Vous pouvez maintenant vous connecter.' };
+  }
+
+  /**
+   * Change password (authenticated): step 1 — verify the current password and
+   * email a 6-digit verification code to the user's address. Proves it really
+   * is the account owner before any password change is possible.
+   */
+  async sendPasswordCode(userId: string, input: SendPasswordCodeInput) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, firstName: true, password: true, isActive: true },
+    });
+
+    if (!user || !user.isActive) {
+      throw { status: 404, error: 'User not found', message: 'Utilisateur introuvable.' };
+    }
+    if (!user.email) {
+      throw { status: 400, error: 'No email', message: 'Aucune adresse email associée à ce compte.' };
+    }
+    if (!user.password) {
+      throw {
+        status: 400,
+        error: 'No password',
+        message: 'Ce compte n\'a pas de mot de passe. Utilisez la réinitialisation par email.',
+      };
+    }
+
+    const valid = await comparePassword(input.currentPassword, user.password);
+    if (!valid) {
+      throw { status: 401, error: 'Invalid password', message: 'Le mot de passe actuel est incorrect.' };
+    }
+
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetPasswordToken: hashToken(code),
+        resetPasswordExpires: new Date(Date.now() + PASSWORD_CODE_TTL_MS),
+      },
+    });
+
+    const firstName = user.firstName || '';
+    try {
+      await sendMail({
+        to: user.email,
+        subject: 'Votre code de vérification — Reza Pro',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+            <h2 style="color: #002366;">Changement de mot de passe</h2>
+            <p>Bonjour ${firstName},</p>
+            <p>Vous avez demandé à changer votre mot de passe Reza Pro. Voici votre code de vérification :</p>
+            <p style="text-align: center; margin: 28px 0;">
+              <span style="display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 32px; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #002366;">${code}</span>
+            </p>
+            <p style="font-size: 13px; color: #666;">Ce code expire dans <strong>10 minutes</strong>. Si vous n'avez pas demandé ce changement, ignorez cet email.</p>
+          </div>
+        `,
+      });
+    } catch (mailError: any) {
+      log.error('[sendPasswordCode] Email send failed:', mailError?.message || mailError);
+      // Clear the code so a stale code is never left dangling when the mail fails
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { resetPasswordToken: null, resetPasswordExpires: null },
+      });
+      throw mailError;
+    }
+
+    return { message: 'Un code de vérification a été envoyé à votre adresse email.' };
+  }
+
+  /**
+   * Change password (authenticated): step 2 — validate the emailed code and set
+   * the new password. The code was stored hashed, so a DB leak never leaks codes.
+   */
+  async changePassword(userId: string, input: ChangePasswordInput) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, resetPasswordToken: true, resetPasswordExpires: true },
+    });
+
+    if (!user) {
+      throw { status: 404, error: 'User not found', message: 'Utilisateur introuvable.' };
+    }
+
+    const codeHash = hashToken(input.code.trim());
+    if (!user.resetPasswordToken || user.resetPasswordToken !== codeHash) {
+      throw {
+        status: 400,
+        error: 'Invalid code',
+        message: 'Le code de vérification est invalide. Vérifiez votre email et réessayez.',
+      };
+    }
+    if (!user.resetPasswordExpires || user.resetPasswordExpires.getTime() < Date.now()) {
+      throw {
+        status: 400,
+        error: 'Code expired',
+        message: 'Le code de vérification a expiré. Veuillez en demander un nouveau.',
+      };
+    }
+
+    const hashedPassword = await hashPassword(input.newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
+    });
+
+    return { message: 'Votre mot de passe a été modifié avec succès.' };
+  }
+
+  /**
+   * Update the authenticated user's avatar (URL already uploaded to Cloudinary).
+   */
+  async updateAvatar(userId: string, avatar: string) {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { avatar },
+      select: { id: true, avatar: true },
+    });
+    return user;
   }
 
   /**

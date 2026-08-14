@@ -34,7 +34,18 @@ export const resetPasswordSchema = z.object({
   password: z.string().min(8, 'Le mot de passe doit contenir au moins 8 caractères'),
 });
 
+export const sendPasswordCodeSchema = z.object({
+  currentPassword: z.string().min(1, 'Le mot de passe actuel est requis'),
+});
+
+export const changePasswordSchema = z.object({
+  code: z.string().min(4, 'Le code de vérification est requis'),
+  newPassword: z.string().min(8, 'Le mot de passe doit contenir au moins 8 caractères'),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type SendPasswordCodeInput = z.infer<typeof sendPasswordCodeSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

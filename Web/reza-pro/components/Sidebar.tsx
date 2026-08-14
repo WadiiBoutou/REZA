@@ -9,6 +9,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@
 import { api } from '@/lib/api';
 import { getRealtimeSocket, disconnectRealtime } from '@/lib/realtime';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import ProfileModal from '@/components/ProfileModal';
 import { SalonFilterControl } from '@/components/SalonFilterControl';
 
 const menuItems = [
@@ -1075,6 +1076,7 @@ export default function Sidebar() {
 	const { logout, user, isAuthenticated, salons } = useAuth();
 	const [mounted, setMounted] = useState(false);
 	const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+	const [showProfileModal, setShowProfileModal] = useState(false);
 	const [showClearNotificationsConfirm, setShowClearNotificationsConfirm] = useState(false);
 	const [clearingNotifications, setClearingNotifications] = useState(false);
 	const router = useRouter();
@@ -1120,7 +1122,6 @@ export default function Sidebar() {
 	const [unreadCount, setUnreadCount] = useState(0);
 	const [loadingNotifications, setLoadingNotifications] = useState(false);
 
-	const [profileImage, setProfileImage] = useState<string | null>(null);
 
 	useEffect(() => {
 		setMounted(true);
@@ -1368,8 +1369,12 @@ export default function Sidebar() {
 						{/* Divider */}
 						<div className="w-px h-8 bg-gray-200"></div>
 
-						{/* User Profile */}
-						<div className="flex items-center gap-3 pl-2">
+						{/* User Profile — click to open the profile editor (avatar + password) */}
+						<button
+							onClick={() => setShowProfileModal(true)}
+							className="flex items-center gap-3 pl-2 pr-1 py-1 rounded-lg hover:bg-gray-50 transition-colors text-left"
+							title="Modifier mon profil"
+						>
 							<div className="text-right">
 								<p className="text-sm font-semibold text-gray-900 leading-tight">
 									{mounted ? (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email || 'User') : ''}
@@ -1379,34 +1384,18 @@ export default function Sidebar() {
 								</p>
 							</div>
 							<div className="relative">
-								{profileImage ? (
-									<img src={profileImage} alt="Profile" className="w-10 h-10 rounded-full object-cover" />
-								) : (
-                                                                        <div className="w-10 h-10 rounded-full bg-[#002366] flex items-center justify-center">                                                                           
-                                                                        <span className="text-white font-semibold text-sm">                              
-                                                                        {mounted ? (user?.firstName?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'U') : ''}                                    
-                                                                        </span>
+							{user?.avatar ? (
+								<img src={user.avatar} alt="Profile" className="w-10 h-10 rounded-full object-cover" />
+							) : (
+									<div className="w-10 h-10 rounded-full bg-[#002366] flex items-center justify-center">
+										<span className="text-white font-semibold text-sm">
+											{mounted ? (user?.firstName?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'U') : ''}
+										</span>
 									</div>
 								)}
-								<input
-									type="file"
-									accept="image/*"
-									className="absolute inset-0 w-10 h-10 opacity-0 cursor-pointer"
-									title="Changer la photo de profil"
-									onChange={e => {
-										const file = e.target.files?.[0];
-										if (file) {
-											const reader = new FileReader();
-											reader.onload = (ev) => {
-												setProfileImage(ev.target?.result as string);
-											};
-											reader.readAsDataURL(file);
-										}
-									}}
-								/>
 								<div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-white"></div>
 							</div>
-						</div>
+						</button>
 
 						{/* Logout */}
 						{mounted && (
@@ -1421,6 +1410,9 @@ export default function Sidebar() {
 					</div>
 				</div>
 			</header>
+
+			{/* Profile Editor Modal (avatar + password) */}
+			<ProfileModal open={showProfileModal} onOpenChange={setShowProfileModal} />
 
 			{/* Logout Confirmation Dialog */}
 			<ConfirmDialog

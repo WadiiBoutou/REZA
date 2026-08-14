@@ -444,6 +444,16 @@ export class PublicController {
     }
   }
 
+  async sendClientPasswordCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await clientAccountService.sendClientPasswordCode(req.params.email, req.body);
+      res.json(result);
+    } catch (error) {
+      if (handlePublicError(error, res, next)) return;
+      next(error);
+    }
+  }
+
   async changeClientPassword(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await clientAccountService.changeClientPassword(req.params.email, req.body);

@@ -1,7 +1,12 @@
+import crypto from 'crypto';
 import { prisma } from '../../../lib/prisma';
 import { hashPassword, comparePassword } from '../../../utils/password';
+import { sendMail } from '../../../utils/mailer';
 import { fail } from '../utils/http';
 import * as log from '../../../utils/logger';
+
+const PASSWORD_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const hashCode = (code: string) => crypto.createHash('sha256').update(code).digest('hex');
 
 export class ClientAccountService {
   async updateClientProfile(email: string, body: any) {
@@ -86,9 +91,91 @@ export class ClientAccountService {
   }
   }
 
+  /**
+   * Step 1 of changing the client password: verify the current password and
+   * email a one-time 6-digit code to the client's address (reza-client account).
+   */
+  async sendClientPasswordCode(email: string, body: any) {
+    const { currentPassword } = body;
+
+    if (!email) {
+      fail(400, {
+        error: 'Email required',
+        message: 'Veuillez fournir votre adresse email.'
+      });
+    }
+
+    if (!currentPassword) {
+      fail(400, {
+        error: 'Password required',
+        message: 'Le mot de passe actuel est requis.'
+      });
+    }
+
+    const client = await prisma.client.findFirst({
+      where: { email: decodeURIComponent(email) },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!client || !(client as any).password) {
+      fail(404, {
+        error: 'Client not found',
+        message: 'Le client n\'a pas été trouvé.'
+      });
+    }
+
+    const isValidPassword = await comparePassword(
+      currentPassword,
+      (client as any).password
+    );
+    if (!isValidPassword) {
+      fail(401, {
+        error: 'Invalid password',
+        message: 'Le mot de passe actuel est incorrect.'
+      });
+    }
+
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    await prisma.client.update({
+      where: { id: client.id },
+      data: {
+        resetPasswordToken: hashCode(code),
+        resetPasswordExpires: new Date(Date.now() + PASSWORD_CODE_TTL_MS),
+      },
+    });
+
+    const name = `${client.firstName || ''} ${client.lastName || ''}`.trim();
+    try {
+      await sendMail({
+        to: client.email!,
+        subject: 'Votre code de vérification — Reza',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+            <h2 style="color: #002366;">Changement de mot de passe</h2>
+            <p>Bonjour ${name},</p>
+            <p>Vous avez demandé à changer votre mot de passe Reza. Voici votre code de vérification :</p>
+            <p style="text-align: center; margin: 28px 0;">
+              <span style="display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 32px; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #002366;">${code}</span>
+            </p>
+            <p style="font-size: 13px; color: #666;">Ce code expire dans <strong>10 minutes</strong>. Si vous n'avez pas demandé ce changement, ignorez cet email.</p>
+          </div>
+        `,
+      });
+    } catch (mailError: any) {
+      log.error('[Change Password] Code email send failed:', mailError?.message || mailError);
+      await prisma.client.update({
+        where: { id: client.id },
+        data: { resetPasswordToken: null, resetPasswordExpires: null },
+      });
+      throw mailError;
+    }
+
+    return { message: 'Un code de vérification a été envoyé à votre adresse email.' };
+  }
+
   async changeClientPassword(email: string, body: any) {
     try {
-    const { currentPassword, newPassword } = body;
+    const { code, newPassword } = body;
 
     log.log('[Change Password] Request received for email:', email);
 
@@ -99,10 +186,10 @@ export class ClientAccountService {
       });
     }
 
-    if (!currentPassword || !newPassword) {
+    if (!code || !newPassword) {
       fail(400, {
-        error: 'Password required',
-        message: 'Le mot de passe actuel et le nouveau mot de passe sont requis.'
+        error: 'Code and password required',
+        message: 'Le code de vérification et le nouveau mot de passe sont requis.'
       });
     }
 
@@ -133,29 +220,18 @@ export class ClientAccountService {
 
     log.log('[Change Password] Client found:', client.id);
 
-    // Get client with password field
-    const clientWithPassword = await prisma.client.findUnique({
-      where: { id: client.id }
-    });
-
-    // If client has a password, verify the current password
-    if (clientWithPassword && (clientWithPassword as any).password) {
-      log.log('[Change Password] Client has existing password, verifying...');
-      const isValidPassword = await comparePassword(
-        currentPassword,
-        (clientWithPassword as any).password
-      );
-
-      if (!isValidPassword) {
-        log.log('[Change Password] Current password is incorrect');
-        fail(401, {
-          error: 'Invalid password',
-          message: 'Le mot de passe actuel est incorrect.'
-        });
-      }
-      log.log('[Change Password] Current password verified');
-    } else {
-      log.log('[Change Password] No existing password, setting new password');
+    // Verify the emailed code (stored hashed — never compare plaintext).
+    if ((client as any).resetPasswordToken !== hashCode(code.trim())) {
+      fail(400, {
+        error: 'Invalid code',
+        message: 'Le code de vérification est invalide. Vérifiez votre email et réessayez.'
+      });
+    }
+    if (!(client as any).resetPasswordExpires || new Date((client as any).resetPasswordExpires).getTime() < Date.now()) {
+      fail(400, {
+        error: 'Code expired',
+        message: 'Le code de vérification a expiré. Veuillez en demander un nouveau.'
+      });
     }
 
     // Hash the new password

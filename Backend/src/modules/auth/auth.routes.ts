@@ -1,8 +1,24 @@
 import express from 'express';
+import multer from 'multer';
 import { authMiddleware } from '../../middleware/authenticateRequest';
 import { authController } from './auth.controller';
 
 const router = express.Router();
+
+// Avatar upload (profile editing) — buffered in memory, stored on Cloudinary.
+const avatarStorage = multer.memoryStorage();
+const avatarFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Seules les images sont autorisées'));
+  }
+};
+const uploadAvatar = multer({
+  storage: avatarStorage,
+  fileFilter: avatarFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 /**
  * POST /api/auth/login
@@ -57,5 +73,38 @@ router.post('/switch-salon', authMiddleware, (req, res, next) => authController.
  * Logout
  */
 router.post('/logout', authMiddleware, (req, res, next) => authController.logout(req, res, next));
+
+/**
+ * POST /api/auth/upload-avatar
+ * Upload + set the authenticated user's profile avatar (Cloudinary).
+ */
+router.post('/upload-avatar', authMiddleware, (req, res, next) => {
+  uploadAvatar.single('avatar')(req, res, (err) => {
+    if (err) {
+      const message = err instanceof multer.MulterError
+        ? (err.code === 'LIMIT_FILE_SIZE' ? 'L\'image est trop volumineuse (max 5 Mo)' : err.message)
+        : (err.message || 'Erreur lors de l\'upload de l\'image');
+      return res.status(400).json({ error: 'Upload error', message });
+    }
+    next();
+  });
+}, authController.uploadAvatar);
+
+/**
+ * POST /api/auth/send-password-code
+ * Step 1 of changing the password: verify the current password and email a
+ * one-time 6-digit code to the account owner.
+ */
+router.post('/send-password-code', authMiddleware, (req, res, next) =>
+  authController.sendPasswordCode(req, res, next)
+);
+
+/**
+ * POST /api/auth/change-password
+ * Step 2 of changing the password: validate the emailed code and set the new password.
+ */
+router.post('/change-password', authMiddleware, (req, res, next) =>
+  authController.changePassword(req, res, next)
+);
 
 export default router;

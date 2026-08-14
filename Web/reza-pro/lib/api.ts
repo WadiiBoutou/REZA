@@ -359,6 +359,34 @@ class ApiClient {
     return this.request<any>('/auth/me');
   }
 
+  async uploadAuthAvatar(file: File) {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const url = `${this.baseURL}/auth/upload-avatar`;
+    const headers: HeadersInit = {};
+    const currentToken = this.token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+    if (currentToken) headers['Authorization'] = `Bearer ${currentToken}`;
+    const response = await fetch(url, { method: 'POST', headers, body: formData });
+    if (!response.ok) {
+      throw await errorFromResponse(response, 'Impossible de téléverser la photo de profil');
+    }
+    return response.json() as Promise<{ avatar: string }>;
+  }
+
+  async sendPasswordCode(currentPassword: string) {
+    return this.request<{ message: string }>('/auth/send-password-code', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword }),
+    });
+  }
+
+  async changePassword(code: string, newPassword: string) {
+    return this.request<{ message: string }>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ code, newPassword }),
+    });
+  }
+
   async logout() {
     await this.request('/auth/logout', { method: 'POST' });
     this.setToken(null);

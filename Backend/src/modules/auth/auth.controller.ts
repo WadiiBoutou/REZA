@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { authService } from './auth.service';
-import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from './auth.schema';
+import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema, sendPasswordCodeSchema, changePasswordSchema } from './auth.schema';
+import { uploadImage } from '../../utils/cloudinary';
 import * as log from '../../utils/logger';
 
 export class AuthController {
@@ -151,6 +152,51 @@ export class AuthController {
       if (error.status) {
         return res.status(error.status).json({ error: error.error, message: error.message });
       }
+      next(error);
+    }
+  }
+
+  async sendPasswordCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = sendPasswordCodeSchema.parse(req.body);
+      const result = await authService.sendPasswordCode(req.userId!, data);
+      res.json(result);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: 'Validation error', message: error.errors[0].message });
+      }
+      if (error.status) {
+        return res.status(error.status).json({ error: error.error, message: error.message });
+      }
+      next(error);
+    }
+  }
+
+  async changePassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = changePasswordSchema.parse(req.body);
+      const result = await authService.changePassword(req.userId!, data);
+      res.json(result);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: 'Validation error', message: error.errors[0].message });
+      }
+      if (error.status) {
+        return res.status(error.status).json({ error: error.error, message: error.message });
+      }
+      next(error);
+    }
+  }
+
+  async uploadAvatar(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded', message: 'Veuillez sélectionner une image' });
+      }
+      const avatar = await uploadImage(req.file, 'avatars');
+      await authService.updateAvatar(req.userId!, avatar);
+      res.json({ avatar });
+    } catch (error) {
       next(error);
     }
   }
