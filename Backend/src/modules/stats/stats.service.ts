@@ -69,6 +69,32 @@ export class StatsService {
     return rounded;
   }
 
+  /**
+   * Map User.id → Employee.avatar so stats that bucket by STAFF User records
+   * still show the avatar, which lives on the Employee record. Matches by
+   * email first, then by first+last name (same convention as
+   * resolveEmployeeUserId).
+   */
+  private async buildAvatarByUserId(
+    tenantId: string | string[],
+    users: { id: string; email: string | null; firstName: string; lastName: string }[]
+  ): Promise<Map<string, string>> {
+    const employees = await prisma.employee.findMany({
+      where: { tenantId: tenantIdFilter(tenantId) },
+    });
+    const map = new Map<string, string>();
+    for (const emp of employees) {
+      if (!emp.avatar) continue;
+      const user = users.find(
+        (u) =>
+          (emp.email && u.email?.toLowerCase() === emp.email.toLowerCase()) ||
+          (!emp.email && u.firstName === emp.firstName && u.lastName === emp.lastName)
+      );
+      if (user && !map.has(user.id)) map.set(user.id, emp.avatar);
+    }
+    return map;
+  }
+
   async getOverview(tenantId: string, startDate?: string, endDate?: string) {
     const where: any = { tenantId };
 
@@ -733,6 +759,9 @@ export class StatsService {
     const allEmployees = await prisma.user.findMany({
       where: { ...tenantWhere, role: 'STAFF', isActive: true }
     });
+    // Avatars are stored on the Employee record; the STAFF User row is often
+    // auto-created without one. Fall back to the Employee avatar per user.
+    const avatarByUserId = await this.buildAvatarByUserId(tenantId, allEmployees);
 
     const totalRDV = appointments.length;
     const activeCollaborateurs = allEmployees.length;
@@ -749,7 +778,7 @@ export class StatsService {
     allEmployees.forEach(emp => {
       employeeStats[emp.id] = {
         name: `${emp.firstName} ${emp.lastName}`,
-        avatar: emp.avatar || null,
+        avatar: emp.avatar || avatarByUserId.get(emp.id) || null,
         salonAppointments: 0, onlineAppointments: 0, totalAppointments: 0,
         salonServices: 0, onlineServices: 0, totalServices: 0, onlineRate: 0
       };
@@ -966,10 +995,11 @@ export class StatsService {
     const allEmployees = await prisma.user.findMany({
       where: { ...tenantWhere, role: 'STAFF', isActive: true }
     });
+    const avatarByUserId = await this.buildAvatarByUserId(tenantIds, allEmployees);
 
     const employeeStats: any = {};
     allEmployees.forEach(emp => {
-      employeeStats[emp.id] = { id: emp.id, name: `${emp.firstName} ${emp.lastName}`, avatar: emp.avatar || null, totalServices: 0, inSalon: 0, online: 0, revenue: 0 };
+      employeeStats[emp.id] = { id: emp.id, name: `${emp.firstName} ${emp.lastName}`, avatar: emp.avatar || avatarByUserId.get(emp.id) || null, totalServices: 0, inSalon: 0, online: 0, revenue: 0 };
     });
 
     appointments.forEach((apt: any) => {
@@ -1295,6 +1325,7 @@ export class StatsService {
     const allEmployees = await prisma.user.findMany({
       where: { ...tenantWhere, role: 'STAFF', isActive: true }
     });
+    const avatarByUserId = await this.buildAvatarByUserId(tenantIds, allEmployees);
 
     const appointments = await prisma.appointment.findMany({
       where: appointmentWhere,
@@ -1303,7 +1334,7 @@ export class StatsService {
 
     const employeeStats: any = {};
     allEmployees.forEach(emp => {
-      employeeStats[emp.id] = { id: emp.id, name: `${emp.firstName} ${emp.lastName}`, avatar: emp.avatar || null, totalMinutes: 0, revenue: 0, appointmentCount: 0 };
+      employeeStats[emp.id] = { id: emp.id, name: `${emp.firstName} ${emp.lastName}`, avatar: emp.avatar || avatarByUserId.get(emp.id) || null, totalMinutes: 0, revenue: 0, appointmentCount: 0 };
     });
 
     appointments.forEach((apt: any) => {
