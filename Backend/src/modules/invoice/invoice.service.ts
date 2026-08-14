@@ -400,13 +400,25 @@ export class InvoiceService {
       throw new Error('NOT_A_GROUP');
     }
 
-    // Validate payerClientId is one of the participants
-    const payerParticipant = group.participants.find(
-      (p) => p.clientId === data.payerClientId
-    );
+    // Validate the payer is one of the participants. Prefer the unique
+    // participant id: two participants can share a client record (a guest
+    // merged onto the booker's client via a shared phone), in which case a
+    // clientId match would silently resolve to the wrong row.
+    let payerParticipant;
+    if (data.payerParticipantId) {
+      payerParticipant = group.participants.find(
+        (p) => p.id === data.payerParticipantId
+      );
+    } else {
+      payerParticipant = group.participants.find(
+        (p) => p.clientId === data.payerClientId
+      );
+    }
     if (!payerParticipant) {
       throw new Error('PAYER_NOT_IN_GROUP');
     }
+    // Bill to the payer's client record (may be null for a guest).
+    const payerClientId = payerParticipant.clientId || null;
 
     // Check no existing group invoice for this group
     const existingGroupInvoice = await prisma.invoice.findFirst({
@@ -482,7 +494,7 @@ export class InvoiceService {
       const invoice = await tx.invoice.create({
         data: {
           tenantId,
-          clientId: data.payerClientId,
+          clientId: payerClientId,
           bookingGroupId: data.bookingGroupId,
           invoiceNumber: this.generateInvoiceNumber(),
           amount,

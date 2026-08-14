@@ -232,7 +232,9 @@ function CaissePageContent({
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [groupDetails, setGroupDetails] = useState<any>(null);
   const [groupLoading, setGroupLoading] = useState(false);
-  const [payerClientId, setPayerClientId] = useState<string>('');
+  // Unique participant id of the payer (NOT clientId — two participants can
+  // share a client record, e.g. a guest merged onto the booker's client).
+  const [payerParticipantId, setPayerParticipantId] = useState<string>('');
   const [groupPaymentMethod, setGroupPaymentMethod] = useState<string>('Espèces');
   const [groupSubmitting, setGroupSubmitting] = useState(false);
   const [expandedGroupInvoices, setExpandedGroupInvoices] = useState<Set<string>>(new Set());
@@ -415,7 +417,7 @@ function CaissePageContent({
     setGroupModalOpen(true);
     setSelectedGroupId('');
     setGroupDetails(null);
-    setPayerClientId('');
+    setPayerParticipantId('');
     setGroupPaymentMethod('Espèces');
     try {
       const res = await api.getPendingGroups();
@@ -433,7 +435,11 @@ function CaissePageContent({
       const res = await api.getGroupDetails(groupId);
       setGroupDetails(res.group);
       // Default payer = booker
-      setPayerClientId(res.group.bookerClientId || res.group.participants?.[0]?.clientId || '');
+      setPayerParticipantId(
+        res.group.participants?.find((p: any) => p.isBooker)?.participantId ||
+        res.group.participants?.[0]?.participantId ||
+        ''
+      );
     } catch (err) {
       console.error('Error fetching group details:', err);
       toast.error('Erreur lors du chargement du groupe');
@@ -443,13 +449,17 @@ function CaissePageContent({
   };
 
   const handleSubmitGroupSale = async () => {
-    if (!groupDetails || !payerClientId || !selectedGroupId) return;
+    if (!groupDetails || !payerParticipantId || !selectedGroupId) return;
     setGroupSubmitting(true);
     try {
       const pmKey = PAYMENT_METHOD_TO_API[groupPaymentMethod] || 'CASH';
+      const payerParticipant = (groupDetails.participants || []).find(
+        (p: any) => p.participantId === payerParticipantId
+      );
       await api.createGroupSale({
         bookingGroupId: selectedGroupId,
-        payerClientId,
+        payerParticipantId,
+        payerClientId: payerParticipant?.clientId || undefined,
         paymentMethod: pmKey as any,
       });
       toast.success('Groupe facturé avec succès');
@@ -1737,18 +1747,16 @@ function CaissePageContent({
                       {/* Payer selector */}
                       <div>
                         <label className="block text-xs font-medium text-gray-500 mb-1.5">Payé par</label>
-                        <Select value={payerClientId} onValueChange={setPayerClientId}>
+                        <Select value={payerParticipantId} onValueChange={setPayerParticipantId}>
                           <SelectTrigger className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900">
                             <SelectValue placeholder="Choisir" />
                           </SelectTrigger>
                           <SelectContent>
-                            {groupDetails.participants
-                              .filter((p: any) => p.clientId)
-                              .map((p: any) => (
-                                <SelectItem key={p.clientId} value={p.clientId}>
-                                  {p.displayName}{p.isBooker ? ' (Réservant)' : ''}
-                                </SelectItem>
-                              ))}
+                            {groupDetails.participants.map((p: any) => (
+                              <SelectItem key={p.participantId} value={p.participantId}>
+                                {p.displayName}{p.isBooker ? ' (Réservant)' : ''}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1784,7 +1792,7 @@ function CaissePageContent({
               </button>
               <button
                 type="button"
-                disabled={!selectedGroupId || !payerClientId || groupSubmitting || groupLoading || groupDetails?.alreadyInvoiced || groupDetails?.hasInvoicedAppointment}
+                disabled={!selectedGroupId || !payerParticipantId || groupSubmitting || groupLoading || groupDetails?.alreadyInvoiced || groupDetails?.hasInvoicedAppointment}
                 onClick={handleSubmitGroupSale}
                 className="flex-1 px-4 py-2.5 bg-purple-600 text-white text-sm font-medium rounded-full hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >

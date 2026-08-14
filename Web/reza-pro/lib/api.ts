@@ -1105,7 +1105,8 @@ class ApiClient {
 
   async createGroupSale(data: {
     bookingGroupId: string;
-    payerClientId: string;
+    payerParticipantId?: string;
+    payerClientId?: string;
     paymentMethod: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'CHECK' | 'ONLINE';
     tax?: number;
     notes?: string;

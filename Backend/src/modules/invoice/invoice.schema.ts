@@ -43,11 +43,17 @@ export const createSaleSchema = z.object({
 
 export const createGroupSaleSchema = z.object({
   bookingGroupId: z.string().min(1, 'Booking group ID is required'),
-  payerClientId: z.string().min(1, 'Payer client ID is required'),
+  /** Unique participant id of the payer — preferred over payerClientId because
+   *  two participants can share a client record (e.g. a guest merged onto the
+   *  booker's client via a shared phone number). */
+  payerParticipantId: z.string().optional(),
+  payerClientId: z.string().optional(),
   paymentMethod: paymentMethodEnum,
   tax: z.number().min(0).default(0),
   notes: z.string().optional(),
   tenantId: z.string().optional(),
+}).refine((d) => !!d.payerParticipantId || !!d.payerClientId, {
+  message: 'Payer is required',
 });
 
 export const separateGroupSaleSchema = z.object({

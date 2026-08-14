@@ -146,7 +146,9 @@ type GroupReviewModalState = {
   participants: GroupReviewParticipant[];
   total: number;
   paymentMethod: FinalizePaymentMethod;
-  selectedPayerClientId: string;
+  /** Unique participant id of the payer — NOT clientId, since two participants
+   *  can share a client record (guest merged onto booker's client via phone). */
+  selectedPayerParticipantId: string;
   loading: boolean;
   loadingMode: 'combined' | 'separate' | null;
   /** Any participant appointment already individually invoiced → group billing blocked. */
@@ -1609,7 +1611,11 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
   };
 
   const color = card.color;
-  const isSiblingHovered = hoveredBookingId != null && hoveredBookingId === apt.id;
+  // Hover identity: all cards of the same booking group (group appointment) or
+  // the same appointment (multi-service) highlight together. Group participants
+  // each carry their own appointment id, so the group id is the shared key.
+  const hoverKey = apt.bookingGroupId || apt.id;
+  const isSiblingHovered = hoveredBookingId != null && hoveredBookingId === hoverKey;
 
   // Generate lighter background and border colors from the main color
   const getLightColorStyle = (color: string) => {
@@ -1641,7 +1647,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
     <div
       draggable
       onDragStart={(e) => onDragStart && onDragStart(e, apt)}
-      onMouseEnter={() => onBookingHover?.(apt.id)}
+      onMouseEnter={() => onBookingHover?.(hoverKey)}
       onMouseLeave={() => onBookingHover?.(null)}
       className={cn(
         'relative rounded-lg cursor-move border transition-all overflow-hidden w-fit h-full',
@@ -2607,7 +2613,8 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
         participants: g.participants,
         total: g.total,
         paymentMethod: finalizeModal.paymentMethod,
-        selectedPayerClientId: g.bookerClientId || apt.clientId || '',
+        selectedPayerParticipantId:
+          g.participants.find((p) => p.isBooker)?.participantId || g.participants[0]?.participantId || '',
         loading: false,
         loadingMode: null,
         hasInvoicedAppointment: !!g.hasInvoicedAppointment,
@@ -2623,9 +2630,13 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
     if (!groupReviewModal) return;
     setGroupReviewModal({ ...groupReviewModal, loading: true, loadingMode: 'combined' });
     try {
+      const payerParticipant = groupReviewModal.participants.find(
+        (p) => p.participantId === groupReviewModal.selectedPayerParticipantId
+      );
       await api.createGroupSale({
         bookingGroupId: groupReviewModal.bookingGroupId,
-        payerClientId: groupReviewModal.selectedPayerClientId,
+        payerParticipantId: groupReviewModal.selectedPayerParticipantId,
+        payerClientId: payerParticipant?.clientId || undefined,
         paymentMethod: groupReviewModal.paymentMethod,
       });
       toast.success('Groupe facturé et ajouté à la caisse');
@@ -3620,11 +3631,11 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                   Qui paie la facture ?
                 </label>
                 <div className="space-y-2">
-                  {groupReviewModal.participants.filter(p => p.clientId).map((p) => (
+                  {groupReviewModal.participants.map((p) => (
                     <label
                       key={p.participantId}
                       className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                        groupReviewModal.selectedPayerClientId === p.clientId
+                        groupReviewModal.selectedPayerParticipantId === p.participantId
                           ? 'border-purple-500 bg-purple-50'
                           : 'border-gray-200 hover:bg-gray-50'
                       }`}
@@ -3632,9 +3643,9 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                       <input
                         type="radio"
                         name="group-payer"
-                        checked={groupReviewModal.selectedPayerClientId === p.clientId}
+                        checked={groupReviewModal.selectedPayerParticipantId === p.participantId}
                         disabled={groupReviewModal.loading}
-                        onChange={() => setGroupReviewModal((prev) => prev ? { ...prev, selectedPayerClientId: p.clientId! } : null)}
+                        onChange={() => setGroupReviewModal((prev) => prev ? { ...prev, selectedPayerParticipantId: p.participantId } : null)}
                         className="w-4 h-4 text-purple-600"
                       />
                       <span className="text-sm text-gray-900">{p.displayName}</span>
@@ -3678,7 +3689,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
               )}
               <button
                 type="button"
-                disabled={groupReviewModal.loading || !groupReviewModal.selectedPayerClientId || groupReviewModal.hasInvoicedAppointment}
+                disabled={groupReviewModal.loading || !groupReviewModal.selectedPayerParticipantId || groupReviewModal.hasInvoicedAppointment}
                 onClick={handleGroupReviewConfirmCombined}
                 className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 transition-colors"
               >
