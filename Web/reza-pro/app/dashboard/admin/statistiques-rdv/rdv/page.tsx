@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import { TrendingUp, TrendingDown, Users, Calendar, Globe, XCircle, UserX, MousePointerClick, Download, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Users, Calendar, Globe, XCircle, UserX, MousePointerClick, Download, ChevronLeft, ChevronRight, Loader2, Ban, CalendarX } from 'lucide-react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -27,7 +27,9 @@ function DailyStatisticsPageContent() {
       online: 0,
       totalOnlineRate: '0%',
       absents: 0,
-      totalTauxAbsence: '0%'
+      totalTauxAbsence: '0%',
+      annules: 0,
+      totalTauxAnnulation: '0%'
     },
     // Real period-over-period deltas (null = no previous-period data → badge hidden)
     deltas: {} as Record<string, number | null>
@@ -58,7 +60,9 @@ function DailyStatisticsPageContent() {
           online: 0,
           totalOnlineRate: '0%',
           absents: 0,
-          totalTauxAbsence: '0%'
+          totalTauxAbsence: '0%',
+          annules: 0,
+          totalTauxAnnulation: '0%'
         },
         deltas: data.deltas || {}
       });
@@ -173,12 +177,13 @@ function DailyStatisticsPageContent() {
   };
 
   const exportCSV = () => {
-    const header = ['Date', 'Total Prestations', 'Pris en Salon', 'Pris en Ligne', 'Taux en Ligne (%)', 'Absents', "Taux d'absence (%)"];
+    const header = ['Date', 'Total', 'En Salon', 'En Ligne', 'Taux en Ligne (%)', 'Annulé', "Taux d'annulé (%)", 'Absents', "Taux d'absence (%)"];
     const rows = statsData.dailyData.map((day) => [
       day.date, day.totalPrestations, day.inSalon, day.online, String(day.onlineRate).replace('%', ''),
+      day.annules, String(day.tauxAnnulation).replace('%', ''),
       day.absents, String(day.tauxAbsence).replace('%', '')
     ]);
-    rows.push(['Total', totals.totalPrestations, totals.inSalon, totals.online, String(totals.totalOnlineRate).replace('%', ''), totals.absents, String(totals.totalTauxAbsence).replace('%', '')]);
+    rows.push(['Total', totals.totalPrestations, totals.inSalon, totals.online, String(totals.totalOnlineRate).replace('%', ''), totals.annules, String(totals.totalTauxAnnulation).replace('%', ''), totals.absents, String(totals.totalTauxAbsence).replace('%', '')]);
     const csv = '\uFEFF' + [header, ...rows]
       .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
       .join('\n');
@@ -269,7 +274,7 @@ function DailyStatisticsPageContent() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-4 mb-8 animate-fadeIn">
+      <div className="grid grid-cols-4 gap-4 mb-8 animate-fadeIn">
         <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all group">
           <div className="flex items-start justify-between mb-6">
             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center transition-colors">
@@ -325,26 +330,52 @@ function DailyStatisticsPageContent() {
         <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all group">
           <div className="flex items-start justify-between mb-6">
             <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center transition-colors">
-              <XCircle size={20} className="text-red-400" />
+              <CalendarX size={20} className="text-red-400" />
             </div>
-            <DeltaBadge value={statsData.deltas.absents} inverted />
+            <DeltaBadge value={statsData.deltas.annules} inverted />
           </div>
           <div>
-            <p className="text-xs text-gray-500 mb-1 font-medium">Absents</p>
-            <p className="text-3xl font-light text-red-600">{totals.absents}</p>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Annulé</p>
+            <p className="text-3xl font-light text-red-600">{totals.annules}</p>
           </div>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all group">
           <div className="flex items-start justify-between mb-6">
             <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center transition-colors">
-              <UserX size={20} className="text-red-400" />
+              <Ban size={20} className="text-red-400" />
+            </div>
+            <DeltaBadge value={statsData.deltas.totalTauxAnnulation} inverted />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Taux d&apos;annulé</p>
+            <p className="text-3xl font-light text-red-600">{totals.totalTauxAnnulation}</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all group">
+          <div className="flex items-start justify-between mb-6">
+            <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center transition-colors">
+              <XCircle size={20} className="text-amber-500" />
+            </div>
+            <DeltaBadge value={statsData.deltas.absents} inverted />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1 font-medium">Absents</p>
+            <p className="text-3xl font-light text-amber-600">{totals.absents}</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-100 p-6 hover:shadow-lg transition-all group">
+          <div className="flex items-start justify-between mb-6">
+            <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center transition-colors">
+              <UserX size={20} className="text-amber-500" />
             </div>
             <DeltaBadge value={statsData.deltas.totalTauxAbsence} inverted />
           </div>
           <div>
             <p className="text-xs text-gray-500 mb-1 font-medium">Taux d'absence</p>
-            <p className="text-3xl font-light text-red-600">{totals.totalTauxAbsence}</p>
+            <p className="text-3xl font-light text-amber-600">{totals.totalTauxAbsence}</p>
           </div>
         </div>
       </div>
@@ -367,12 +398,14 @@ function DailyStatisticsPageContent() {
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <SortableTh label="Date" sortKey="date" align="left" />
-                <SortableTh label="Total Prestations" sortKey="totalPrestations" />
-                <SortableTh label="Pris en Salon" sortKey="inSalon" />
-                <SortableTh label="Pris en Ligne" sortKey="online" />
-                <SortableTh label="Taux en Ligne" sortKey="onlineRate" />
-                <SortableTh label="Absents" sortKey="absents" />
-                <SortableTh label="Taux d'absence" sortKey="tauxAbsence" />
+                <SortableTh label="Total" sortKey="totalPrestations" />
+                <SortableTh label="En Salon" sortKey="inSalon" />
+                <SortableTh label="En Ligne" sortKey="online" />
+                <SortableTh label="Taux en ligne" sortKey="onlineRate" />
+                <SortableTh label="Annulé" sortKey="annules" />
+                <SortableTh label="Taux annulé" sortKey="tauxAnnulation" />
+                <SortableTh label="Abs" sortKey="absents" />
+                <SortableTh label="Taux abs" sortKey="tauxAbsence" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -418,8 +451,8 @@ function DailyStatisticsPageContent() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className={`text-sm font-medium ${day.absents > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                        {day.absents}
+                      <span className={`text-sm font-medium ${day.annules > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                        {day.annules}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -428,6 +461,30 @@ function DailyStatisticsPageContent() {
                           <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all duration-500"
+                              style={{ width: day.tauxAnnulation }}
+                            />
+                          </div>
+                          <span className="text-sm font-medium text-gray-900 min-w-[50px]">
+                            {day.tauxAnnulation}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-center">
+                          <span className="text-sm font-medium text-gray-400">0%</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`text-sm font-medium ${day.absents > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
+                        {day.absents}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {day.totalPrestations > 0 ? (
+                        <div className="flex items-center justify-center gap-3">
+                          <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500"
                               style={{ width: day.tauxAbsence }}
                             />
                           </div>
@@ -445,7 +502,7 @@ function DailyStatisticsPageContent() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={9} className="px-6 py-8 text-center text-sm text-gray-500">
                     Aucune donnée disponible pour cette période
                   </td>
                 </tr>

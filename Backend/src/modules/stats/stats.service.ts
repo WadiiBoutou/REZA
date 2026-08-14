@@ -1078,12 +1078,12 @@ export class StatsService {
     const selectedMonth = month !== undefined ? parseInt(month) : new Date().getMonth();
     const selectedYear = year !== undefined ? parseInt(year) : new Date().getFullYear();
 
-    // Each day also tracks absences (NO_SHOW + CANCELLED) — the "taux d'absence"
-    // merged into this page (previously a separate rdv-pas-venus page).
-    const dailyStats: { [key: string]: { total: number; salon: number; online: number; absents: number } } = {};
+    // Absences (NO_SHOW) and cancellations (CANCELLED) are tracked separately:
+    // the "taux d'absence" must NOT include cancelled appointments.
+    const dailyStats: { [key: string]: { total: number; salon: number; online: number; absents: number; annules: number } } = {};
     for (let day = 1; day <= daysInMonth; day++) {
       const dateKey = `${selectedYear}-${(selectedMonth + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-      dailyStats[dateKey] = { total: 0, salon: 0, online: 0, absents: 0 };
+      dailyStats[dateKey] = { total: 0, salon: 0, online: 0, absents: 0, annules: 0 };
     }
 
     appointments.forEach(apt => {
@@ -1094,7 +1094,8 @@ export class StatsService {
         const isSalon = apt.source !== 'ONLINE';
         if (isSalon) dailyStats[dateKey].salon++;
         else dailyStats[dateKey].online++;
-        if (apt.status === 'NO_SHOW' || apt.status === 'CANCELLED') dailyStats[dateKey].absents++;
+        if (apt.status === 'NO_SHOW') dailyStats[dateKey].absents++;
+        else if (apt.status === 'CANCELLED') dailyStats[dateKey].annules++;
       }
     });
 
@@ -1108,6 +1109,8 @@ export class StatsService {
         onlineRate: stats.total > 0 ? ((stats.online / stats.total) * 100).toFixed(2) + '%' : '0%',
         absents: stats.absents,
         tauxAbsence: stats.total > 0 ? ((stats.absents / stats.total) * 100).toFixed(1) + '%' : '0%',
+        annules: stats.annules,
+        tauxAnnulation: stats.total > 0 ? ((stats.annules / stats.total) * 100).toFixed(1) + '%' : '0%',
       };
     }).sort((a, b) => {
       const [aDay, aMonth] = a.date.split('/');
@@ -1119,11 +1122,13 @@ export class StatsService {
       totalPrestations: acc.totalPrestations + day.totalPrestations,
       inSalon: acc.inSalon + day.inSalon,
       online: acc.online + day.online,
-      absents: acc.absents + day.absents
-    }), { totalPrestations: 0, inSalon: 0, online: 0, absents: 0 });
+      absents: acc.absents + day.absents,
+      annules: acc.annules + day.annules
+    }), { totalPrestations: 0, inSalon: 0, online: 0, absents: 0, annules: 0 });
 
     const totalOnlineRate = totals.totalPrestations > 0 ? ((totals.online / totals.totalPrestations) * 100).toFixed(1) : '0';
     const totalTauxAbsence = totals.totalPrestations > 0 ? ((totals.absents / totals.totalPrestations) * 100).toFixed(1) : '0';
+    const totalTauxAnnulation = totals.totalPrestations > 0 ? ((totals.annules / totals.totalPrestations) * 100).toFixed(1) : '0';
 
     // Equivalent previous period for real delta badges (same semantics as getDashboardStats)
     let prevStart: Date;
@@ -1144,10 +1149,16 @@ export class StatsService {
     const hasPrevData = prev.totalPrestations > 0;
     const currentOnlineRate = totals.totalPrestations > 0 ? (totals.online / totals.totalPrestations) * 100 : 0;
     const currentAbsenceRate = totals.totalPrestations > 0 ? (totals.absents / totals.totalPrestations) * 100 : 0;
+    const currentAnnulationRate = totals.totalPrestations > 0 ? (totals.annules / totals.totalPrestations) * 100 : 0;
 
     return {
       dailyData,
-      totals: { ...totals, totalOnlineRate: totalOnlineRate + '%', totalTauxAbsence: totalTauxAbsence + '%' },
+      totals: {
+        ...totals,
+        totalOnlineRate: totalOnlineRate + '%',
+        totalTauxAbsence: totalTauxAbsence + '%',
+        totalTauxAnnulation: totalTauxAnnulation + '%',
+      },
       // Real period-over-period deltas (null = no previous-period data → badge hidden)
       deltas: {
         totalPrestations: this.computeDelta(totals.totalPrestations, prev.totalPrestations, 'pct', hasPrevData),
@@ -1156,6 +1167,8 @@ export class StatsService {
         totalOnlineRate: this.computeDelta(currentOnlineRate, prev.onlineRate, 'points', hasPrevData),
         absents: this.computeDelta(totals.absents, prev.absents, 'pct', hasPrevData),
         totalTauxAbsence: this.computeDelta(currentAbsenceRate, prev.absenceRate, 'points', hasPrevData),
+        annules: this.computeDelta(totals.annules, prev.annules, 'pct', hasPrevData),
+        totalTauxAnnulation: this.computeDelta(currentAnnulationRate, prev.annulationRate, 'points', hasPrevData),
       },
     };
   }
@@ -1172,14 +1185,17 @@ export class StatsService {
     const totalPrestations = appointments.length;
     const online = appointments.filter((a) => a.source === 'ONLINE').length;
     const inSalon = totalPrestations - online;
-    const absents = appointments.filter((a) => a.status === 'NO_SHOW' || a.status === 'CANCELLED').length;
+    const absents = appointments.filter((a) => a.status === 'NO_SHOW').length;
+    const annules = appointments.filter((a) => a.status === 'CANCELLED').length;
     return {
       totalPrestations,
       inSalon,
       online,
       absents,
+      annules,
       onlineRate: totalPrestations > 0 ? (online / totalPrestations) * 100 : 0,
       absenceRate: totalPrestations > 0 ? (absents / totalPrestations) * 100 : 0,
+      annulationRate: totalPrestations > 0 ? (annules / totalPrestations) * 100 : 0,
     };
   }
 
