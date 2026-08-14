@@ -1075,6 +1075,8 @@ export default function Sidebar() {
 	const { logout, user, isAuthenticated, salons } = useAuth();
 	const [mounted, setMounted] = useState(false);
 	const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+	const [showClearNotificationsConfirm, setShowClearNotificationsConfirm] = useState(false);
+	const [clearingNotifications, setClearingNotifications] = useState(false);
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	
@@ -1231,8 +1233,8 @@ export default function Sidebar() {
 
 	const handleClearAllNotifications = async () => {
 		if (notifications.length === 0) return;
-		if (!window.confirm('Effacer toutes les notifications ? Cette action est irréversible.')) return;
 		try {
+			setClearingNotifications(true);
 			await api.deleteAllNotifications();
 			// Update local state
 			setNotifications([]);
@@ -1240,6 +1242,8 @@ export default function Sidebar() {
 			setUnreadCount(0);
 		} catch (error) {
 			console.error('Error clearing all notifications:', error);
+		} finally {
+			setClearingNotifications(false);
 		}
 	};
 
@@ -1428,6 +1432,19 @@ export default function Sidebar() {
 				confirmText="Se déconnecter"
 				cancelText="Annuler"
 				variant="destructive"
+			/>
+
+			{/* Clear Notifications Confirmation Dialog */}
+			<ConfirmDialog
+				open={showClearNotificationsConfirm}
+				onOpenChange={setShowClearNotificationsConfirm}
+				onConfirm={handleClearAllNotifications}
+				title="Effacer toutes les notifications ?"
+				description="Cette action est irréversible. Toutes les notifications de cet établissement seront supprimées."
+				confirmText="Tout effacer"
+				cancelText="Annuler"
+				variant="destructive"
+				loading={clearingNotifications}
 			/>
 
 			{/* Sidebar */}
@@ -1638,7 +1655,7 @@ export default function Sidebar() {
 						Marquer tout comme lu
 					</button>
 					<button
-						onClick={handleClearAllNotifications}
+						onClick={() => setShowClearNotificationsConfirm(true)}
 						disabled={notifications.length === 0}
 						className="w-full py-2.5 text-sm font-medium text-red-500 hover:text-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
 					>
