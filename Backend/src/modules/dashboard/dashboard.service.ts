@@ -15,7 +15,8 @@ export class DashboardService {
             id: true,
             firstName: true,
             lastName: true,
-            email: true
+            email: true,
+            avatar: true
           }
         }
       }
@@ -58,7 +59,8 @@ export class DashboardService {
             id: true,
             firstName: true,
             lastName: true,
-            email: true
+            email: true,
+            avatar: true
           }
         }
       }
@@ -95,7 +97,8 @@ export class DashboardService {
           select: {
             id: true,
             firstName: true,
-            lastName: true
+            lastName: true,
+            avatar: true
           }
         }
       }
