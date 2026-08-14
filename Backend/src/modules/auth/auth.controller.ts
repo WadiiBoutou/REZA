@@ -201,6 +201,19 @@ export class AuthController {
     }
   }
 
+  async updateProfile(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { firstName, lastName, phone } = req.body || {};
+      const result = await authService.updateProfile(req.userId!, { firstName, lastName, phone });
+      res.json({ user: result });
+    } catch (error: any) {
+      if (error.status) {
+        return res.status(error.status).json({ error: error.error, message: error.message });
+      }
+      next(error);
+    }
+  }
+
   logout(req: Request, res: Response, next: NextFunction) {
     try {
       res.json({ message: 'Logged out successfully' });

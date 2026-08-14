@@ -91,6 +91,14 @@ router.post('/upload-avatar', authMiddleware, (req, res, next) => {
 }, authController.uploadAvatar);
 
 /**
+ * PUT /api/auth/profile
+ * Update the authenticated user's profile (phone required app-wide).
+ */
+router.put('/profile', authMiddleware, (req, res, next) =>
+  authController.updateProfile(req, res, next)
+);
+
+/**
  * POST /api/auth/send-password-code
  * Step 1 of changing the password: verify the current password and email a
  * one-time 6-digit code to the account owner.

@@ -20,6 +20,11 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ open, onOpenChange }) => {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Profile fields
+  const [phone, setPhone] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+
   // Password state
   const [currentPassword, setCurrentPassword] = useState('');
   const [code, setCode] = useState('');
@@ -37,6 +42,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ open, onOpenChange }) => {
     if (open) {
       setTab('profile');
       setAvatarPreview(user?.avatar || null);
+      setPhone(user?.phone || '');
+      setProfileError(null);
       setCurrentPassword('');
       setCode('');
       setNewPassword('');
@@ -67,6 +74,24 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ open, onOpenChange }) => {
     } finally {
       setUploadingAvatar(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!phone || !phone.trim()) {
+      setProfileError('Le téléphone est requis.');
+      return;
+    }
+    setSavingProfile(true);
+    setProfileError(null);
+    try {
+      const { user: updated } = await api.updateAuthProfile({ phone: phone.trim() });
+      updateUser({ phone: updated.phone });
+      toast.success('Téléphone mis à jour');
+    } catch (err: any) {
+      setProfileError(err.message || "Erreur lors de l'enregistrement");
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -164,6 +189,19 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ open, onOpenChange }) => {
         <div className="p-6">
           {tab === 'profile' && (
             <div className="flex flex-col items-center gap-6">
+              <div className="w-full space-y-2">
+                <label className="block text-xs text-gray-600 mb-2 font-medium">Téléphone *</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setProfileError(null);
+                  }}
+                  placeholder="06 12 34 56 78"
+                  className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-[#002366]"
+                />
+              </div>
               <div className="relative">
                 {avatarPreview ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -199,6 +237,21 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ open, onOpenChange }) => {
                 className="text-xs font-medium text-[#002366] hover:underline disabled:opacity-50"
               >
                 {uploadingAvatar ? 'Envoi en cours...' : 'Changer la photo de profil'}
+              </button>
+
+              {profileError && (
+                <div className="w-full bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 text-sm">
+                  {profileError}
+                </div>
+              )}
+
+              <button
+                onClick={handleSaveProfile}
+                disabled={savingProfile}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#002366] text-white text-sm font-medium rounded-full hover:bg-[#001a4d] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingProfile ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                {savingProfile ? 'Enregistrement...' : 'Enregistrer'}
               </button>
             </div>
           )}

@@ -373,6 +373,13 @@ class ApiClient {
     return response.json() as Promise<{ avatar: string }>;
   }
 
+  async updateAuthProfile(data: { firstName?: string; lastName?: string; phone?: string }) {
+    return this.request<{ user: any }>('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   async sendPasswordCode(currentPassword: string) {
     return this.request<{ message: string }>('/auth/send-password-code', {
       method: 'POST',

@@ -11,6 +11,7 @@ interface User {
   role: string;
   tenantId: string | null;
   emailVerified?: boolean;
+  phone?: string;
   avatar?: string | null;
   tenant?: {
     id: string;

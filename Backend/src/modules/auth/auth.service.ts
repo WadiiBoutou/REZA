@@ -717,6 +717,31 @@ export class AuthService {
   }
 
   /**
+   * Update the authenticated user's profile fields (phone is required app-wide).
+   */
+  async updateProfile(userId: string, data: { firstName?: string; lastName?: string; phone?: string }) {
+    const updateData: any = {};
+    if (data.firstName !== undefined) updateData.firstName = data.firstName.trim();
+    if (data.lastName !== undefined) updateData.lastName = data.lastName.trim();
+    if (data.phone !== undefined) {
+      if (!String(data.phone).trim()) {
+        throw { status: 400, error: 'Phone required', message: 'Le téléphone est requis.' };
+      }
+      updateData.phone = String(data.phone).trim();
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      throw { status: 400, error: 'Nothing to update', message: 'Aucune modification à enregistrer.' };
+    }
+
+    return prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true, avatar: true },
+    });
+  }
+
+  /**
    * Multi-salon: re-issue a tenant-scoped token for another salon of the
    * owner's account.
    */
