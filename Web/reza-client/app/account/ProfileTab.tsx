@@ -407,7 +407,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
           </div>
         )}
         
-        <div className="grid grid-cols-2 gap-x-12 gap-y-8">
+        <div className="grid grid-cols-3 gap-x-12 gap-y-8">
           {[
             { label: 'Prénom', value: 'firstName' },
             { label: 'Nom', value: 'lastName' },
@@ -448,7 +448,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
               )}
             </div>
           ))}
-          <div className="col-span-2">
+          <div>
             <div className="text-xs text-gray-400 tracking-wide uppercase mb-3">Adresse</div>
             {isEditing ? (
               <textarea
@@ -461,7 +461,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
               <div className="text-sm font-light text-gray-900">{formData.address || userData.address || '-'}</div>
             )}
           </div>
-          <div className="col-span-2">
+          <div>
             <div className="text-xs text-gray-400 tracking-wide uppercase mb-3">Genre</div>
             {isEditing ? (
               <div className="flex gap-3">
