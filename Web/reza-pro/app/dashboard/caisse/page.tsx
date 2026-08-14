@@ -474,6 +474,27 @@ function CaissePageContent({
     }
   };
 
+  const handleSubmitGroupSaleSeparate = async () => {
+    if (!groupDetails || !selectedGroupId) return;
+    setGroupSubmitting(true);
+    try {
+      const pmKey = PAYMENT_METHOD_TO_API[groupPaymentMethod] || 'CASH';
+      await api.separateGroupSale({
+        bookingGroupId: selectedGroupId,
+        paymentMethod: pmKey as any,
+      });
+      toast.success('Chaque participant a été facturé séparément');
+      setGroupModalOpen(false);
+      await fetchData();
+    } catch (err: any) {
+      console.error('Error separate group sale:', err);
+      const msg = err?.message || err?.error || "Erreur lors de la facturation séparée";
+      toast.error(msg);
+    } finally {
+      setGroupSubmitting(false);
+    }
+  };
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -1744,25 +1765,39 @@ function CaissePageContent({
                         <span className="text-xl font-bold text-gray-900">{groupDetails.total.toFixed(2)} MAD</span>
                       </div>
 
-                      {/* Payer selector */}
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1.5">Payé par</label>
-                        <Select value={payerParticipantId} onValueChange={setPayerParticipantId}>
-                          <SelectTrigger className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900">
-                            <SelectValue placeholder="Choisir" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {groupDetails.participants.map((p: any) => (
-                              <SelectItem key={p.participantId} value={p.participantId}>
-                                {p.displayName}{p.isBooker ? ' (Réservant)' : ''}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      {/* Payer selector — radio buttons (unique participant id, not
+                          clientId: two participants can share a client record) */}
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <label className="block text-xs font-medium text-gray-500 mb-2">
+                          Qui paie la facture ?
+                        </label>
+                        <div className="space-y-2">
+                          {groupDetails.participants.map((p: any) => (
+                            <label
+                              key={p.participantId}
+                              className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                                payerParticipantId === p.participantId
+                                  ? 'border-purple-500 bg-purple-50'
+                                  : 'border-gray-200 hover:bg-gray-50'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="group-payer"
+                                checked={payerParticipantId === p.participantId}
+                                disabled={groupSubmitting}
+                                onChange={() => setPayerParticipantId(p.participantId)}
+                                className="w-4 h-4 text-purple-600"
+                              />
+                              <span className="text-sm text-gray-900">{p.displayName}</span>
+                              {p.isBooker && <span className="text-[10px] text-gray-400">(Réservant)</span>}
+                            </label>
+                          ))}
+                        </div>
                       </div>
 
                       {/* Payment method */}
-                      <div>
+                      <div className="mt-4">
                         <label className="block text-xs font-medium text-gray-500 mb-1.5">Mode de paiement</label>
                         <Select value={groupPaymentMethod} onValueChange={setGroupPaymentMethod}>
                           <SelectTrigger className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900">
@@ -1775,6 +1810,13 @@ function CaissePageContent({
                           </SelectContent>
                         </Select>
                       </div>
+
+                      {groupDetails.hasInvoicedAppointment && !groupDetails.alreadyInvoiced && (
+                        <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          Un participant a déjà été encaissé individuellement : la facturation
+                          du groupe n'est plus possible, encaissez chaque participant un par un.
+                        </p>
+                      )}
                     </div>
                   )}
                 </>
@@ -1782,21 +1824,30 @@ function CaissePageContent({
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => setGroupModalOpen(false)}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                Annuler
-              </button>
+            <div className="px-6 pb-6 flex flex-col gap-2 flex-shrink-0">
               <button
                 type="button"
                 disabled={!selectedGroupId || !payerParticipantId || groupSubmitting || groupLoading || groupDetails?.alreadyInvoiced || groupDetails?.hasInvoicedAppointment}
                 onClick={handleSubmitGroupSale}
-                className="flex-1 px-4 py-2.5 bg-purple-600 text-white text-sm font-medium rounded-full hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 transition-colors"
               >
-                {groupSubmitting ? 'Traitement…' : 'Confirmer la facturation'}
+                {groupSubmitting ? 'Traitement…' : 'Confirmer — facturer au participant sélectionné'}
+              </button>
+              <button
+                type="button"
+                disabled={!selectedGroupId || groupSubmitting || groupLoading || groupDetails?.alreadyInvoiced || groupDetails?.hasInvoicedAppointment}
+                onClick={handleSubmitGroupSaleSeparate}
+                className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors"
+              >
+                {groupSubmitting ? 'Traitement…' : 'Facturer séparément (chaque participant)'}
+              </button>
+              <button
+                type="button"
+                disabled={groupSubmitting}
+                onClick={() => setGroupModalOpen(false)}
+                className="w-full px-4 py-2.5 rounded-full text-sm font-medium text-gray-500 hover:text-gray-800 disabled:opacity-50 transition-colors"
+              >
+                Annuler
               </button>
             </div>
           </div>
