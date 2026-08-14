@@ -237,6 +237,9 @@ function CaissePageContent({
   const [payerParticipantId, setPayerParticipantId] = useState<string>('');
   const [groupPaymentMethod, setGroupPaymentMethod] = useState<string>('Espèces');
   const [groupSubmitting, setGroupSubmitting] = useState(false);
+  // Pagination for the pending-groups list (5 groups per page).
+  const [groupPage, setGroupPage] = useState(0);
+  const GROUP_PAGE_SIZE = 5;
   const [expandedGroupInvoices, setExpandedGroupInvoices] = useState<Set<string>>(new Set());
 
   const servicePrice = (s: CatalogService) => s.price ?? s.priceFrom ?? 0;
@@ -419,6 +422,7 @@ function CaissePageContent({
     setGroupDetails(null);
     setPayerParticipantId('');
     setGroupPaymentMethod('Espèces');
+    setGroupPage(0);
     try {
       const res = await api.getPendingGroups();
       setPendingGroups(res.groups || []);
@@ -1668,36 +1672,74 @@ function CaissePageContent({
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              {/* Step 1: Group selector */}
+              {/* Step 1: Group selector (paginated, 5 per page) */}
               {!selectedGroupId && (
                 <div className="space-y-3">
-                  {pendingGroups.filter((g) => !g.alreadyInvoiced && !g.hasInvoicedAppointment).length === 0 && !groupLoading && (
-                    <p className="text-sm text-gray-400 text-center py-8">Aucun groupe en attente de facturation</p>
-                  )}
-                  {pendingGroups.filter((g) => !g.alreadyInvoiced && !g.hasInvoicedAppointment).map((g) => {
-                    return (
-                      <button
-                        key={g.id}
-                        onClick={() => {
-                          setSelectedGroupId(g.id);
-                          fetchGroupDetails(g.id);
-                        }}
-                        className="w-full text-left p-4 rounded-xl border transition-colors border-gray-200 hover:border-purple-300 hover:bg-purple-50 cursor-pointer"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
-                              {g.participantNames.join(' & ')}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {g.participantCount} participants
-                            </p>
-                          </div>
-                          <ChevronRight size={16} className="text-gray-400" />
-                        </div>
-                      </button>
+                  {(() => {
+                    const available = pendingGroups.filter(
+                      (g) => !g.alreadyInvoiced && !g.hasInvoicedAppointment
                     );
-                  })}
+                    const pageCount = Math.max(1, Math.ceil(available.length / GROUP_PAGE_SIZE));
+                    const current = Math.min(groupPage, pageCount - 1);
+                    const pageGroups = available.slice(
+                      current * GROUP_PAGE_SIZE,
+                      (current + 1) * GROUP_PAGE_SIZE
+                    );
+                    return (
+                      <>
+                        {available.length === 0 && !groupLoading && (
+                          <p className="text-sm text-gray-400 text-center py-8">
+                            Aucun groupe en attente de facturation
+                          </p>
+                        )}
+                        {pageGroups.map((g) => (
+                          <button
+                            key={g.id}
+                            onClick={() => {
+                              setSelectedGroupId(g.id);
+                              fetchGroupDetails(g.id);
+                            }}
+                            className="w-full text-left p-4 rounded-xl border transition-colors border-gray-200 hover:border-purple-300 hover:bg-purple-50 cursor-pointer"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {g.participantNames.join(' & ')}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {g.participantCount} participants
+                                </p>
+                              </div>
+                              <ChevronRight size={16} className="text-gray-400" />
+                            </div>
+                          </button>
+                        ))}
+                        {pageCount > 1 && (
+                          <div className="flex items-center justify-center gap-3 pt-2">
+                            <button
+                              type="button"
+                              disabled={current === 0}
+                              onClick={() => setGroupPage(current - 1)}
+                              className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-full hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                            >
+                              ← Précédent
+                            </button>
+                            <span className="text-xs text-gray-500 tabular-nums">
+                              {current + 1} / {pageCount}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={current >= pageCount - 1}
+                              onClick={() => setGroupPage(current + 1)}
+                              className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-full hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                            >
+                              Suivant →
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -1823,33 +1865,37 @@ function CaissePageContent({
               )}
             </div>
 
-            {/* Footer */}
-            <div className="px-6 pb-6 flex flex-col gap-2 flex-shrink-0">
-              <button
-                type="button"
-                disabled={!selectedGroupId || !payerParticipantId || groupSubmitting || groupLoading || groupDetails?.alreadyInvoiced || groupDetails?.hasInvoicedAppointment}
-                onClick={handleSubmitGroupSale}
-                className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 transition-colors"
-              >
-                {groupSubmitting ? 'Traitement…' : 'Confirmer — facturer au participant sélectionné'}
-              </button>
-              <button
-                type="button"
-                disabled={!selectedGroupId || groupSubmitting || groupLoading || groupDetails?.alreadyInvoiced || groupDetails?.hasInvoicedAppointment}
-                onClick={handleSubmitGroupSaleSeparate}
-                className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors"
-              >
-                {groupSubmitting ? 'Traitement…' : 'Facturer séparément (chaque participant)'}
-              </button>
-              <button
-                type="button"
-                disabled={groupSubmitting}
-                onClick={() => setGroupModalOpen(false)}
-                className="w-full px-4 py-2.5 rounded-full text-sm font-medium text-gray-500 hover:text-gray-800 disabled:opacity-50 transition-colors"
-              >
-                Annuler
-              </button>
-            </div>
+            {/* Footer — only visible once a group is selected; before that the
+                list step has nothing to confirm, so keep the actions hidden
+                instead of greyed out. */}
+            {selectedGroupId && (
+              <div className="px-6 pb-6 flex flex-col gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  disabled={!payerParticipantId || groupSubmitting || groupLoading || groupDetails?.alreadyInvoiced || groupDetails?.hasInvoicedAppointment}
+                  onClick={handleSubmitGroupSale}
+                  className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                >
+                  {groupSubmitting ? 'Traitement…' : 'Confirmer — facturer au participant sélectionné'}
+                </button>
+                <button
+                  type="button"
+                  disabled={groupSubmitting || groupLoading || groupDetails?.alreadyInvoiced || groupDetails?.hasInvoicedAppointment}
+                  onClick={handleSubmitGroupSaleSeparate}
+                  className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                >
+                  {groupSubmitting ? 'Traitement…' : 'Facturer séparément (chaque participant)'}
+                </button>
+                <button
+                  type="button"
+                  disabled={groupSubmitting}
+                  onClick={() => setGroupModalOpen(false)}
+                  className="w-full px-4 py-2.5 rounded-full text-sm font-medium text-gray-500 hover:text-gray-800 disabled:opacity-50 transition-colors"
+                >
+                  Annuler
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
