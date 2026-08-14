@@ -278,20 +278,6 @@ router.get('/subscription-invoices', requireRole('ADMIN', 'SUPER_ADMIN'), (req, 
 );
 
 /**
- * GET /api/tenant/settings/client-fields
- * Get client field configuration settings
- */
-router.get('/settings/client-fields', (req, res, next) => tenantController.getClientFieldSettings(req, res, next));
-
-/**
- * PUT /api/tenant/settings/client-fields
- * Update client field configuration settings
- */
-router.put('/settings/client-fields', requireRole('ADMIN', 'SUPER_ADMIN'), (req, res, next) =>
-  tenantController.updateClientFieldSettings(req, res, next)
-);
-
-/**
  * GET /api/tenant/payment-methods
  * Get payment methods for the tenant
  */

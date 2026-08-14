@@ -723,7 +723,6 @@ const AdminSidebar = () => {
 	const [showTauxOccupation, setShowTauxOccupation] = useState(false);
 	const [showCorbeilleRDV, setShowCorbeilleRDV] = useState(false);
 	const [showMesFactures, setShowMesFactures] = useState(false);
-	const [showFicheClients, setShowFicheClients] = useState(false);
 	const pathname = usePathname();
 
 	const paramAgendaLinks = [
@@ -756,9 +755,6 @@ const AdminSidebar = () => {
 		}
 		if (pathname?.startsWith('/dashboard/admin/statistiques-rdv')) {
 			setShowStatistiquesRDV(true);
-		}
-		if (pathname?.startsWith('/dashboard/admin/fiche-clients')) {
-			setShowFicheClients(true);
 		}
 		if (pathname?.startsWith('/dashboard/admin/taux-occupation')) {
 			setShowTauxOccupation(true);
@@ -937,30 +933,6 @@ const AdminSidebar = () => {
                         </div>
                     )}
                 </div>
-
-				{/* Fiche Clients Section */}
-				<div className="space-y-3">
-					<button
-						onClick={() => setShowFicheClients(!showFicheClients)}
-						className="w-full flex items-center justify-between group"
-					>
-						<h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-2 group-hover:text-gray-900 transition-colors">
-							<Users size={14} />
-							Fiche Clients
-						</h3>
-						<ChevronDown size={14} className={`text-gray-500 transition-transform ${showFicheClients ? 'rotate-180' : ''}`} />
-					</button>
-					{showFicheClients && (
-						<div className="space-y-1 animate-fadeIn">
-							<Link
-								href="/dashboard/admin/fiche-clients/gestion-fiche-clients"
-								className={`block w-full px-3 py-2 text-left text-sm rounded-full transition-all ${pathname === '/dashboard/admin/fiche-clients/gestion-fiche-clients' ? 'bg-[#002366] text-white' : 'text-gray-700 hover:bg-gray-100'}`}
-							>
-								Gestion fiche clients
-							</Link>
-						</div>
-					)}
-				</div>
 
 				{/* Mes factures Section */}
 				<div className="space-y-3">

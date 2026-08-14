@@ -37,9 +37,6 @@ const createDynamicPageLoader = (routePath: string) => {
     // Mes Factures
     'mes-factures/liste-des-factures': () => import('../mes-factures/liste-des-factures/page'),
     'mes-factures/moyen-paiement-plateforme': () => import('../mes-factures/moyen-paiement-plateforme/page'),
-    
-    // Fiche Clients
-    'fiche-clients/gestion-fiche-clients': () => import('../fiche-clients/gestion-fiche-clients/page'),
   };
 
   // Default redirects for parent routes (when no sub-route is specified)
@@ -50,7 +47,6 @@ const createDynamicPageLoader = (routePath: string) => {
     'taux-occupation': 'taux-occupation/vue-ensemble',
     'corbeille-rdv': 'corbeille-rdv/rdv-annules',
     'mes-factures': 'mes-factures/liste-des-factures',
-    'fiche-clients': 'fiche-clients/gestion-fiche-clients',
   };
 
   // Check if this is a parent route that should redirect
@@ -120,7 +116,6 @@ export default function DynamicAdminPage({ params }: { params: Promise<{ slug: s
           'taux-occupation': 'taux-occupation/vue-ensemble',
           'corbeille-rdv': 'corbeille-rdv/rdv-annules',
           'mes-factures': 'mes-factures/liste-des-factures',
-          'fiche-clients': 'fiche-clients/gestion-fiche-clients',
         };
 
         // If this is a parent route, redirect to default sub-route

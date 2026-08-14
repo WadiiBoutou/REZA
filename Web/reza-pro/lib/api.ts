@@ -1342,18 +1342,6 @@ class ApiClient {
   }
 
 
-  // Client field settings endpoints
-  async getClientFieldSettings() {
-    return this.request<{ fields: any[] }>('/tenant/settings/client-fields');
-  }
-
-  async updateClientFieldSettings(fields: any[]) {
-    return this.request<any>('/tenant/settings/client-fields', {
-      method: 'PUT',
-      body: JSON.stringify({ fields }),
-    });
-  }
-
   // Dashboard statistics endpoints
   async getDashboardStats(params?: {
     period?: 'week' | 'month' | 'year' | 'all';

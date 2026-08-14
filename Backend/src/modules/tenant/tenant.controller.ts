@@ -176,27 +176,6 @@ export class TenantController {
     }
   }
 
-  async getClientFieldSettings(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await tenantService.getClientFieldSettings(req.tenantId!);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async updateClientFieldSettings(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await tenantService.updateClientFieldSettings(req.tenantId!, req.body);
-      res.json(result);
-    } catch (error: any) {
-      if (error.status) {
-        return res.status(error.status).json({ error: error.error, message: error.message });
-      }
-      next(error);
-    }
-  }
-
   async getHeaderImage(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await tenantService.getHeaderImage(req.tenantId!);
