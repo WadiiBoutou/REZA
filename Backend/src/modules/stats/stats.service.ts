@@ -484,6 +484,14 @@ export class StatsService {
       .map(([name, value]) => ({ name, value, color: '#002366' }))
       .sort((a, b) => b.value - a.value).slice(0, 5);
 
+    // Service items + legacy appointment.employeeId reference User records (role STAFF),
+    // whose avatar is often null — the real avatar lives on the Employee record.
+    // Fall back to it per user (same pattern as getAutresStats / getCollaborateursStats).
+    const allEmployees = await prisma.user.findMany({
+      where: { ...tenantWhere, role: 'STAFF', isActive: true }
+    });
+    const avatarByUserId = await this.buildAvatarByUserId(tenantId, allEmployees);
+
     const employeeStatsMap: { [key: string]: { appointments: number; revenue: number; ratings: number[]; avatar: string | null } } = {};
     appointments.forEach(apt => {
       if (apt.status === 'CANCELLED') return;
@@ -495,8 +503,8 @@ export class StatsService {
             if (!employeeStatsMap[empName]) {
               employeeStatsMap[empName] = { appointments: 0, revenue: 0, ratings: [], avatar: null };
             }
-            if (!employeeStatsMap[empName].avatar && item.employee.avatar) {
-              employeeStatsMap[empName].avatar = item.employee.avatar;
+            if (!employeeStatsMap[empName].avatar) {
+              employeeStatsMap[empName].avatar = item.employee.avatar || avatarByUserId.get(item.employee.id) || null;
             }
             employeeStatsMap[empName].appointments++;
             // Per-service item price (the app-wide revenue convention)
@@ -508,8 +516,8 @@ export class StatsService {
         if (!employeeStatsMap[empName]) {
           employeeStatsMap[empName] = { appointments: 0, revenue: 0, ratings: [], avatar: null };
         }
-        if (!employeeStatsMap[empName].avatar && apt.employee.avatar) {
-          employeeStatsMap[empName].avatar = apt.employee.avatar;
+        if (!employeeStatsMap[empName].avatar) {
+          employeeStatsMap[empName].avatar = apt.employee.avatar || avatarByUserId.get(apt.employee.id) || null;
         }
         employeeStatsMap[empName].appointments++;
         employeeStatsMap[empName].revenue += this.appointmentRevenue(apt);
