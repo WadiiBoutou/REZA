@@ -13,6 +13,16 @@ import 'group_person_picker_screen.dart';
 import 'login_screen.dart';
 import 'venue_detail_screen.dart';
 
+/// Validate a phone number from any country (E.164 range only, not
+/// country-specific): optional leading +, 7 to 15 digits, separators
+/// (space, dash, dot, parens) tolerated.
+bool _isValidPhoneNumber(String phone) {
+  final cleaned = phone.replaceAll(RegExp(r'[\s\-().]'), '');
+  if (!RegExp(r'^\+?\d+$').hasMatch(cleaned)) return false;
+  final digits = cleaned.startsWith('+') ? cleaned.substring(1) : cleaned;
+  return digits.length >= 7 && digits.length <= 15;
+}
+
 class BookingScreen extends StatefulWidget {
   final String tenantId;
   final VenueItem venue;
@@ -477,6 +487,10 @@ class _BookingScreenState extends State<BookingScreen> {
 
     if (firstName.isEmpty || phone.isEmpty || (!isAddingGuest && lastName.isEmpty)) {
       _showError('Veuillez remplir tous les champs obligatoires.');
+      return null;
+    }
+    if (phone.isNotEmpty && !_isValidPhoneNumber(phone)) {
+      _showError('Format de numéro invalide. Entrez un vrai numéro de téléphone.');
       return null;
     }
     if (_selectedDate == null || _selectedTime == null) {

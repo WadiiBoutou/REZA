@@ -18,6 +18,16 @@ String _normPhone(String? p) {
   return d;
 }
 
+/// Validate a phone number from any country (E.164 range only, not
+/// country-specific): optional leading +, 7 to 15 digits, separators
+/// (space, dash, dot, parens) tolerated.
+bool _isValidPhoneNumber(String phone) {
+  final cleaned = phone.replaceAll(RegExp(r'[\s\-().]'), '');
+  if (!RegExp(r'^\+?\d+$').hasMatch(cleaned)) return false;
+  final digits = cleaned.startsWith('+') ? cleaned.substring(1) : cleaned;
+  return digits.length >= 7 && digits.length <= 15;
+}
+
 /// Normalize a name: lower-case, single spaces.
 String _normName(String? n) => (n ?? '').trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
@@ -503,7 +513,12 @@ class _NewGuestFormState extends State<_NewGuestForm> {
               keyboardType: TextInputType.phone,
               onChanged: (_) => setState(() => _duplicateError = null),
               decoration: _inputDecoration('Téléphone *'),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Requis' : null,
+              validator: (v) {
+                final t = (v ?? '').trim();
+                if (t.isEmpty) return 'Requis';
+                if (!_isValidPhoneNumber(t)) return 'Format de numéro invalide';
+                return null;
+              },
             ),
             if (_duplicateError != null) ...[
               const SizedBox(height: 8),
