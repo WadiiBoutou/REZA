@@ -513,6 +513,16 @@ function CaissePageContent({
     }
   }, [isAuthenticated, authLoading, salonFilterKey]);
 
+  // Lock background scroll while the group billing modal is open
+  useEffect(() => {
+    if (!groupModalOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [groupModalOpen]);
+
   const fetchData = async () => {
     // Don't fetch if not authenticated
     if (!isAuthenticated) {
