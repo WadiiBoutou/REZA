@@ -351,12 +351,13 @@ function DailyStatisticsPageContent() {
 
       {/* Daily Statistics Table */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden animate-fadeIn">
-        <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between gap-4">
-          <p className="text-xs text-gray-500">
-            Cliquez sur un en-tête pour trier (plusieurs colonnes possibles, appliquées dans l'ordre).
-          </p>
+        <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-end gap-4">
           {sorts.length > 0 && (
-            <button onClick={clearSorts} className="text-xs font-medium text-[#002366] hover:underline whitespace-nowrap">
+            <button
+              onClick={clearSorts}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-[#002366] bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-full px-3 py-1.5 transition-colors"
+            >
+              <XCircle size={12} />
               Effacer les tris
             </button>
           )}
