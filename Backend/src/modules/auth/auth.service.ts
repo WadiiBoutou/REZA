@@ -119,6 +119,8 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
+        avatar: user.avatar,
         role: user.role,
         tenantId: user.tenantId,
         tenant: user.tenant
@@ -303,6 +305,8 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
+        avatar: user.avatar,
         role: user.role,
         tenantId: user.tenantId,
         tenant: user.tenant
@@ -340,6 +344,8 @@ export class AuthService {
         email: true,
         firstName: true,
         lastName: true,
+        phone: true,
+        avatar: true,
         role: true,
         tenantId: true,
         isActive: true,
@@ -408,6 +414,8 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
+        avatar: user.avatar,
         role: user.role,
         tenantId: user.tenantId,
         tenant: user.tenant
@@ -760,6 +768,8 @@ export class AuthService {
         email: true,
         firstName: true,
         lastName: true,
+        phone: true,
+        avatar: true,
         role: true,
         tenantId: true
       }
@@ -784,6 +794,8 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
+        avatar: user.avatar,
         role: user.role,
         tenantId: tenant.id,
         tenant: { id: tenant.id, name: tenant.name }
@@ -862,6 +874,8 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone,
+        avatar: user.avatar,
         role: user.role,
         tenantId: effectiveTenantId,
         tenant
