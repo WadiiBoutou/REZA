@@ -240,9 +240,23 @@ export default function SalonLocationPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, mapReady]);
 
-  // Reflow the map when toggling fullscreen (container size changes).
+  // Reflow the map when toggling fullscreen (container size changes). While
+  // fullscreen the map covers the page, so wheel input must zoom the map
+  // itself instead of scrolling the page behind it; restoring the click-to-
+  // activate state on exit keeps the embedded map scroll-trap-free.
   useEffect(() => {
     if (!mapReady) return;
+    const map = mapRef.current;
+    if (!map) return;
+    try {
+      if (isFullscreen) {
+        map.scrollWheelZoom.enable();
+      } else if (!mapActiveRef.current) {
+        map.scrollWheelZoom.disable();
+      }
+    } catch {
+      /* ignore */
+    }
     const t = setTimeout(() => {
       try {
         mapRef.current?.invalidateSize();
