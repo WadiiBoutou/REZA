@@ -198,7 +198,16 @@ export class StatsService {
         { tenantId: filter, createdAt: { gte: start, lte: end } },
         {
           appointments: {
-            some: { tenantId: filter, startTime: { gte: start, lte: end } },
+            // New client = first contact in the period: they booked during the
+            // period (createdAt) OR their first visit falls in it (startTime).
+            // A booking made today for next week still makes them a new client.
+            some: {
+              tenantId: filter,
+              OR: [
+                { createdAt: { gte: start, lte: end } },
+                { startTime: { gte: start, lte: end } },
+              ],
+            },
             none: { tenantId: filter, startTime: { lt: start } },
           },
         },
@@ -1593,7 +1602,14 @@ export class StatsService {
     const appointments = await prisma.appointment.findMany({
       where: {
         tenantId: tenantIdFilter(tenantIds),
-        startTime: { gte: start, lte: end },
+        // Count a booking when it was MADE during the period (createdAt) OR when
+        // the visit happens during it (startTime). Future-dated bookings made in
+        // the period are real salon business and must count — a client who books
+        // today for next week would otherwise be invisible to the stats.
+        OR: [
+          { createdAt: { gte: start, lte: end } },
+          { startTime: { gte: start, lte: end } },
+        ],
         status: { notIn: ['CANCELLED'] },
       },
       include: {
