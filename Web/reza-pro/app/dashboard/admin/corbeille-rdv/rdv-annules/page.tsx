@@ -115,10 +115,9 @@ export default function CancelledAppointments() {
     // BOM + full quoting so accented characters survive Excel and commas in names don't break columns
     const csvCell = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const csvContent = '\uFEFF' + [
-      ['RDV avec', 'Date du RDV', 'Client(e)', 'Pris par Internet', 'Création', 'Annulation', 'Annulé par le client'].map(csvCell).join(','),
+      ['Date du RDV', 'Client(e)', 'Pris par Internet', 'Création', 'Annulation', 'Annulé par le client'].map(csvCell).join(','),
       ...appointments.map(apt => 
         [
-          apt.collaborator, 
           apt.date, 
           apt.client, 
           apt.takenOnline ? 'Oui' : 'Non',
@@ -224,9 +223,6 @@ export default function CancelledAppointments() {
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  RDV avec
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Date du RDV
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -253,9 +249,6 @@ export default function CancelledAppointments() {
               {appointments.length > 0 ? (
                 appointments.map((apt) => (
                   <tr key={apt.id} className="hover:bg-gray-50/30 transition-colors">
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-gray-700">{apt.collaborator || '-'}</span>
-                    </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-400">
                         {apt.date}
@@ -298,7 +291,7 @@ export default function CancelledAppointments() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">
                     Aucun rendez-vous annulé trouvé
                   </td>
                 </tr>

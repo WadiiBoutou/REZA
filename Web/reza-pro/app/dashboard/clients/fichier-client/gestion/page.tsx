@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { getMoroccanPhoneError, normalizeMoroccanPhone } from '@/lib/utils';
 
 const AVATAR_MAX_SIZE = 5 * 1024 * 1024; // 5 Mo
 const AVATAR_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
@@ -333,6 +334,16 @@ export default function ClientsGestionPage() {
       return;
     }
 
+    if (!formData.phone.trim()) {
+      toast.error('Le téléphone est requis');
+      return;
+    }
+    const phoneErr = getMoroccanPhoneError(formData.phone.trim());
+    if (phoneErr) {
+      toast.error(phoneErr);
+      return;
+    }
+
     setSaving(true);
     try {
       if (editingClient) {
@@ -341,7 +352,7 @@ export default function ClientsGestionPage() {
           firstName,
           lastName,
           email: formData.email || undefined,
-          phone: formData.phone,
+          phone: normalizeMoroccanPhone(formData.phone.trim()),
           address: formData.address || undefined,
           gender: formData.gender || undefined,
           avatar: formData.avatar !== undefined ? formData.avatar : null,
@@ -360,7 +371,7 @@ export default function ClientsGestionPage() {
           firstName,
           lastName,
           email: formData.email || undefined,
-          phone: formData.phone,
+          phone: normalizeMoroccanPhone(formData.phone.trim()),
           address: formData.address || undefined,
           gender: formData.gender || undefined,
           avatar: formData.avatar || undefined,

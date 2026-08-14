@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth, type Salon } from '@/contexts/AuthContext';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, getMoroccanPhoneError, normalizeMoroccanPhone } from '@/lib/utils';
 import { SalonFilterControl } from '@/components/SalonFilterControl';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -130,11 +130,16 @@ export default function MesSalonsPage() {
       setError('Tous les champs obligatoires, la carte et l\'image de couverture sont requis');
       return;
     }
+    const phoneErr = getMoroccanPhoneError(form.phone.trim());
+    if (phoneErr) {
+      setError(phoneErr);
+      return;
+    }
     setSubmitting(true);
     const result = await createSalon({
       name: form.name.trim(),
       email: form.email.trim(),
-      phone: form.phone.trim(),
+      phone: normalizeMoroccanPhone(form.phone.trim()),
       address: form.address.trim() || undefined,
       city: form.city.trim(),
       category: form.category.trim(),

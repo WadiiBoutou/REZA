@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { requiredPhoneSchema, optionalPhoneSchema } from '../../../utils/phone';
 
 export const createPublicReviewSchema = z.object({
   tenantId: z.string(),
@@ -8,7 +9,7 @@ export const createPublicReviewSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   email: z.string().email(),
-  phone: z.string().optional(),
+  phone: optionalPhoneSchema,
   rating: z.number().int().min(1).max(5),
   comment: z.string().optional()
 });
@@ -18,7 +19,7 @@ export const createPublicFamilyMemberSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().optional().or(z.literal('')), // Optional - some people only have one name
   email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().optional(),
+  phone: optionalPhoneSchema,
   relationship: z.string().min(1, 'Relationship is required'),
   avatar: z.string().optional()
 });
@@ -28,7 +29,7 @@ export const updatePublicFamilyMemberSchema = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().optional().or(z.literal('')), // Optional - some people only have one name
   email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().optional(),
+  phone: optionalPhoneSchema,
   relationship: z.string().min(1).optional(),
   avatar: z.string().optional()
 });
@@ -48,7 +49,7 @@ export const bookingParticipantSchema = z.object({
   serviceEmployees: z.array(serviceEmployeeItemSchema).optional(),
   startTime: z.string().optional(),
   /** Guest contact — used to create a lightweight Client record for proche participants. */
-  phone: z.string().optional(),
+  phone: optionalPhoneSchema,
   email: z.string().optional(),
 });
 
@@ -56,7 +57,7 @@ export const createPublicBookingSchema = z.object({
   tenantId: z.string().min(1),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
-  phone: z.string().min(1),
+  phone: requiredPhoneSchema,
   email: z.string().email().optional().or(z.literal('')),
   serviceIds: z.array(z.string()).min(1),
   startTime: z.string().min(1),

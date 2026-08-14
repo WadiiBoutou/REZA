@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Globe, MapPin, Tag, Building, Image as ImageIcon, Check, Loader2, X, Plus, Star, BadgeCheck, Instagram, Facebook, Phone, Mail, ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { getImageUrl } from '@/lib/utils';
+import { getImageUrl, getMoroccanPhoneError, normalizeMoroccanPhone } from '@/lib/utils';
 import SalonScopeNotice from '@/components/SalonScopeNotice';
 import SalonLocationPicker from '@/components/SalonLocationPicker';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
@@ -186,6 +186,14 @@ const InformationsLandingPage = () => {
   const handleSave = async () => {
     if (saving) return;
 
+    if (phone && phone.trim()) {
+      const phoneErr = getMoroccanPhoneError(phone.trim());
+      if (phoneErr) {
+        toast.error(phoneErr);
+        return;
+      }
+    }
+
     try {
       setSaving(true);
       const loadingToast = toast.loading('Enregistrement des informations...');
@@ -198,7 +206,7 @@ const InformationsLandingPage = () => {
         coverImage: primaryCover || '',
         shortDescription: shortDescription || undefined,
         website: website || undefined,
-        phone: phone || undefined,
+        phone: phone ? normalizeMoroccanPhone(phone.trim()) : undefined,
         email: email || undefined,
         city: city || undefined,
         latitude: latitude ? parseFloat(latitude) : undefined,

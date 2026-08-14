@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { optionalPhoneSchema } from '../../utils/phone';
 
 export const createTenantSchema = z.object({
   name: z.string().min(1),
   email: z.string().email().optional(),
-  phone: z.string().optional(),
+  phone: optionalPhoneSchema,
   address: z.string().optional(),
   subdomain: z.string().optional(),
   domain: z.string().optional(),

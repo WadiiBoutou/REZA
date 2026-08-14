@@ -7,6 +7,7 @@ import { sendMail } from '../../utils/mailer';
 import { LoginInput, RegisterInput, ForgotPasswordInput, ResetPasswordInput, SendPasswordCodeInput, ChangePasswordInput } from './auth.schema';
 import { accountService } from '../account/account.service';
 import * as log from '../../utils/logger';
+import { isValidPhone, phoneError } from '../../utils/phone';
 
 /**
  * Base URL for links included in emails (password reset link).
@@ -727,6 +728,9 @@ export class AuthService {
       if (!String(data.phone).trim()) {
         throw { status: 400, error: 'Phone required', message: 'Le téléphone est requis.' };
       }
+      if (!isValidPhone(data.phone)) {
+        throw { status: 400, error: 'Invalid phone', message: phoneError() };
+      }
       updateData.phone = String(data.phone).trim();
     }
 
@@ -804,7 +808,9 @@ export class AuthService {
         lastName: true,
         role: true,
         tenantId: true,
-        isActive: true
+        isActive: true,
+        phone: true,
+        avatar: true
       }
     });
 

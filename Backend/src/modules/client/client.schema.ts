@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { requiredPhoneSchema } from '../../utils/phone';
 
 export const createClientSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   email: z.string().email().optional().or(z.literal('')),
-  phone: z.string().min(1),
+  phone: requiredPhoneSchema,
   address: z.string().optional(),
   gender: z.enum(['male', 'female']).optional(),
   avatar: z.string().nullable().optional(),

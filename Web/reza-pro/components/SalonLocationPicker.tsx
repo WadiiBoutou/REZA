@@ -342,10 +342,6 @@ export default function SalonLocationPicker({
       <label className="block text-sm font-medium text-gray-700 mb-2">
         Emplacement sur la carte *
       </label>
-      <p className="text-xs text-gray-500 mb-2">
-        Cliquez sur la carte ou recherchez un lieu pour positionner le salon (requis pour la distance
-        côté client).
-      </p>
 
       <div className="flex flex-col sm:flex-row gap-2 mb-2">
         <div className="flex flex-1 gap-2 relative z-40">

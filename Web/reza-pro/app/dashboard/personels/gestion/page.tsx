@@ -10,6 +10,7 @@ import { TimePicker } from '@/components/ui/time-picker';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { getMoroccanPhoneError, normalizeMoroccanPhone } from '@/lib/utils';
 
 type WorkingHours = {
   day: string;
@@ -784,7 +785,12 @@ const AgendaModal = ({
       toast.error('Veuillez remplir le téléphone');
       return;
     }
-    onSave(formData);
+    const phoneErr = getMoroccanPhoneError(formData.phone.trim());
+    if (phoneErr) {
+      toast.error(phoneErr);
+      return;
+    }
+    onSave({ ...formData, phone: normalizeMoroccanPhone(formData.phone.trim()) });
   };
 
   const updateWorkingHours = (dayIndex: number, updates: Partial<WorkingHours>) => {

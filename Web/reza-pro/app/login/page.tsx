@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { getMoroccanPhoneError, normalizeMoroccanPhone } from '@/lib/utils';
 
 // Animated Text Component
 const AnimatedText = ({ className = "" }: { className?: string }) => {
@@ -227,6 +228,10 @@ function LoginPageContent() {
       if (!firstName.trim()) errors.firstName = 'Le prénom est requis';
       if (!lastName.trim()) errors.lastName = 'Le nom est requis';
       if (!phone.trim()) errors.phone = 'Le téléphone est requis';
+      else {
+        const phoneErr = getMoroccanPhoneError(phone.trim());
+        if (phoneErr) errors.phone = phoneErr;
+      }
       if (!organizationName.trim()) errors.organizationName = 'Le nom de l\'établissement est requis';
       if (!city) errors.city = 'La ville est requise';
       if (!email.trim()) errors.email = 'L\'email est requis';
@@ -258,7 +263,7 @@ function LoginPageContent() {
           password,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          phone: phone.trim(),
+          phone: normalizeMoroccanPhone(phone.trim()),
           avatar: avatarUrl || undefined, // Optional
           // Create new organization during registration
           createTenant: true,

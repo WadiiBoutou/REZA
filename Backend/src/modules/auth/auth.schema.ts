@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { requiredPhoneSchema, optionalPhoneSchema } from '../../utils/phone';
 
 export const loginSchema = z.object({
   email: z.string().email(),
@@ -10,13 +11,13 @@ export const registerSchema = z.object({
   password: z.string().min(8),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
-  phone: z.string().min(1, 'Le téléphone est requis'),
+  phone: requiredPhoneSchema,
   avatar: z.string().optional(),
   tenantId: z.string().min(1, 'Tenant ID is required for registration').optional(),
   createTenant: z.boolean().optional(),
   tenantName: z.string().min(1).optional(),
   tenantEmail: z.string().email().optional(),
-  tenantPhone: z.string().optional(),
+  tenantPhone: optionalPhoneSchema,
   tenantAddress: z.string().optional(),
   tenantCity: z.string().optional(),
   tenantPostalCode: z.string().optional(),

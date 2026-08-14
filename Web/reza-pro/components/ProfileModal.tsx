@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Camera, Key, Loader2, Eye, EyeOff, Check, Mail } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { isValidMoroccanPhone, getMoroccanPhoneError, normalizeMoroccanPhone } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
 interface ProfileModalProps {
@@ -82,10 +83,15 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ open, onOpenChange }) => {
       setProfileError('Le téléphone est requis.');
       return;
     }
+    const phoneError = getMoroccanPhoneError(phone.trim());
+    if (phoneError) {
+      setProfileError(phoneError);
+      return;
+    }
     setSavingProfile(true);
     setProfileError(null);
     try {
-      const { user: updated } = await api.updateAuthProfile({ phone: phone.trim() });
+      const { user: updated } = await api.updateAuthProfile({ phone: normalizeMoroccanPhone(phone.trim()) });
       updateUser({ phone: updated.phone });
       toast.success('Téléphone mis à jour');
     } catch (err: any) {

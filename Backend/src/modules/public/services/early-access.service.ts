@@ -3,6 +3,7 @@ import { prisma } from '../../../lib/prisma';
 import { hashPassword } from '../../../utils/password';
 import { slugifyName } from '../../../utils/slugify';
 import { fail } from '../utils/http';
+import { optionalPhoneSchema } from '../../../utils/phone';
 
 export class EarlyAccessService {
   async signupEarlyAccess(body: unknown) {
@@ -13,7 +14,7 @@ export class EarlyAccessService {
       lastName: z.string().min(1, 'Le nom est requis').optional(),
       email: z.string().email('Email invalide'),
       password: z.string().min(8, 'Le mot de passe doit contenir au moins 8 caractères'),
-      phone: z.string().optional(),
+      phone: optionalPhoneSchema,
       establishment: z.string().optional().nullable(),
       city: z.string().min(1, 'La ville est requise'),
       userType: z.enum(['PROFESSIONAL', 'CLIENT'], {

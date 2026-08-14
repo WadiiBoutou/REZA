@@ -3,6 +3,7 @@ import { prisma } from '../../../lib/prisma';
 import { comparePassword, hashPassword } from '../../../utils/password';
 import { sendMail } from '../../../utils/mailer';
 import { fail } from '../utils/http';
+import { isValidPhone, phoneError } from '../../../utils/phone';
 
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes — recommended for password resets
 const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — recommended for email confirmation
@@ -244,6 +245,13 @@ export class ClientAuthService {
       fail(400, {
         error: 'Missing required fields',
         message: 'Email, prénom, nom et téléphone sont requis.'
+      });
+    }
+
+    if (!isValidPhone(phone)) {
+      fail(400, {
+        error: 'Invalid phone',
+        message: phoneError()
       });
     }
 

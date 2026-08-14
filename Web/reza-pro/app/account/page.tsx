@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { User, Calendar, Users, Lock, Settings, LogOut, Phone, Mail, MapPin, Edit2, Plus, X, Trash2, Check, Clock, Star, ChevronRight, Bell, Shield, CreditCard, Gift, Camera, Award, TrendingUp, Heart, Sparkles, Eye, EyeOff, Key, Smartphone } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { getMoroccanPhoneError } from '@/lib/utils';
 
 // Import tab components
 import OverviewTab from './OverviewTab';
@@ -267,6 +268,10 @@ const AccountDashboard = () => {
   };
 
   const handleAddPerson = () => {
+    if (newPerson.phone && newPerson.phone.trim() && getMoroccanPhoneError(newPerson.phone.trim())) {
+      alert(getMoroccanPhoneError(newPerson.phone.trim()));
+      return;
+    }
     if (newPerson.name && newPerson.relationship) {
       setFamilyMembers([...familyMembers, { ...newPerson, id: Date.now() }]);
       setNewPerson({ name: '', relationship: '', phone: '', email: '' });
@@ -284,6 +289,10 @@ const AccountDashboard = () => {
   };
 
   const saveEditedPerson = () => {
+    if (editingPerson.phone && editingPerson.phone.trim() && getMoroccanPhoneError(editingPerson.phone.trim())) {
+      alert(getMoroccanPhoneError(editingPerson.phone.trim()));
+      return;
+    }
     setFamilyMembers(familyMembers.map(m => m.id === editingPerson.id ? editingPerson : m));
     setShowEditModal(false);
     setEditingPerson(null);

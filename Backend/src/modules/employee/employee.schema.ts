@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { requiredPhoneSchema } from '../../utils/phone';
 
 export const createEmployeeSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   email: z.string().email().optional(),
-  phone: z.string().min(1, 'Le téléphone est requis'),
+  phone: requiredPhoneSchema,
   gender: z.enum(['male', 'female']).optional(),
   avatar: z.string().nullable().optional(),
   isActive: z.boolean().default(true),

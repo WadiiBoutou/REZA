@@ -10,7 +10,7 @@ import type { GuestParticipant, FamilyMemberOption } from './GroupParticipantsSe
 import AddServiceModal from './AddServiceModal';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
-import { getMoroccoToday, getMoroccoDate, isMoroccoToday, isMoroccoPast, formatMoroccoDate, formatMoroccoTime, formatMoroccoDateTime, createDateFromMoroccoDateTime, getPhoneNumberError } from '../../lib/utils';
+import { getMoroccoToday, getMoroccoDate, isMoroccoToday, isMoroccoPast, formatMoroccoDate, formatMoroccoTime, formatMoroccoDateTime, createDateFromMoroccoDateTime, isValidMoroccanPhone } from '../../lib/utils';
 import {
   clearBookingForProche,
   peekBookingForProche,
@@ -964,7 +964,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
       if (!(bookingData.firstName || '').trim()) newErrors.firstName = true;
       if (!(bookingData.lastName || '').trim()) newErrors.lastName = true;
       if (!(bookingData.phone || '').trim()) newErrors.phone = true;
-      else if (getPhoneNumberError((bookingData.phone || '').trim())) newErrors.phone = true;
+      else if (!isValidMoroccanPhone((bookingData.phone || '').trim())) newErrors.phone = true;
       if (
         (bookingData.email || '').trim() &&
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bookingData.email || '')
@@ -1064,9 +1064,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
       setGuestFormError('Le numéro de téléphone est requis');
       return;
     }
-    const phoneErr = getPhoneNumberError(phone);
-    if (phoneErr) {
-      setGuestFormError(phoneErr);
+    if (!isValidMoroccanPhone(phone)) {
+      setGuestFormError('Format de téléphone invalide. Utilisez +212XXXXXXXXX ou 0XXXXXXXXX (10 chiffres).');
       return;
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -1269,6 +1268,14 @@ const BookingModal: React.FC<BookingModalProps> = ({
         if (!finalPhone) missingFields.push('Téléphone');
         
         setError(`Veuillez remplir tous les champs obligatoires : ${missingFields.join(', ')}`);
+        if (shouldShowStep4) {
+          setBookingStep(4);
+        }
+        return;
+      }
+
+      if (!isValidMoroccanPhone(finalPhone)) {
+        setError('Format de téléphone invalide. Utilisez +212XXXXXXXXX ou 0XXXXXXXXX (10 chiffres).');
         if (shouldShowStep4) {
           setBookingStep(4);
         }
@@ -1941,7 +1948,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                   />
                   {errors.phone && (
                     <p className="mt-1 text-xs text-rose-500">
-                      {(bookingData.phone || '').trim() ? getPhoneNumberError((bookingData.phone || '').trim()) : 'Le numéro de téléphone est requis'}
+                      {(bookingData.phone || '').trim() ? (isValidMoroccanPhone((bookingData.phone || '').trim()) ? '' : 'Format de téléphone invalide. Utilisez +212XXXXXXXXX ou 0XXXXXXXXX (10 chiffres).') : 'Le numéro de téléphone est requis'}
                     </p>
                   )}
                 </div>

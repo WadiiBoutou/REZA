@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/api';
 import RezaNavbar from '../../components/Header';
 import Footer from '../../components/Footer';
-import { formatMoroccoDate, getImageUrl } from '../../lib/utils';
+import { formatMoroccoDate, getImageUrl, isValidMoroccanPhone, getMoroccanPhoneError } from '../../lib/utils';
 
 // Import tab components
 import OverviewTab from './OverviewTab';
@@ -140,18 +140,26 @@ export default function AccountDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [isClient, setIsClient] = useState(false);
   
-  // Load saved tab from localStorage after component mounts (client-side only)
+  // Load saved tab from localStorage after component mounts (client-side only).
+  // A ?tab= query param (e.g. from the navbar "Mon profil" dropdown) takes
+  // precedence, and re-applies whenever it changes while the page is open.
+  const locationSearch = typeof window !== 'undefined' ? window.location.search : '';
   useEffect(() => {
     setIsClient(true);
-    if (typeof window !== 'undefined') {
-      const savedTab = localStorage.getItem('accountActiveTab');
-      // Validate that the saved tab is a valid tab ID
-      const validTabs = ['overview', 'appointments', 'family', 'profile', 'avis', 'rewards'];
-      if (savedTab && validTabs.includes(savedTab)) {
-        setActiveTab(savedTab);
-      }
+    if (typeof window === 'undefined') return;
+    const validTabs = ['overview', 'appointments', 'family', 'profile', 'avis', 'rewards'];
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    if (urlTab && validTabs.includes(urlTab)) {
+      setActiveTab(urlTab);
+      return;
     }
-  }, []); // Only run once on mount
+    const savedTab = localStorage.getItem('accountActiveTab');
+    // Validate that the saved tab is a valid tab ID
+    if (savedTab && validTabs.includes(savedTab)) {
+      setActiveTab(savedTab);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationSearch]); // Re-run when the URL query changes (e.g. ?tab=profile)
   
   // Save activeTab to localStorage whenever it changes (client-side only)
   useEffect(() => {
@@ -774,6 +782,10 @@ export default function AccountDashboard() {
         throw new Error('La relation est requise');
       }
 
+      if (personData.phone && !isValidMoroccanPhone(personData.phone.trim())) {
+        throw new Error(getMoroccanPhoneError(personData.phone.trim()) || 'Format de téléphone invalide');
+      }
+
       const newMember = await api.createFamilyMember({
         clientEmail: user.email,
         firstName,
@@ -868,6 +880,10 @@ export default function AccountDashboard() {
 
       if (!dataToSave.relationship || dataToSave.relationship.trim().length === 0) {
         throw new Error('La relation est requise');
+      }
+
+      if (dataToSave.phone && !isValidMoroccanPhone(String(dataToSave.phone).trim())) {
+        throw new Error(getMoroccanPhoneError(String(dataToSave.phone).trim()) || 'Format de téléphone invalide');
       }
 
       const response = await api.updateFamilyMember(dataToSave.id, {
@@ -1178,20 +1194,7 @@ export default function AccountDashboard() {
                     <span className="absolute inset-0 opacity-0 group-hover:opacity-10 bg-white transition-opacity duration-200 rounded-full" />
                   </button>
 
-                  {/* Logout icon */}
-                  <button
-                    onClick={() => {
-                      setShowLogoutLoading(true);
-                      setUserData({ firstName: '', lastName: '', email: '', phone: '', address: '', gender: '', joinDate: '', totalBookings: 0, avatar: null });
-                      setAppointments([]); setClientData(null); setFamilyMembers([]); setReviews([]); setFavoritesCount(0);
-                      logoutFromContext();
-                      setTimeout(() => router.push('/login'), 500);
-                    }}
-                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all duration-200"
-                    title="Déconnexion"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
+
                 </div>
               </div>
 

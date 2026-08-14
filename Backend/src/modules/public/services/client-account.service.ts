@@ -4,6 +4,7 @@ import { hashPassword, comparePassword } from '../../../utils/password';
 import { sendMail } from '../../../utils/mailer';
 import { fail } from '../utils/http';
 import * as log from '../../../utils/logger';
+import { isValidPhone, phoneError } from '../../../utils/phone';
 
 const PASSWORD_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const hashCode = (code: string) => crypto.createHash('sha256').update(code).digest('hex');
@@ -41,6 +42,13 @@ export class ClientAccountService {
     // (one per salon booking) — the avatar/name must land on ALL of them so
     // every review and salon file shows the real image, not just the newest row.
     log.log('[Update Client Profile] Avatar value received:', avatar ? 'present' : 'null/undefined', typeof avatar);
+
+    if (phone !== undefined && String(phone).trim() && !isValidPhone(phone)) {
+      fail(400, {
+        error: 'Invalid phone',
+        message: phoneError()
+      });
+    }
 
     const updateData: any = {
       firstName: firstName !== undefined ? firstName.trim() : undefined,

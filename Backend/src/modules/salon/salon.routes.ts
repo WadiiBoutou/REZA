@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { authMiddleware } from '../../middleware/authenticateRequest';
 import { salonService } from './salon.service';
 import { uploadImage } from '../../utils/cloudinary';
+import { requiredPhoneSchema, optionalPhoneSchema } from '../../utils/phone';
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ const lngSchema = z.coerce
 const createSalonSchema = z.object({
   name: z.string().min(1, 'Le nom du salon est requis'),
   email: z.string().email('Email invalide'),
-  phone: z.string().min(1, 'Le téléphone est requis'),
+  phone: requiredPhoneSchema,
   address: z.string().optional(),
   city: z.string().min(1, 'La ville est requise'),
   category: z.string().min(1, 'La catégorie est requise'),
@@ -50,7 +51,7 @@ const createSalonSchema = z.object({
 const updateSalonSchema = z.object({
   name: z.string().min(1, 'Le nom du salon est requis').optional(),
   email: z.string().email('Email invalide').optional(),
-  phone: z.string().min(1, 'Le téléphone est requis').optional(),
+  phone: optionalPhoneSchema,
   address: z.string().optional(),
   city: z.string().min(1, 'La ville est requise').optional(),
   category: z.string().min(1, 'La catégorie est requise').optional(),
