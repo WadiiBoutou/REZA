@@ -716,7 +716,15 @@ export class StatsService {
 
     const appointments = await prisma.appointment.findMany({
       where: appointmentWhere,
-      include: { service: true, employee: true, invoice: true }
+      include: {
+        service: true,
+        employee: true,
+        invoice: true,
+        // Per-service employee assignments — bookings made with distinct
+        // employees per service leave appointment.employeeId null, so the
+        // real attribution lives here (same pattern as getCollaborateursStats).
+        services: { select: { employeeId: true } },
+      }
     });
 
     const allServices = await prisma.service.findMany({ where: tenantWhere });
@@ -747,21 +755,37 @@ export class StatsService {
       };
     });
 
-    appointments.forEach(apt => {
+    appointments.forEach((apt: any) => {
       // "Services performed" counts exclude cancelled appointments (app-wide rule)
       if (apt.status === 'CANCELLED') return;
-      if (apt.employeeId && employeeStats[apt.employeeId]) {
-        employeeStats[apt.employeeId].totalAppointments++;
+      const isSalon = apt.source !== 'ONLINE';
+      const items = apt.services && apt.services.length > 0 ? apt.services : null;
+
+      // Prestations = performed services: count once per service item.
+      // RDV counts = appointments: dedupe employees so one appointment with
+      // several services assigned to the same employee counts as one RDV.
+      const rdvEmployees = new Set<string>();
+      if (items) {
+        items.forEach((item: any) => {
+          if (item.employeeId && employeeStats[item.employeeId]) {
+            rdvEmployees.add(item.employeeId);
+            employeeStats[item.employeeId].totalServices++;
+            if (isSalon) employeeStats[item.employeeId].salonServices++;
+            else employeeStats[item.employeeId].onlineServices++;
+          }
+        });
+      } else if (apt.employeeId && employeeStats[apt.employeeId]) {
+        rdvEmployees.add(apt.employeeId);
         employeeStats[apt.employeeId].totalServices++;
-        const isSalon = apt.source !== 'ONLINE';
-        if (isSalon) {
-          employeeStats[apt.employeeId].salonAppointments++;
-          employeeStats[apt.employeeId].salonServices++;
-        } else {
-          employeeStats[apt.employeeId].onlineAppointments++;
-          employeeStats[apt.employeeId].onlineServices++;
-        }
+        if (isSalon) employeeStats[apt.employeeId].salonServices++;
+        else employeeStats[apt.employeeId].onlineServices++;
       }
+
+      rdvEmployees.forEach((empId: string) => {
+        employeeStats[empId].totalAppointments++;
+        if (isSalon) employeeStats[empId].salonAppointments++;
+        else employeeStats[empId].onlineAppointments++;
+      });
     });
 
     Object.values(employeeStats).forEach((emp: any) => {

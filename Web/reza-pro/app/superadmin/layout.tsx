@@ -55,14 +55,15 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
     setNotifLoading(true);
     loadNotifications().finally(() => setNotifLoading(false));
 
-    // Live: Socket.IO push + 20s polling fallback
+    // Live: Socket.IO push only (no polling). Also resync on (re)connect
+    // so notifications emitted before the socket was up are not missed.
     const socket = getRealtimeSocket();
     const onNewNotification = () => loadNotifications();
     socket?.on('notification:new', onNewNotification);
-    const t = setInterval(() => loadNotifications(), 20000);
+    socket?.on('connect', onNewNotification);
     return () => {
       socket?.off('notification:new', onNewNotification);
-      clearInterval(t);
+      socket?.off('connect', onNewNotification);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, isAuthenticated, user?.role]);

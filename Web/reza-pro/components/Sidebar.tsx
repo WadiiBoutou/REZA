@@ -1144,24 +1144,31 @@ export default function Sidebar() {
 		}
 	}, [isAuthenticated, notificationTab, showNotificationSidebar]);
 
-	// Live notifications: Socket.IO push + a 30s polling fallback so the badge
-	// and list stay fresh even if the socket drops (proxy, sleep, etc).
+	// Live notifications: Socket.IO push only (no polling). We also resync
+	// when the socket (re)connects — the backend may have been asleep or
+	// restarted, and a notification emitted before our reconnect would
+	// otherwise be missed. Same for when the tab becomes visible again.
 	useEffect(() => {
 		if (!isAuthenticated) return;
 
 		const socket = getRealtimeSocket();
-		const onNewNotification = () => {
+		const refreshNotifications = () => {
 			fetchNotifications();
 		};
-		socket?.on('notification:new', onNewNotification);
+		socket?.on('notification:new', refreshNotifications);
+		socket?.on('connect', refreshNotifications);
 
-		const poll = window.setInterval(() => {
-			fetchNotifications();
-		}, 30000);
+		const onVisibilityChange = () => {
+			if (document.visibilityState === 'visible') {
+				fetchNotifications();
+			}
+		};
+		document.addEventListener('visibilitychange', onVisibilityChange);
 
 		return () => {
-			socket?.off('notification:new', onNewNotification);
-			window.clearInterval(poll);
+			socket?.off('notification:new', refreshNotifications);
+			socket?.off('connect', refreshNotifications);
+			document.removeEventListener('visibilitychange', onVisibilityChange);
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [isAuthenticated]);

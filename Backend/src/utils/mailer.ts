@@ -116,8 +116,8 @@ function getTransporter(candidate: Candidate): nodemailer.Transporter {
   });
 }
 
-async function sendViaBrevo(to: string, subject: string, html: string, text?: string): Promise<void> {
-  log.log(`[Mailer] Sending via Brevo API (HTTPS) to ${to}`);
+async function sendViaBrevo(to: string[], subject: string, html: string, text?: string): Promise<void> {
+  log.log(`[Mailer] Sending via Brevo API (HTTPS) to ${to.join(', ')}`);
   const res = await fetch(BREVO_ENDPOINT, {
     method: 'POST',
     headers: {
@@ -127,7 +127,7 @@ async function sendViaBrevo(to: string, subject: string, html: string, text?: st
     },
     body: JSON.stringify({
       sender: { email: brevoSenderEmail, name: brevoSenderName },
-      to: [{ email: to }],
+      to: to.map((email) => ({ email })),
       subject,
       htmlContent: html,
       ...(text ? { textContent: text } : {}),
@@ -229,7 +229,7 @@ export async function sendMail({ to, subject, html, text }: MailOptions): Promis
   }
 
   if (BREVO_API_KEY) {
-    await sendViaBrevo(recipients, subject, html, text);
+    await sendViaBrevo(Array.isArray(to) ? to : [to], subject, html, text);
     return;
   }
 
