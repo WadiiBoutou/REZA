@@ -407,13 +407,17 @@ export default function SalonLocationPicker({
         </button>
       </div>
 
-      {/* Map container — becomes a fixed fullscreen overlay when expanded */}
+      {/* Map container — becomes a fixed fullscreen overlay when expanded.
+          NOTE: the fullscreen branch must NOT also include `relative`/`z-0`/
+          `rounded-xl`/`border`: Tailwind emits `relative` AFTER `fixed` in the
+          stylesheet, so position:relative would win and `inset-0` would
+          collapse the container to zero height instead of covering the screen. */}
       <div
-        className={`relative rounded-xl border border-gray-200 overflow-hidden z-0 ${
+        className={
           isFullscreen
-            ? 'fixed inset-0 z-[100] rounded-none border-0'
-            : 'w-full h-80 sm:h-[420px]'
-        }`}
+            ? 'fixed inset-0 z-[100] overflow-hidden'
+            : 'relative w-full h-80 sm:h-[420px] rounded-xl border border-gray-200 overflow-hidden z-0'
+        }
       >
         <div ref={containerRef} className="absolute inset-0 w-full h-full" />
 
