@@ -36,6 +36,7 @@ interface BackendClient {
     appointments: number;
   };
   addedByClient?: { id: string; firstName: string; lastName: string } | null;
+  addedAs?: 'PROCHE' | 'INVITE' | null;
 }
 
 // Frontend display structure
@@ -56,6 +57,7 @@ interface Client {
   status: 'Active' | 'Inactive';
   notes?: string;
   addedByClient?: { id: string; name: string } | null;
+  addedAs?: 'PROCHE' | 'INVITE' | null;
 }
 
 // Helper function to convert backend client to frontend display format
@@ -108,6 +110,7 @@ const mapBackendToFrontend = (backendClient: BackendClient, appointments?: any[]
           name: `${backendClient.addedByClient.firstName} ${backendClient.addedByClient.lastName}`.trim()
         }
       : undefined,
+    addedAs: backendClient.addedAs || undefined,
     nextAppointment,
     nextAppointmentTime,
     lastVisit,
@@ -646,8 +649,11 @@ export default function ClientsGestionPage() {
                   <div>
                     <h3 className="font-medium text-gray-900">{client.name}</h3>
                     {client.addedByClient && (
-                      <span className="inline-block px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-medium mt-1">
-                        Proche · ajouté par {client.addedByClient.name}
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium mt-1 ${client.addedAs === 'INVITE'
+                          ? 'bg-sky-50 text-sky-700'
+                          : 'bg-amber-50 text-amber-700'
+                        }`}>
+                        {client.addedAs === 'INVITE' ? 'Invit' : 'Proche'} · ajouté par {client.addedByClient.name}
                       </span>
                     )}
                     <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium mt-1 ml-1 ${client.status === 'Active'
@@ -744,8 +750,11 @@ export default function ClientsGestionPage() {
                         <div>
                           <div className="font-medium text-gray-900 truncate">{client.name}</div>
                           {client.addedByClient && (
-                            <div className="text-[10px] font-medium text-amber-700 mt-0.5 truncate">
-                              Proche · ajouté par {client.addedByClient.name}
+                            <div className={`text-[10px] font-medium mt-0.5 truncate ${client.addedAs === 'INVITE'
+                                ? 'text-sky-700'
+                                : 'text-amber-700'
+                              }`}>
+                              {client.addedAs === 'INVITE' ? 'Invit' : 'Proche'} · ajouté par {client.addedByClient.name}
                             </div>
                           )}
                         </div>

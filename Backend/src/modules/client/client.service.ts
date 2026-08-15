@@ -64,9 +64,11 @@ export class ClientService {
       prisma.client.count({ where })
     ]);
 
-    // Proche detection: a client is a "proche" when their name matches a
-    // family_members row (added by the owning client account). Attach the
-    // owner so the admin list can show "Proche · ajouté par X".
+    // Attribution: a client is a "proche" when their name matches a
+    // family_members row (added by the owning client account), or an
+    // "invite" when they were added to a booking group as a non-booker
+    // (new person NOT registered as a proche). Attach the owner (the main
+    // client who added them) so the admin list can show the badge.
     const normalizeKey = (firstName?: string | null, lastName?: string | null) =>
       `${(firstName || '').trim().toLowerCase()}|${(lastName || '').trim().toLowerCase()}`;
 
@@ -87,6 +89,44 @@ export class ClientService {
       return { ...c, addedByClientId: ownerId ?? null };
     });
 
+    // One-time guests still get a client row so their appointment/invoice
+    // links hold; attribute them to the booker of the group they were added
+    // to (most recent first), flagged as INVITE.
+    const unattributedIds = clientsWithOwnerId
+      .filter((c) => !c.addedByClientId)
+      .map((c) => c.id);
+    const inviteByClientId = new Map<
+      string,
+      { bookerClientId: string | null; firstName: string; lastName: string }
+    >();
+    if (unattributedIds.length > 0) {
+      const participants = await prisma.bookingParticipant.findMany({
+        where: { isBooker: false, clientId: { in: unattributedIds } },
+        orderBy: { bookingGroup: { createdAt: 'desc' } },
+        select: {
+          clientId: true,
+          bookingGroup: {
+            select: {
+              bookerClientId: true,
+              bookerFirstName: true,
+              bookerLastName: true
+            }
+          }
+        }
+      });
+      for (const p of participants) {
+        if (!p.clientId || inviteByClientId.has(p.clientId)) continue;
+        inviteByClientId.set(p.clientId, {
+          bookerClientId: p.bookingGroup.bookerClientId,
+          firstName: p.bookingGroup.bookerFirstName,
+          lastName: p.bookingGroup.bookerLastName
+        });
+      }
+    }
+    for (const invite of inviteByClientId.values()) {
+      if (invite.bookerClientId) ownerIds.add(invite.bookerClientId);
+    }
+
     const owners =
       ownerIds.size > 0
         ? await prisma.client.findMany({
@@ -98,10 +138,20 @@ export class ClientService {
 
     const clientsWithStatus = clientsWithOwnerId.map((c) => {
       const { addedByClientId, ...rest } = c;
+      const invite = inviteByClientId.get(c.id);
+      let addedByClient: { id: string; firstName: string; lastName: string } | null = null;
+      if (addedByClientId) {
+        addedByClient = ownerById.get(addedByClientId) ?? null;
+      } else if (invite) {
+        addedByClient = invite.bookerClientId
+          ? ownerById.get(invite.bookerClientId) ?? null
+          : { id: '', firstName: invite.firstName, lastName: invite.lastName };
+      }
       return {
         ...rest,
         status: blockedIds.has(c.id) ? 'INACTIVE' : 'ACTIVE',
-        addedByClient: addedByClientId ? ownerById.get(addedByClientId) ?? null : null,
+        addedAs: addedByClientId ? 'PROCHE' : invite ? 'INVITE' : null,
+        addedByClient,
       };
     });
 
