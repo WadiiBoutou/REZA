@@ -28,17 +28,21 @@ class HomeViewModel extends ChangeNotifier {
       searchCity.isEmpty ? 'Toutes les villes' : searchCity;
 
   Future<void> initGeoPrompt() async {
-    if (await locationService.wasPromptDismissed()) {
-      showGeoPrompt = false;
-      notifyListeners();
-      return;
-    }
     if (await locationService.wasGrantedBefore()) {
       await requestUserLocation();
       return;
     }
-    showGeoPrompt = true;
-    notifyListeners();
+    if (await locationService.wasPromptDismissed()) {
+      // Previously dismissed — don't nag on open; the user can enable GPS via
+      // the marker button or by tapping "Plus proche" in search.
+      showGeoPrompt = false;
+      notifyListeners();
+      return;
+    }
+    // First open: ask the OS directly — the system dialog offers
+    // "while using the app / only this time / don't allow". On denial the
+    // banner stays visible so the user can retry.
+    await requestUserLocation();
   }
 
   Future<void> loadTenants({List<String>? categories}) async {

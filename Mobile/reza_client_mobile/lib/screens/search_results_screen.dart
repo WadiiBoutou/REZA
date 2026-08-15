@@ -311,6 +311,15 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
             ),
           ),
           Positioned(
+            top: MediaQuery.of(context).padding.top + 84,
+            right: 16,
+            child: _GpsButton(
+              active: _hasUserLocation,
+              loading: _geoLoading,
+              onTap: _requestUserLocation,
+            ),
+          ),
+          Positioned(
             top: MediaQuery.of(context).padding.top + 16,
             left: 20,
             right: 20,
@@ -409,7 +418,14 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                                     child: _SortChip(
                                       label: opt['label']!,
                                       selected: _sortBy == opt['key'],
-                                      onTap: () => setState(() => _sortBy = opt['key']!),
+                                      onTap: () {
+                                        setState(() => _sortBy = opt['key']!);
+                                        // Proximity needs real GPS — ask if we
+                                        // don't have a location yet.
+                                        if (opt['key'] == 'distance' && !_hasUserLocation) {
+                                          _requestUserLocation();
+                                        }
+                                      },
                                     ),
                                   ),
                               ],
@@ -475,6 +491,43 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _GpsButton extends StatelessWidget {
+  final bool active;
+  final bool loading;
+  final VoidCallback onTap;
+
+  const _GpsButton({required this.active, required this.loading, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: const CircleBorder(),
+      elevation: 3,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: loading ? null : onTap,
+        child: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          child: loading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                )
+              : Icon(
+                  Icons.my_location_rounded,
+                  size: 20,
+                  color: active ? AppColors.primary : AppColors.textGray,
+                ),
+        ),
       ),
     );
   }
