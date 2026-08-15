@@ -6,6 +6,7 @@ class FamilyMember {
   final String? phone;
   final String? email;
   final String? avatar;
+  final String? gender;
 
   const FamilyMember({
     required this.id,
@@ -15,6 +16,7 @@ class FamilyMember {
     this.phone,
     this.email,
     this.avatar,
+    this.gender,
   });
 
   String get name => '$firstName $lastName'.trim();
@@ -35,6 +37,7 @@ class FamilyMember {
       phone: json['phone']?.toString(),
       email: json['email']?.toString(),
       avatar: json['avatar']?.toString(),
+      gender: json['gender']?.toString(),
     );
   }
 }

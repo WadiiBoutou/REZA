@@ -1,5 +1,8 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../constants.dart';
 import '../models/family_member.dart';
@@ -102,6 +105,10 @@ class _ProchesScreenState extends State<_ProchesBody> {
     final relCtrl = TextEditingController(text: existing?.relationship ?? '');
     final phoneCtrl = TextEditingController(text: existing?.phone ?? '');
     final emailCtrl = TextEditingController(text: existing?.email ?? '');
+    var avatarBytes = <int>[];
+    var avatarUrl = existing?.avatar ?? '';
+    var uploadingAvatar = false;
+    String? gender = existing?.gender;
     var saving = false;
 
     await showModalBottomSheet<void>(
@@ -114,6 +121,94 @@ class _ProchesScreenState extends State<_ProchesBody> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
+            Widget avatarPreview() {
+              final placeholder = Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.border, width: 2),
+                ),
+                child: const Icon(Icons.person_outline_rounded, size: 40, color: AppColors.textGray),
+              );
+              Widget img;
+              if (avatarBytes.isNotEmpty) {
+                img = Image.memory(Uint8List.fromList(avatarBytes), fit: BoxFit.cover);
+              } else if (avatarUrl.trim().startsWith('data:')) {
+                try {
+                  img = Image.memory(base64Decode(avatarUrl.split(',').last), fit: BoxFit.cover);
+                } catch (_) {
+                  return placeholder;
+                }
+              } else if (avatarUrl.trim().isNotEmpty) {
+                img = Image.network(avatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => placeholder);
+              } else {
+                return placeholder;
+              }
+              return ClipOval(child: SizedBox(width: 88, height: 88, child: img));
+            }
+
+            Future<void> pickAvatar() async {
+              try {
+                final picked = await ImagePicker().pickImage(
+                  source: ImageSource.gallery,
+                  maxWidth: 800,
+                  maxHeight: 800,
+                  imageQuality: 85,
+                );
+                if (picked == null) return;
+                final bytes = await picked.readAsBytes();
+                setModal(() {
+                  avatarBytes = bytes;
+                  uploadingAvatar = true;
+                });
+                final ext = picked.name.contains('.') ? picked.name.split('.').last.toLowerCase() : 'jpg';
+                final mime = ext == 'png' ? 'image/png' : ext == 'webp' ? 'image/webp' : 'image/jpeg';
+                final res = await apiClient.uploadAvatar(bytes, 'avatar.$ext', mime);
+                if (ctx.mounted) {
+                  setModal(() {
+                    avatarUrl = (res['avatar'] as String?) ?? '';
+                    uploadingAvatar = false;
+                  });
+                }
+              } catch (_) {
+                if (ctx.mounted) setModal(() => uploadingAvatar = false);
+              }
+            }
+
+            Widget genderChip(String value, String label, IconData icon) {
+              final selected = gender == value;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => setModal(() => gender = selected ? null : value),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: selected ? AppColors.primary.withValues(alpha: 0.1) : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.5 : 1),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(icon, size: 18, color: selected ? AppColors.primary : AppColors.textGray),
+                        const SizedBox(width: 8),
+                        Text(
+                          label,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                            color: selected ? AppColors.primary : AppColors.textGray,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
             return Padding(
               padding: EdgeInsets.only(
                 left: 20,
@@ -131,6 +226,33 @@ class _ProchesScreenState extends State<_ProchesBody> {
                       style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 16),
+                    // ── Avatar (optional) ─────────────────────────
+                    Center(
+                      child: GestureDetector(
+                        onTap: uploadingAvatar ? null : pickAvatar,
+                        child: Stack(
+                          children: [
+                            avatarPreview(),
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: Container(
+                                width: 30,
+                                height: 30,
+                                decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                                child: uploadingAvatar
+                                    ? const Padding(
+                                        padding: EdgeInsets.all(7),
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                      )
+                                    : const Icon(Icons.photo_camera_rounded, size: 16, color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                     _sheetField('Prénom *', firstCtrl),
                     const SizedBox(height: 10),
                     _sheetField('Nom', lastCtrl),
@@ -140,6 +262,16 @@ class _ProchesScreenState extends State<_ProchesBody> {
                     _sheetField('Téléphone', phoneCtrl, keyboard: TextInputType.phone),
                     const SizedBox(height: 10),
                     _sheetField('Email', emailCtrl, keyboard: TextInputType.emailAddress),
+                    const SizedBox(height: 10),
+                    Text('Genre', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        genderChip('female', 'Femme', Icons.female_rounded),
+                        const SizedBox(width: 12),
+                        genderChip('male', 'Homme', Icons.male_rounded),
+                      ],
+                    ),
                     const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
@@ -166,6 +298,8 @@ class _ProchesScreenState extends State<_ProchesBody> {
                                       relationship: rel,
                                       phone: phoneCtrl.text.trim(),
                                       email: emailCtrl.text.trim(),
+                                      avatar: avatarUrl.isEmpty ? null : avatarUrl,
+                                      gender: gender,
                                     );
                                   } else {
                                     await accountService.updateFamilyMember(
@@ -176,6 +310,8 @@ class _ProchesScreenState extends State<_ProchesBody> {
                                       relationship: rel,
                                       phone: phoneCtrl.text.trim(),
                                       email: emailCtrl.text.trim(),
+                                      avatar: avatarUrl.isEmpty ? null : avatarUrl,
+                                      gender: gender,
                                     );
                                   }
                                   if (ctx.mounted) Navigator.pop(ctx);
@@ -222,6 +358,22 @@ class _ProchesScreenState extends State<_ProchesBody> {
     relCtrl.dispose();
     phoneCtrl.dispose();
     emailCtrl.dispose();
+  }
+
+  /// Resolves an avatar string (http URL or base64 data: URI) into an
+  /// ImageProvider, or null when empty/unusable (initials fallback).
+  ImageProvider? _avatarProvider(String src) {
+    final s = src.trim();
+    if (s.isEmpty) return null;
+    if (s.startsWith('data:')) {
+      try {
+        return MemoryImage(base64Decode(s.split(',').last));
+      } catch (_) {
+        return null;
+      }
+    }
+    if (s.startsWith('http')) return NetworkImage(s);
+    return null;
   }
 
   Widget _sheetField(String label, TextEditingController c, {TextInputType? keyboard}) {
@@ -383,12 +535,10 @@ class _ProchesScreenState extends State<_ProchesBody> {
                                   CircleAvatar(
                                     radius: 24,
                                     backgroundColor: AppColors.primary,
-                                    backgroundImage: (m.avatar ?? '').trim().isNotEmpty
-                                        ? NetworkImage(m.avatar!)
+                                    backgroundImage: _avatarProvider(m.avatar ?? ''),
+                                    child: _avatarProvider(m.avatar ?? '') == null
+                                        ? Text(m.initials, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700))
                                         : null,
-                                    child: (m.avatar ?? '').trim().isNotEmpty
-                                        ? null
-                                        : Text(m.initials, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(

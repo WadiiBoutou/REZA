@@ -364,6 +364,7 @@ model FamilyMember {
   phone        String?
   relationship String // e.g., "Fille", "Fils", "Mère", "Épouse", etc.
   avatar       String? // URL or base64 image
+  gender       String? // 'male' | 'female' (optional)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -478,7 +478,7 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
                 </div>
                 {/* Professional */}
                 <div className="w-full md:w-1/2">
-                  <label className="block text-sm text-gray-600 mb-4 tracking-wide uppercase text-[11px] font-medium">Professionnel (optionnel)</label>
+                  <label className="block text-sm text-gray-600 mb-4 tracking-wide uppercase text-[11px] font-medium">Professionnel</label>
                   <div className="flex flex-col gap-2">
                     {(Array.isArray(salonTeam) && salonTeam.length > 0 ? salonTeam : getMockProfessionals()).map((member, idx) => {
                       const isActive = professional?.name === member.name;
@@ -539,7 +539,7 @@ const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
               {/* Notes */}
               <div className="mt-8">
                 <label className="block text-sm text-gray-600 mb-2 tracking-wide uppercase text-[11px] font-medium">
-                  Notes (optionnel)
+                  Notes
                 </label>
                 <textarea
                   value={notes}

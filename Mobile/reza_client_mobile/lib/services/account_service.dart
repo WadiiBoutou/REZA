@@ -17,6 +17,8 @@ class AccountService {
     required String relationship,
     String? phone,
     String? email,
+    String? avatar,
+    String? gender,
   }) async {
     final res = await apiClient.post('/public/family-members', {
       'clientEmail': clientEmail,
@@ -25,6 +27,8 @@ class AccountService {
       'relationship': relationship,
       if (phone != null && phone.isNotEmpty) 'phone': phone,
       if (email != null && email.isNotEmpty) 'email': email,
+      if (avatar != null && avatar.isNotEmpty) 'avatar': avatar,
+      if (gender != null && gender.isNotEmpty) 'gender': gender,
     });
     return FamilyMember.fromJson(Map<String, dynamic>.from(res['familyMember'] as Map));
   }
@@ -37,6 +41,8 @@ class AccountService {
     required String relationship,
     String? phone,
     String? email,
+    String? avatar,
+    String? gender,
   }) async {
     final res = await apiClient.put('/public/family-members/$id', {
       'clientEmail': clientEmail,
@@ -45,6 +51,8 @@ class AccountService {
       'relationship': relationship,
       if (phone != null) 'phone': phone,
       if (email != null) 'email': email,
+      if (avatar != null) 'avatar': avatar,
+      if (gender != null) 'gender': gender,
     });
     return FamilyMember.fromJson(Map<String, dynamic>.from(res['familyMember'] as Map));
   }

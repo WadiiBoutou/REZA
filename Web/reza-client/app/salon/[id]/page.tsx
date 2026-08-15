@@ -1884,7 +1884,7 @@ function ReviewForm({ tenantId, user, employees, onReviewSubmitted }: { tenantId
       {selectableEmployees.length > 0 && (
         <div>
           <label htmlFor="review-employee" className="block text-sm font-medium text-gray-900 mb-3">
-            Employé concerné (optionnel)
+            Employé concerné
           </label>
           <Select
             value={employeeId || 'none'}
@@ -1910,7 +1910,7 @@ function ReviewForm({ tenantId, user, employees, onReviewSubmitted }: { tenantId
 
       <div>
         <label htmlFor="comment" className="block text-sm font-medium text-gray-900 mb-3">
-          Votre avis (optionnel)
+          Votre avis
         </label>
         <textarea
           id="comment"

@@ -729,7 +729,7 @@ function LoginPageContent() {
                 {mode === 'signup' && (
                   <div>
                     <label className="block text-sm font-bold text-gray-900 mb-2">
-                      Genre <span className="font-normal text-gray-400">(optionnel)</span>
+                      Genre
                     </label>
                     <div className="flex gap-3">
                       {[
@@ -776,7 +776,7 @@ function LoginPageContent() {
                       </button>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-gray-900 mb-1">
-                          Photo de profil <span className="font-normal text-gray-400">(optionnel)</span>
+                          Photo de profil
                         </p>
                         <p className="text-xs text-gray-400">Cliquez sur le cercle pour ajouter une photo</p>
                         <input
@@ -791,7 +791,7 @@ function LoginPageContent() {
 
                     <div>
                       <label htmlFor="dateOfBirth" className="block text-sm font-bold text-gray-900 mb-2">
-                        Date de naissance <span className="font-normal text-gray-400">(optionnel)</span>
+                        Date de naissance
                       </label>
                       <input
                         id="dateOfBirth"

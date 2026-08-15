@@ -524,7 +524,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             },
           ),
           const SizedBox(height: 16),
-          _buildLabel('Genre (optionnel)'),
+          _buildLabel('Genre'),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -534,7 +534,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             ],
           ),
           const SizedBox(height: 16),
-          _buildLabel('Date de naissance (optionnel)'),
+          _buildLabel('Date de naissance'),
           const SizedBox(height: 8),
           GestureDetector(
             onTap: _pickBirthdate,

@@ -54,7 +54,8 @@ export class FamilyMemberService {
         email: data.email || null,
         phone: data.phone || null,
         relationship: data.relationship,
-        avatar: data.avatar || null
+        avatar: data.avatar || null,
+        gender: data.gender || null
       }
     });
 
@@ -91,7 +92,8 @@ export class FamilyMemberService {
         email: data.email !== undefined ? (data.email || null) : undefined,
         phone: data.phone !== undefined ? (data.phone || null) : undefined,
         relationship: data.relationship,
-        avatar: data.avatar !== undefined ? (data.avatar || null) : undefined
+        avatar: data.avatar !== undefined ? (data.avatar || null) : undefined,
+        gender: data.gender !== undefined ? (data.gender || null) : undefined
       }
     });
 

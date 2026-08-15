@@ -14,6 +14,7 @@ interface FamilyMember {
   email?: string;
   avatar?: string | null;
   profileImage?: string | null;
+  gender?: string | null;
 }
 
 interface FamilyFormData {
@@ -23,6 +24,7 @@ interface FamilyFormData {
   email?: string;
   profileImage?: string | null;
   avatar?: string | null;
+  gender?: string;
 }
 
 interface FamilyTabProps {
@@ -64,7 +66,8 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
       relationship: member.relationship,
       phone: member.phone || '',
       email: member.email || '',
-      profileImage: member.profileImage || member.avatar || null
+      profileImage: member.profileImage || member.avatar || null,
+      gender: member.gender || ''
     });
     setPreviewImage(member.profileImage || member.avatar || null);
   };
@@ -77,7 +80,8 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
       relationship: '',
       phone: '',
       email: '',
-      profileImage: null
+      profileImage: null,
+      gender: ''
     });
     setPreviewImage(null);
   };
@@ -232,7 +236,8 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
           relationship: formData.relationship || '',
           phone: formData.phone ? normalizeMoroccanPhone(formData.phone.trim()) : '',
           email: formData.email ? formData.email.trim() : '',
-          avatar: formData.profileImage || null
+          avatar: formData.profileImage || null,
+          gender: formData.gender || null
         };
         await handleAddPerson(newMember);
         setIsAddingNew(false);
@@ -252,7 +257,8 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
             relationship: formData.relationship || '',
             phone: formData.phone ? normalizeMoroccanPhone(formData.phone.trim()) : '',
             email: formData.email ? formData.email.trim() : '',
-            avatar: formData.profileImage || null
+            avatar: formData.profileImage || null,
+            gender: formData.gender || null
           };
           // Save with the updated member data directly
           // No need to call handleEditPerson as FamilyTab handles its own editing UI
@@ -418,7 +424,7 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
                     className={`flex-1 text-xs text-gray-600 border-b ${
                       formErrors.phone ? 'border-red-300' : 'border-gray-200'
                     } focus:border-gray-900 outline-none pb-1 transition-colors`}
-                    placeholder="+212XXXXXXXXX ou 0XXXXXXXXX (optionnel)"
+                    placeholder="+212XXXXXXXXX ou 0XXXXXXXXX"
                   />
                 </div>
                 {formErrors.phone && (
@@ -436,12 +442,29 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
                     className={`flex-1 text-xs text-gray-600 border-b ${
                       formErrors.email ? 'border-red-300' : 'border-gray-200'
                     } focus:border-gray-900 outline-none pb-1 transition-colors`}
-                    placeholder="Adresse email (optionnel)"
+                    placeholder="Adresse email"
                   />
                 </div>
                 {formErrors.email && (
                   <p className="text-xs text-red-500 mt-1 ml-7">{formErrors.email}</p>
                 )}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="w-4 h-4" />
+                <div className="flex gap-2">
+                  {['female', 'male'].map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => handleInputChange('gender', formData.gender === g ? '' : g)}
+                      className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                        formData.gender === g ? 'bg-gray-900 text-white border-gray-900' : 'text-gray-500 border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      {g === 'female' ? 'Femme' : 'Homme'}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -631,7 +654,7 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
                           className={`flex-1 text-xs text-gray-600 border-b ${
                             formErrors.phone ? 'border-red-300' : 'border-gray-200'
                           } focus:border-gray-900 outline-none pb-1 transition-colors`}
-                          placeholder="+212XXXXXXXXX ou 0XXXXXXXXX (optionnel)"
+                          placeholder="+212XXXXXXXXX ou 0XXXXXXXXX"
                         />
                       </div>
                       {formErrors.phone && (
@@ -649,12 +672,29 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
                           className={`flex-1 text-xs text-gray-600 border-b ${
                             formErrors.email ? 'border-red-300' : 'border-gray-200'
                           } focus:border-gray-900 outline-none pb-1 transition-colors`}
-                          placeholder="Email (optionnel)"
+                          placeholder="Email"
                         />
                       </div>
                       {formErrors.email && (
                         <p className="text-xs text-red-500 mt-1 ml-7">{formErrors.email}</p>
                       )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="w-4 h-4" />
+                      <div className="flex gap-2">
+                        {['female', 'male'].map((g) => (
+                          <button
+                            key={g}
+                            type="button"
+                            onClick={() => handleInputChange('gender', formData.gender === g ? '' : g)}
+                            className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                              formData.gender === g ? 'bg-gray-900 text-white border-gray-900' : 'text-gray-500 border-gray-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            {g === 'female' ? 'Femme' : 'Homme'}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </>
                 ) : (

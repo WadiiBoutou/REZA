@@ -427,7 +427,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ userData, onUpdate }) => {
                     className={`w-full text-sm font-light text-gray-900 border-b ${
                       formErrors[field.value] ? 'border-red-300' : 'border-gray-200'
                     } focus:border-gray-900 outline-none pb-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
-                    placeholder={field.value === 'phone' ? '+212XXXXXXXXX ou 0XXXXXXXXX (optionnel)' : ''}
+                    placeholder={field.value === 'phone' ? '+212XXXXXXXXX ou 0XXXXXXXXX' : ''}
                   />
                   {formErrors[field.value] && (
                     <p className="text-xs text-red-500 mt-1">{formErrors[field.value]}</p>

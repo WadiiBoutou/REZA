@@ -397,6 +397,7 @@ class ApiClient {
     phone?: string;
     relationship: string;
     avatar?: string;
+    gender?: string;
   }) {
     return this.request<{ familyMember: any }>('/public/family-members', {
       method: 'POST',
@@ -412,6 +413,7 @@ class ApiClient {
     phone?: string;
     relationship?: string;
     avatar?: string;
+    gender?: string;
   }) {
     return this.request<{ familyMember: any }>(`/public/family-members/${id}`, {
       method: 'PUT',

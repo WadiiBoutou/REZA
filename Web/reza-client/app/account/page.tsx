@@ -793,7 +793,8 @@ export default function AccountDashboard() {
         email: personData.email || undefined,
         phone: personData.phone || undefined,
         relationship: personData.relationship,
-        avatar: personData.avatar || undefined
+        avatar: personData.avatar || undefined,
+        gender: personData.gender || undefined
       });
 
       // Refresh family members
@@ -806,7 +807,8 @@ export default function AccountDashboard() {
         relationship: member.relationship,
         phone: member.phone || '',
         email: member.email || '',
-        avatar: member.avatar || null
+        avatar: member.avatar || null,
+        gender: member.gender || null
       }));
       setFamilyMembers(formattedMembers);
     } catch (error: any) {
@@ -893,7 +895,8 @@ export default function AccountDashboard() {
         email: dataToSave.email || undefined,
         phone: dataToSave.phone || undefined,
         relationship: dataToSave.relationship,
-        avatar: dataToSave.avatar || undefined
+        avatar: dataToSave.avatar || undefined,
+        gender: dataToSave.gender || undefined
       });
 
       // Refresh family members to get updated data including avatar
@@ -906,7 +909,8 @@ export default function AccountDashboard() {
         relationship: member.relationship,
         phone: member.phone || '',
         email: member.email || '',
-        avatar: member.avatar || null
+        avatar: member.avatar || null,
+        gender: member.gender || null
       }));
       setFamilyMembers(formattedMembers);
       setShowEditModal(false);

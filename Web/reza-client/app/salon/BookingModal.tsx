@@ -1955,7 +1955,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Email (optionnel)</label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Email</label>
                   <input
                     type="email"
                     value={bookingData.email}
@@ -2200,7 +2200,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                                   type="text"
                                   value={procheRelation}
                                   onChange={e => setProcheRelation(e.target.value)}
-                                  placeholder="Relation (ex: cousin, ami) — optionnel"
+                                  placeholder="Relation (ex: cousin, ami)"
                                   className="w-full p-3 rounded-2xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-black placeholder:text-gray-400"
                                 />
                                 <button
@@ -2260,7 +2260,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                               type="email"
                               value={guestEmail}
                               onChange={e => { setGuestEmail(e.target.value); setGuestFormError(''); }}
-                              placeholder="Email (optionnel)"
+                              placeholder="Email"
                               className="w-full p-3 rounded-2xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-black placeholder:text-gray-400"
                             />
                             {guestFormError && (

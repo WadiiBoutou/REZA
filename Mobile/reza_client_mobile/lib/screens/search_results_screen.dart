@@ -825,7 +825,7 @@ class _SearchModalState extends State<_SearchModal> {
                             controller: _cityController,
                             decoration: InputDecoration(
                               border: InputBorder.none,
-                              hintText: 'Ville (optionnel)',
+                              hintText: 'Ville',
                               hintStyle: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray),
                             ),
                             style: GoogleFonts.inter(fontSize: 14, color: AppColors.textDark),

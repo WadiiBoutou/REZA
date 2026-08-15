@@ -180,7 +180,7 @@ class _GroupParticipantsSectionState extends State<GroupParticipantsSection> {
                       style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textDark),
                     ),
                     Text(
-                      'Moi optionnel — proches ou invités',
+                      'Ajoutez des proches ou invités',
                       style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray),
                     ),
                   ],
