@@ -643,13 +643,13 @@ class _HomeScreenState extends State<_HomeScreenBody> {
                     _buildSectionHeader('Salons à proximité', 'Voir tout'),
                     const SizedBox(height: 14),
                     SizedBox(
-                      height: 230,
+                      height: 270,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         itemCount: nearby.length.clamp(0, 2),
                         itemBuilder: (context, index) =>
-                            _buildNearbyCard(nearby[index]),
+                            _buildRecemmentConsulteCard(nearby[index]),
                       ),
                     ),
                     const SizedBox(height: 40),
@@ -817,68 +817,6 @@ class _HomeScreenState extends State<_HomeScreenBody> {
               style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray),
             ),
             const SizedBox(height: 2),
-            Text(
-              _metaLine(venue),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNearbyCard(VenueItem venue) {
-    return GestureDetector(
-      onTap: () => _openVenue(venue),
-      child: Container(
-        width: 240,
-        margin: const EdgeInsets.only(right: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: _VenueCardImage(image: venue.image, height: 140),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    venue.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textDark,
-                    ),
-                  ),
-                ),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.star_rounded,
-                      size: 14,
-                      color: AppColors.starColor,
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      venue.rating.toStringAsFixed(1).replaceAll('.', ','),
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textDark,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
             Text(
               _metaLine(venue),
               maxLines: 1,
