@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense, Fragment } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { DollarSign, CreditCard, RefreshCcw, Download, Plus, Search, Filter, Calendar, Users, X, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Wallet, Receipt, Clock, BarChart3, PieChart, Eye, Printer, FileText, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { DollarSign, RefreshCcw, Download, Plus, Search, Filter, Calendar, Users, X, ChevronDown, ChevronUp, ChevronRight, TrendingUp, TrendingDown, Wallet, Receipt, Clock, BarChart3, PieChart, Eye, Printer, FileText, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { BarChart, Bar, PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 import { generateCaissePDF } from '@/components/CaissePrintDocument';
@@ -736,8 +736,6 @@ function CaissePageContent({
 
   // Stats - use all transactions for overall stats, filtered for display
   const totalSales = transactions.filter(t => t.type === 'Vente').reduce((sum, t) => sum + t.amount, 0);
-  const totalCash = transactions.filter(t => t.method === 'Espèces' && t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
-  const totalCard = transactions.filter(t => t.method === 'Carte' && t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
   const totalRefunds = Math.abs(transactions.filter(t => t.type === 'Remboursement').reduce((sum, t) => sum + t.amount, 0));
   const totalDeposits = transactions.filter(t => t.type === 'Dépôt').reduce((sum, t) => sum + t.amount, 0);
   const totalWithdrawals = Math.abs(transactions.filter(t => t.type === 'Retrait').reduce((sum, t) => sum + t.amount, 0));
@@ -986,27 +984,13 @@ function CaissePageContent({
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8 animate-fadeIn">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 animate-fadeIn">
         <div className="bg-white rounded-lg border border-gray-100 p-6">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="text-gray-400" size={18} />
             <span className="text-xs text-gray-400">Ventes</span>
           </div>
           <p className="text-2xl font-light text-gray-900">{totalSales} MAD</p>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-100 p-6">
-          <div className="flex items-center gap-2 mb-2">
-            <DollarSign className="text-gray-400" size={18} />
-            <span className="text-xs text-gray-400">Espèces</span>
-          </div>
-          <p className="text-2xl font-light text-gray-900">{totalCash} MAD</p>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-100 p-6">
-          <div className="flex items-center gap-2 mb-2">
-            <CreditCard className="text-gray-400" size={18} />
-            <span className="text-xs text-gray-400">Carte</span>
-          </div>
-          <p className="text-2xl font-light text-gray-900">{totalCard} MAD</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-100 p-6">
           <div className="flex items-center gap-2 mb-2">
