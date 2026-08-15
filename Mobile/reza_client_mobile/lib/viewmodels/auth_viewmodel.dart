@@ -22,21 +22,31 @@ class AuthViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> register({
+  Future<bool> emailExists(String email) => authService.emailExists(email);
+
+  /// Registers a new client. The backend requires email verification, so this
+  /// does NOT log the user in — callers should show `result.message` and
+  /// return to the login form.
+  Future<RegisterResult> register({
     required String email,
     required String firstName,
     required String lastName,
     required String password,
     String? phone,
+    String? avatar,
+    String? gender,
+    String? dateOfBirth,
   }) async {
-    _user = await authService.register(
+    return authService.register(
       email: email,
       firstName: firstName,
       lastName: lastName,
       password: password,
       phone: phone,
+      avatar: avatar,
+      gender: gender,
+      dateOfBirth: dateOfBirth,
     );
-    notifyListeners();
   }
 
   Future<void> logout() async {

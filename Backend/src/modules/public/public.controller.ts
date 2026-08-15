@@ -364,6 +364,15 @@ export class PublicController {
     }
   }
 
+  async checkEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await clientAuthService.checkEmailExists(String(req.query.email || ''));
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async loginClient(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await clientAuthService.loginClient(req.body);

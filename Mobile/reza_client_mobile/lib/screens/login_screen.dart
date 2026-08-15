@@ -1,5 +1,8 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../constants.dart';
 import '../viewmodels/auth_viewmodel.dart';
@@ -30,6 +33,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final TextEditingController _confirmPasswordController = TextEditingController();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  String? _gender; // 'male' | 'female' (optional)
+  DateTime? _birthdate;
+  Uint8List? _avatarBytes;
+  String? _avatarUrl;
+  bool _uploadingAvatar = false;
+  String? _successMessage;
   final _formKey = GlobalKey<FormState>();
 
   bool _forgotMode = false;
@@ -55,6 +65,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _confirmPasswordController.dispose();
     _firstNameController.dispose();
     _lastNameController.dispose();
+    _phoneController.dispose();
     _resetEmailController.dispose();
     super.dispose();
   }
@@ -67,8 +78,28 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         _showError('Veuillez entrer une adresse email valide');
         return;
       }
+      if (_isSignUp) {
+        // Stop early if a confirmed account already exists for this email
+        // (server-side check — mirrors the backend's 409 on register).
+        setState(() => _submitting = true);
+        try {
+          final exists = await context.read<AuthViewModel>().emailExists(email);
+          if (!mounted) return;
+          if (exists) {
+            _showError('Un compte existe déjà avec cette adresse email. Connectez-vous.');
+            return;
+          }
+        } catch (_) {
+          // Check unreachable — fall through and let the server decide at submit.
+        } finally {
+          if (mounted) setState(() => _submitting = false);
+        }
+      }
       _animController.reset();
-      setState(() => _step = _isSignUp ? 2 : 1);
+      setState(() {
+        _successMessage = null;
+        _step = _isSignUp ? 2 : 1;
+      });
       _animController.forward();
     } else if (_step == 1) {
       final pw = _passwordController.text;
@@ -132,22 +163,25 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
     );
     try {
-      await context.read<AuthViewModel>().register(
+      final result = await context.read<AuthViewModel>().register(
             email: _emailController.text.trim(),
             firstName: _firstNameController.text.trim(),
             lastName: _lastNameController.text.trim(),
             password: _passwordController.text,
+            phone: _phoneController.text.trim(),
+            avatar: (_avatarUrl == null || _avatarUrl!.isEmpty) ? null : _avatarUrl,
+            gender: _gender,
+            dateOfBirth: _birthdate == null ? null : DateFormat('yyyy-MM-dd').format(_birthdate!),
           );
       if (!mounted) return;
-      if (widget.returnResultOnSuccess) {
-        // Dismiss the loading dialog first, then return to the caller.
-        Navigator.pop(context);
-        Navigator.pop(context, true);
-        return;
-      }
-      Navigator.pop(context);
-      Navigator.pushNamedAndRemoveUntil(context, '/', (r) => false);
-
+      Navigator.pop(context); // close loading dialog
+      // The backend always requires email verification — no session yet.
+      setState(() {
+        _successMessage = result.message;
+        _isSignUp = false;
+        _step = 0;
+        _resetSignupForm();
+      });
     } on ApiException catch (e) {
       if (mounted) {
         Navigator.pop(context);
@@ -161,6 +195,58 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  void _resetSignupForm() {
+    _phoneController.clear();
+    _gender = null;
+    _birthdate = null;
+    _avatarBytes = null;
+    _avatarUrl = null;
+    _uploadingAvatar = false;
+  }
+
+  Future<void> _pickAvatar() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      setState(() {
+        _avatarBytes = bytes;
+        _uploadingAvatar = true;
+      });
+      final ext = picked.name.contains('.') ? picked.name.split('.').last.toLowerCase() : 'jpg';
+      final mime = ext == 'png' ? 'image/png' : ext == 'webp' ? 'image/webp' : 'image/jpeg';
+      final res = await apiClient.uploadAvatar(bytes, 'avatar.$ext', mime);
+      if (!mounted) return;
+      setState(() {
+        _avatarUrl = (res['avatar'] as String?) ?? '';
+        _uploadingAvatar = false;
+      });
+      if (_avatarUrl!.isEmpty) {
+        _showError("Impossible de télécharger l'image. Réessayez.");
+      }
+    } catch (_) {
+      if (mounted) setState(() => _uploadingAvatar = false);
+      if (mounted) _showError("Impossible de sélectionner l'image.");
+    }
+  }
+
+  Future<void> _pickBirthdate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _birthdate ?? DateTime(now.year - 20, now.month, now.day),
+      firstDate: DateTime(now.year - 100),
+      lastDate: now,
+      helpText: 'Date de naissance',
+    );
+    if (picked != null && mounted) setState(() => _birthdate = picked);
   }
 
   void _showError(String msg) {
@@ -263,7 +349,32 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   : 'Complétez votre profil pour continuer',
           style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray, height: 1.4),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 24),
+        if (_successMessage != null) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.availableLight,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.mark_email_read_outlined, color: AppColors.available, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _successMessage!,
+                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.textDark, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+        const SizedBox(height: 8),
         if (_step == 0) ...[
           _buildLabel('Email'),
           const SizedBox(height: 8),
@@ -324,6 +435,44 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             ),
           ),
         ] else ...[
+          Center(
+            child: GestureDetector(
+              onTap: _uploadingAvatar ? null : _pickAvatar,
+              child: Stack(
+                children: [
+                  Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.surface,
+                      border: Border.all(color: AppColors.border, width: 2),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _avatarBytes != null
+                        ? Image.memory(_avatarBytes!, fit: BoxFit.cover)
+                        : Icon(Icons.person_outline_rounded, size: 44, color: AppColors.textGray),
+                  ),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                      child: _uploadingAvatar
+                          ? const Padding(
+                              padding: EdgeInsets.all(7),
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.photo_camera_rounded, size: 16, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
           Row(
             children: [
               Expanded(
@@ -358,6 +507,63 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+          _buildLabel('Téléphone'),
+          const SizedBox(height: 8),
+          _buildTextField(
+            controller: _phoneController,
+            hint: '06 12 34 56 78',
+            icon: Icons.phone_outlined,
+            keyboardType: TextInputType.phone,
+            validator: (v) {
+              final digits = (v ?? '').replaceAll(RegExp(r'[^0-9+]'), '');
+              if (digits.isEmpty) return 'Requis';
+              if (digits.length < 9) return 'Numéro invalide';
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildLabel('Genre (optionnel)'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _genderChip('female', 'Femme', Icons.female_rounded),
+              const SizedBox(width: 12),
+              _genderChip('male', 'Homme', Icons.male_rounded),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildLabel('Date de naissance (optionnel)'),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: _pickBirthdate,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.cake_outlined, color: AppColors.textGray, size: 20),
+                  const SizedBox(width: 12),
+                  Text(
+                    _birthdate == null
+                        ? 'Sélectionner une date'
+                        : DateFormat('dd/MM/yyyy').format(_birthdate!),
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      color: _birthdate == null ? AppColors.textLight : AppColors.textDark,
+                    ),
+                  ),
+                  const Spacer(),
+                  const Icon(Icons.chevron_right_rounded, color: AppColors.textGray, size: 20),
+                ],
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           _buildLabel('Mot de passe'),
@@ -438,6 +644,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 setState(() {
                   _isSignUp = !_isSignUp;
                   _step = 0;
+                  _successMessage = null;
                 });
                 _animController.forward();
               },
@@ -549,6 +756,38 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   Widget _buildLabel(String text) {
     return Text(text, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark));
+  }
+
+  Widget _genderChip(String value, String label, IconData icon) {
+    final selected = _gender == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _gender = selected ? null : value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.primary.withValues(alpha: 0.1) : AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.5 : 1),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 18, color: selected ? AppColors.primary : AppColors.textGray),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? AppColors.primary : AppColors.textGray,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildTextField({

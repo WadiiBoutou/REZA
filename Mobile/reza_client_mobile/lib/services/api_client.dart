@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import '../config/api_config.dart';
 
 class ApiException implements Exception {
@@ -72,6 +74,22 @@ class ApiClient {
   Future<Map<String, dynamic>> delete(String path, {Map<String, String>? query}) async {
     final uri = Uri.parse('$_base$path').replace(queryParameters: query);
     final res = await _client.delete(uri, headers: _headers);
+    return _decode(res);
+  }
+
+  /// Multipart file upload (e.g. avatar) — POSTs `file` as the `avatar` field.
+  Future<Map<String, dynamic>> uploadAvatar(Uint8List bytes, String filename, String contentType) async {
+    final uri = Uri.parse('$_base/public/auth/upload-avatar');
+    final req = http.MultipartRequest('POST', uri)
+      ..headers['Accept'] = 'application/json'
+      ..files.add(http.MultipartFile.fromBytes(
+        'avatar',
+        bytes,
+        filename: filename,
+        contentType: MediaType.parse(contentType),
+      ));
+    final streamed = await _client.send(req);
+    final res = await http.Response.fromStream(streamed);
     return _decode(res);
   }
 

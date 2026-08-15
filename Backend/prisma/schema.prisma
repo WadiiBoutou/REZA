@@ -294,7 +294,7 @@ model Client {
 
   firstName   String
   lastName    String
-  email       String?
+  email       String? @unique // One email = one account (server + DB enforced)
   phone       String
   address     String?
   avatar      String? // Profile picture URL or base64

@@ -228,6 +228,27 @@ export class ClientAuthService {
     return { message: 'Votre mot de passe a été réinitialisé avec succès.' };
   }
 
+  /**
+   * Lightweight pre-registration check: does a *confirmed* account already
+   * exist for this email? Mirrors registerClient's 409 logic (password set
+   * and no pending verification) so the app can stop the user before they
+   * fill the rest of the form. Unverified/guest rows don't block — register
+   * will refresh them and re-send the confirmation email.
+   */
+  async checkEmailExists(email: string) {
+    const normalized = String(email || '').trim().toLowerCase();
+    if (!normalized) {
+      return { exists: false };
+    }
+    const client = await prisma.client.findFirst({
+      where: { email: { equals: normalized, mode: 'insensitive' } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, password: true, verifyEmailToken: true },
+    });
+    const exists = !!(client && client.password && !client.verifyEmailToken);
+    return { exists };
+  }
+
   async registerClient(body: any) {
     const { email, firstName, lastName, phone, password, avatar, dateOfBirth, gender } = body;
 

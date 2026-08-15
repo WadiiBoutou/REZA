@@ -114,6 +114,9 @@ router.delete('/family-members/:id', (req, res, next) =>
 router.post('/auth/client-register', (req, res, next) =>
   publicController.registerClient(req, res, next)
 );
+router.get('/auth/check-email', (req, res, next) =>
+  publicController.checkEmail(req, res, next)
+);
 router.post('/auth/client-login', (req, res, next) =>
   publicController.loginClient(req, res, next)
 );
