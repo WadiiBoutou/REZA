@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../constants.dart';
 import '../viewmodels/auth_viewmodel.dart';
+import '../services/account_service.dart';
 import '../services/api_client.dart';
 import '../widgets/avatar_picker.dart';
 
@@ -20,7 +21,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   int _step = 0;
   bool _isSignUp = false;
   bool _showPassword = false;
@@ -30,7 +32,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -43,8 +46,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _formKey = GlobalKey<FormState>();
 
   bool _forgotMode = false;
-  bool _resetSent = false;
+
+  /// Forgot-password flow: 0 = enter email, 1 = enter code + new password,
+  /// 2 = done (success screen).
+  int _forgotStep = 0;
+  bool _forgotSubmitting = false;
   final TextEditingController _resetEmailController = TextEditingController();
+  final TextEditingController _resetCodeController = TextEditingController();
+  final TextEditingController _resetNewPasswordController =
+      TextEditingController();
+  final TextEditingController _resetConfirmPasswordController =
+      TextEditingController();
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
@@ -52,7 +64,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _animController = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeIn);
     _animController.forward();
   }
@@ -67,6 +82,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _lastNameController.dispose();
     _phoneController.dispose();
     _resetEmailController.dispose();
+    _resetCodeController.dispose();
+    _resetNewPasswordController.dispose();
+    _resetConfirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -86,7 +104,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           final exists = await context.read<AuthViewModel>().emailExists(email);
           if (!mounted) return;
           if (exists) {
-            _showError('Un compte existe déjà avec cette adresse email. Connectez-vous.');
+            _showError(
+              'Un compte existe déjà avec cette adresse email. Connectez-vous.',
+            );
             return;
           }
         } catch (_) {
@@ -118,13 +138,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      ),
     );
     try {
       await context.read<AuthViewModel>().login(
-            _emailController.text.trim(),
-            _passwordController.text,
-          );
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
       if (!mounted) return;
       if (widget.returnResultOnSuccess) {
         // Dismiss the loading dialog first, then return to the caller.
@@ -134,7 +156,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       }
       Navigator.pop(context);
       Navigator.pushNamedAndRemoveUntil(context, '/', (r) => false);
-
     } on ApiException catch (e) {
       if (mounted) {
         Navigator.pop(context);
@@ -160,19 +181,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      ),
     );
     try {
       final result = await context.read<AuthViewModel>().register(
-            email: _emailController.text.trim(),
-            firstName: _firstNameController.text.trim(),
-            lastName: _lastNameController.text.trim(),
-            password: _passwordController.text,
-            phone: _phoneController.text.trim(),
-            avatar: (_avatarUrl == null || _avatarUrl!.isEmpty) ? null : _avatarUrl,
-            gender: _gender,
-            dateOfBirth: _birthdate == null ? null : DateFormat('yyyy-MM-dd').format(_birthdate!),
-          );
+        email: _emailController.text.trim(),
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        password: _passwordController.text,
+        phone: _phoneController.text.trim(),
+        avatar: (_avatarUrl == null || _avatarUrl!.isEmpty) ? null : _avatarUrl,
+        gender: _gender,
+        dateOfBirth: _birthdate == null
+            ? null
+            : DateFormat('yyyy-MM-dd').format(_birthdate!),
+      );
       if (!mounted) return;
       Navigator.pop(context); // close loading dialog
       // The backend always requires email verification — no session yet.
@@ -215,8 +240,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         _avatarBytes = bytes;
         _uploadingAvatar = true;
       });
-      final ext = picked.name.contains('.') ? picked.name.split('.').last.toLowerCase() : 'jpg';
-      final mime = ext == 'png' ? 'image/png' : ext == 'webp' ? 'image/webp' : 'image/jpeg';
+      final ext = picked.name.contains('.')
+          ? picked.name.split('.').last.toLowerCase()
+          : 'jpg';
+      final mime = ext == 'png'
+          ? 'image/png'
+          : ext == 'webp'
+          ? 'image/webp'
+          : 'image/jpeg';
       final res = await apiClient.uploadAvatar(bytes, 'avatar.$ext', mime);
       if (!mounted) return;
       setState(() {
@@ -269,13 +300,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 children: [
                   if (_step > 0 || _forgotMode)
                     IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textDark),
+                      icon: const Icon(
+                        Icons.arrow_back_rounded,
+                        color: AppColors.textDark,
+                      ),
                       onPressed: () {
                         _animController.reset();
                         setState(() {
                           if (_forgotMode) {
                             _forgotMode = false;
-                            _resetSent = false;
+                            _forgotStep = 0;
+                            _forgotSubmitting = false;
+                            _resetCodeController.clear();
+                            _resetNewPasswordController.clear();
+                            _resetConfirmPasswordController.clear();
                           } else {
                             _step = _isSignUp && _step == 2 ? 0 : _step - 1;
                           }
@@ -285,7 +323,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     )
                   else
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, color: AppColors.textDark),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: AppColors.textDark,
+                      ),
                       onPressed: () => Navigator.pop(context),
                     ),
                   const Spacer(),
@@ -299,7 +340,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   opacity: _fadeAnim,
                   child: Form(
                     key: _formKey,
-                    child: _forgotMode ? _buildForgotPassword() : _buildStepContent(),
+                    child: _forgotMode
+                        ? _buildForgotPassword()
+                        : _buildStepContent(),
                   ),
                 ),
               ),
@@ -331,18 +374,28 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           _step == 0
               ? (_isSignUp ? 'Créer un compte' : 'Bon retour !')
               : _step == 1
-                  ? 'Votre mot de passe'
-                  : 'Vos informations',
-          style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w800, color: AppColors.textDark),
+              ? 'Votre mot de passe'
+              : 'Vos informations',
+          style: GoogleFonts.inter(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textDark,
+          ),
         ),
         const SizedBox(height: 6),
         Text(
           _step == 0
-              ? (_isSignUp ? 'Entrez votre email pour commencer' : 'Connectez-vous à votre compte REZA')
+              ? (_isSignUp
+                    ? 'Entrez votre email pour commencer'
+                    : 'Connectez-vous à votre compte REZA')
               : _step == 1
-                  ? 'Entrez votre mot de passe pour ${_emailController.text}'
-                  : 'Complétez votre profil pour continuer',
-          style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray, height: 1.4),
+              ? 'Entrez votre mot de passe pour ${_emailController.text}'
+              : 'Complétez votre profil pour continuer',
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textGray,
+            height: 1.4,
+          ),
         ),
         const SizedBox(height: 24),
         if (_successMessage != null) ...[
@@ -356,12 +409,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.mark_email_read_outlined, color: AppColors.available, size: 20),
+                const Icon(
+                  Icons.mark_email_read_outlined,
+                  color: AppColors.available,
+                  size: 20,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     _successMessage!,
-                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.textDark, height: 1.4),
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: AppColors.textDark,
+                      height: 1.4,
+                    ),
                   ),
                 ),
               ],
@@ -389,10 +450,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             ),
             child: Row(
               children: [
-                const Icon(Icons.mail_outline_rounded, size: 18, color: AppColors.textGray),
+                const Icon(
+                  Icons.mail_outline_rounded,
+                  size: 18,
+                  color: AppColors.textGray,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(_emailController.text, style: GoogleFonts.inter(fontSize: 14, color: AppColors.textDark)),
+                  child: Text(
+                    _emailController.text,
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      color: AppColors.textDark,
+                    ),
+                  ),
                 ),
                 GestureDetector(
                   onTap: () {
@@ -400,7 +471,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     setState(() => _step = 0);
                     _animController.forward();
                   },
-                  child: Text('Modifier', style: GoogleFonts.inter(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600, decoration: TextDecoration.underline)),
+                  child: Text(
+                    'Modifier',
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -425,7 +504,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               },
               child: Text(
                 'Mot de passe oublié ?',
-                style: GoogleFonts.inter(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w600, decoration: TextDecoration.underline),
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.underline,
+                ),
               ),
             ),
           ),
@@ -446,7 +530,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     clipBehavior: Clip.antiAlias,
                     child: _avatarBytes != null
                         ? Image.memory(_avatarBytes!, fit: BoxFit.cover)
-                        : Icon(Icons.person_outline_rounded, size: 44, color: AppColors.textGray),
+                        : Icon(
+                            Icons.person_outline_rounded,
+                            size: 44,
+                            color: AppColors.textGray,
+                          ),
                   ),
                   Positioned(
                     right: 0,
@@ -454,13 +542,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     child: Container(
                       width: 30,
                       height: 30,
-                      decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                      decoration: const BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
                       child: _uploadingAvatar
                           ? const Padding(
                               padding: EdgeInsets.all(7),
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
-                          : const Icon(Icons.photo_camera_rounded, size: 16, color: Colors.white),
+                          : const Icon(
+                              Icons.photo_camera_rounded,
+                              size: 16,
+                              color: Colors.white,
+                            ),
                     ),
                   ),
                 ],
@@ -543,7 +641,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.cake_outlined, color: AppColors.textGray, size: 20),
+                  const Icon(
+                    Icons.cake_outlined,
+                    color: AppColors.textGray,
+                    size: 20,
+                  ),
                   const SizedBox(width: 12),
                   Text(
                     _birthdate == null
@@ -551,11 +653,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         : DateFormat('dd/MM/yyyy').format(_birthdate!),
                     style: GoogleFonts.inter(
                       fontSize: 15,
-                      color: _birthdate == null ? AppColors.textLight : AppColors.textDark,
+                      color: _birthdate == null
+                          ? AppColors.textLight
+                          : AppColors.textDark,
                     ),
                   ),
                   const Spacer(),
-                  const Icon(Icons.chevron_right_rounded, color: AppColors.textGray, size: 20),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textGray,
+                    size: 20,
+                  ),
                 ],
               ),
             ),
@@ -577,8 +685,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             controller: _confirmPasswordController,
             hint: '••••••••',
             showPassword: _showConfirmPassword,
-            onToggle: () => setState(() => _showConfirmPassword = !_showConfirmPassword),
-            validator: (v) => v != _passwordController.text ? 'Les mots de passe ne correspondent pas' : null,
+            onToggle: () =>
+                setState(() => _showConfirmPassword = !_showConfirmPassword),
+            validator: (v) => v != _passwordController.text
+                ? 'Les mots de passe ne correspondent pas'
+                : null,
           ),
           const SizedBox(height: 16),
           GestureDetector(
@@ -591,17 +702,34 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   width: 22,
                   height: 22,
                   decoration: BoxDecoration(
-                    color: _acceptTerms ? AppColors.primary : Colors.transparent,
+                    color: _acceptTerms
+                        ? AppColors.primary
+                        : Colors.transparent,
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: _acceptTerms ? AppColors.primary : AppColors.border, width: 2),
+                    border: Border.all(
+                      color: _acceptTerms
+                          ? AppColors.primary
+                          : AppColors.border,
+                      width: 2,
+                    ),
                   ),
-                  child: _acceptTerms ? const Icon(Icons.check_rounded, size: 14, color: Colors.white) : null,
+                  child: _acceptTerms
+                      ? const Icon(
+                          Icons.check_rounded,
+                          size: 14,
+                          color: Colors.white,
+                        )
+                      : null,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     "J'accepte les conditions d'utilisation et la politique de confidentialité de REZA.",
-                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray, height: 1.4),
+                    style: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: AppColors.textGray,
+                      height: 1.4,
+                    ),
                   ),
                 ),
               ],
@@ -618,15 +746,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
             child: Text(
               _step == 1
                   ? 'Se connecter'
                   : _step == 2
-                      ? 'Créer mon compte'
-                      : 'Continuer',
-              style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
+                  ? 'Créer mon compte'
+                  : 'Continuer',
+              style: GoogleFonts.inter(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),
@@ -645,12 +778,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               },
               child: RichText(
                 text: TextSpan(
-                  style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray),
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: AppColors.textGray,
+                  ),
                   children: [
-                    TextSpan(text: _isSignUp ? 'Déjà un compte ? ' : "Pas encore de compte ? "),
+                    TextSpan(
+                      text: _isSignUp
+                          ? 'Déjà un compte ? '
+                          : "Pas encore de compte ? ",
+                    ),
                     TextSpan(
                       text: _isSignUp ? 'Se connecter' : "S'inscrire",
-                      style: GoogleFonts.inter(color: AppColors.textDark, fontWeight: FontWeight.w700, decoration: TextDecoration.underline),
+                      style: GoogleFonts.inter(
+                        color: AppColors.textDark,
+                        fontWeight: FontWeight.w700,
+                        decoration: TextDecoration.underline,
+                      ),
                     ),
                   ],
                 ),
@@ -670,87 +814,333 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Widget _buildForgotPassword() {
-    if (_resetSent) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const SizedBox(height: 40),
-          Container(
-            width: 80, height: 80,
-            decoration: BoxDecoration(color: AppColors.availableLight, shape: BoxShape.circle),
-            child: const Icon(Icons.mail_outline_rounded, color: AppColors.available, size: 38),
-          ),
-          const SizedBox(height: 24),
-          Text('Email envoyé !', style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.textDark)),
-          const SizedBox(height: 12),
-          Text(
-            'Vérifiez votre boîte de réception à\n${_resetEmailController.text}',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray, height: 1.5),
-          ),
-          const SizedBox(height: 32),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: () => setState(() {
-                _forgotMode = false;
-                _resetSent = false;
-              }),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              child: Text('Retour à la connexion', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600)),
-            ),
-          ),
-        ],
-      );
-    }
+    if (_forgotStep == 2) return _buildResetSuccess();
+    if (_forgotStep == 1) return _buildResetCodeStep();
+    return _buildResetEmailStep();
+  }
 
+  Widget _buildResetEmailStep() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
-        Center(child: Text('REZA', style: GoogleFonts.inter(fontSize: 40, fontWeight: FontWeight.w900, color: AppColors.textDark))),
+        Center(
+          child: Text(
+            'REZA',
+            style: GoogleFonts.inter(
+              fontSize: 40,
+              fontWeight: FontWeight.w900,
+              color: AppColors.textDark,
+            ),
+          ),
+        ),
         const SizedBox(height: 36),
-        Text('Mot de passe oublié ?', style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w800, color: AppColors.textDark)),
+        Text(
+          'Mot de passe oublié ?',
+          style: GoogleFonts.inter(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textDark,
+          ),
+        ),
         const SizedBox(height: 8),
-        Text('Entrez votre email et nous vous enverrons un lien de réinitialisation.', style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray, height: 1.4)),
+        Text(
+          'Entrez votre email et nous vous enverrons un code de vérification.',
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textGray,
+            height: 1.4,
+          ),
+        ),
         const SizedBox(height: 28),
         _buildLabel('Adresse email'),
         const SizedBox(height: 8),
-        _buildTextField(controller: _resetEmailController, hint: 'vous@exemple.com', icon: Icons.mail_outline_rounded),
+        _buildTextField(
+          controller: _resetEmailController,
+          hint: 'vous@exemple.com',
+          icon: Icons.mail_outline_rounded,
+        ),
         const SizedBox(height: 28),
         SizedBox(
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
-            onPressed: () {
-              final email = _resetEmailController.text.trim();
-              if (email.isEmpty || !email.contains('@')) {
-                _showError('Email invalide');
-                return;
-              }
-              setState(() => _resetSent = true);
-            },
+            onPressed: _forgotSubmitting ? null : _sendResetCode,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
-            child: Text('Envoyer le lien', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600)),
+            child: _forgotSubmitting
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    'Envoyer le code',
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
           ),
         ),
       ],
     );
   }
 
+  Widget _buildResetCodeStep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Center(
+          child: Text(
+            'REZA',
+            style: GoogleFonts.inter(
+              fontSize: 40,
+              fontWeight: FontWeight.w900,
+              color: AppColors.textDark,
+            ),
+          ),
+        ),
+        const SizedBox(height: 36),
+        Text(
+          'Code de vérification',
+          style: GoogleFonts.inter(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textDark,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Entrez le code à 6 chiffres envoyé à\n${_resetEmailController.text}',
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textGray,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 28),
+        _buildLabel('Code à 6 chiffres'),
+        const SizedBox(height: 8),
+        _buildTextField(
+          controller: _resetCodeController,
+          hint: '000000',
+          icon: Icons.pin_outlined,
+          keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: 16),
+        _buildLabel('Nouveau mot de passe'),
+        const SizedBox(height: 8),
+        _buildPasswordField(
+          controller: _resetNewPasswordController,
+          hint: '8 caractères minimum',
+          showPassword: _showPassword,
+          onToggle: () => setState(() => _showPassword = !_showPassword),
+        ),
+        const SizedBox(height: 16),
+        _buildLabel('Confirmer le mot de passe'),
+        const SizedBox(height: 8),
+        _buildPasswordField(
+          controller: _resetConfirmPasswordController,
+          hint: 'Répétez le mot de passe',
+          showPassword: _showConfirmPassword,
+          onToggle: () =>
+              setState(() => _showConfirmPassword = !_showConfirmPassword),
+        ),
+        const SizedBox(height: 28),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: _forgotSubmitting ? null : _submitResetCode,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: _forgotSubmitting
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    'Réinitialiser le mot de passe',
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResetSuccess() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const SizedBox(height: 40),
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: AppColors.availableLight,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.check_rounded,
+            color: AppColors.available,
+            size: 40,
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          'Mot de passe réinitialisé !',
+          style: GoogleFonts.inter(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textDark,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textGray,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 32),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: () => setState(() {
+              _forgotMode = false;
+              _forgotStep = 0;
+              _resetEmailController.clear();
+              _resetCodeController.clear();
+              _resetNewPasswordController.clear();
+              _resetConfirmPasswordController.clear();
+            }),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: Text(
+              'Retour à la connexion',
+              style: GoogleFonts.inter(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _sendResetCode() async {
+    final email = _resetEmailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      _showError('Email invalide');
+      return;
+    }
+    setState(() => _forgotSubmitting = true);
+    try {
+      await accountService.forgotPasswordCode(email);
+      if (!mounted) return;
+      setState(() {
+        _forgotSubmitting = false;
+        _forgotStep = 1;
+      });
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _forgotSubmitting = false);
+        _showError(e.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _forgotSubmitting = false);
+        _showError("Impossible d'envoyer le code. Vérifiez votre connexion.");
+      }
+    }
+  }
+
+  Future<void> _submitResetCode() async {
+    final code = _resetCodeController.text.trim();
+    final newPass = _resetNewPasswordController.text;
+    final confirm = _resetConfirmPasswordController.text;
+    if (code.length != 6) {
+      _showError('Entrez le code à 6 chiffres reçu par email');
+      return;
+    }
+    if (newPass.length < 8) {
+      _showError('Le mot de passe doit contenir au moins 8 caractères');
+      return;
+    }
+    if (newPass != confirm) {
+      _showError('Les mots de passe ne correspondent pas');
+      return;
+    }
+    setState(() => _forgotSubmitting = true);
+    try {
+      await accountService.changePassword(
+        email: _resetEmailController.text.trim(),
+        code: code,
+        newPassword: newPass,
+      );
+      if (!mounted) return;
+      setState(() {
+        _forgotSubmitting = false;
+        _forgotStep = 2;
+      });
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _forgotSubmitting = false);
+        _showError(e.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _forgotSubmitting = false);
+        _showError("Une erreur est survenue. Réessayez.");
+      }
+    }
+  }
+
   Widget _buildLabel(String text) {
-    return Text(text, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark));
+    return Text(
+      text,
+      style: GoogleFonts.inter(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textDark,
+      ),
+    );
   }
 
   Widget _genderChip(String value, String label, IconData icon) {
@@ -761,14 +1151,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: selected ? AppColors.primary.withValues(alpha: 0.1) : AppColors.surface,
+            color: selected
+                ? AppColors.primary.withValues(alpha: 0.1)
+                : AppColors.surface,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.5 : 1),
+            border: Border.all(
+              color: selected ? AppColors.primary : AppColors.border,
+              width: selected ? 1.5 : 1,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 18, color: selected ? AppColors.primary : AppColors.textGray),
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? AppColors.primary : AppColors.textGray,
+              ),
               const SizedBox(width: 8),
               Text(
                 label,
@@ -802,11 +1201,26 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         prefixIcon: Icon(icon, color: AppColors.textGray, size: 20),
         filled: true,
         fillColor: AppColors.surface,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
-        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFEF4444))),
-        contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFEF4444)),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 14,
+          horizontal: 16,
+        ),
       ),
       validator: validator,
     );
@@ -826,18 +1240,43 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: GoogleFonts.inter(color: AppColors.textLight, fontSize: 14),
-        prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.textGray, size: 20),
+        prefixIcon: const Icon(
+          Icons.lock_outline_rounded,
+          color: AppColors.textGray,
+          size: 20,
+        ),
         suffixIcon: IconButton(
-          icon: Icon(showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: AppColors.textGray, size: 20),
+          icon: Icon(
+            showPassword
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+            color: AppColors.textGray,
+            size: 20,
+          ),
           onPressed: onToggle,
         ),
         filled: true,
         fillColor: AppColors.surface,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
-        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFEF4444))),
-        contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFEF4444)),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 14,
+          horizontal: 16,
+        ),
       ),
       validator: validator,
     );

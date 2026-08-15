@@ -123,6 +123,9 @@ router.post('/auth/client-login', (req, res, next) =>
 router.post('/auth/client-forgot-password', (req, res, next) =>
   publicController.forgotClientPassword(req, res, next)
 );
+router.post('/auth/client-forgot-code', (req, res, next) =>
+  publicController.forgotClientPasswordCode(req, res, next)
+);
 router.post('/auth/client-reset-password', (req, res, next) =>
   publicController.resetClientPassword(req, res, next)
 );

@@ -7,6 +7,7 @@ import { isValidPhone, phoneError } from '../../../utils/phone';
 
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes — recommended for password resets
 const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — recommended for email confirmation
+const PASSWORD_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes — emailed 6-digit code
 const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex');
 
 function getClientFrontendBaseUrl(req?: any): string {
@@ -76,6 +77,64 @@ export class ClientAuthService {
     message: "Si un compte existe pour cette adresse email, un lien de réinitialisation a été envoyé.",
   };
 }
+
+  /**
+   * Forgot password for MOBILE (no web link — email a 6-digit code the user
+   * types back into the app). No current password required. The code is stored
+   * hashed in resetPasswordToken, so the existing change-password endpoint
+   * validates it without changes.
+   */
+  async forgotClientPasswordCode(body: any) {
+    const email = String(body.email || '').trim().toLowerCase();
+    if (!email) {
+      fail(400, { error: 'Email required', message: "Veuillez entrer votre adresse email." });
+    }
+
+    const client = await prisma.client.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: { id: true, email: true, firstName: true, lastName: true, password: true },
+    });
+
+    if (client && client.password) {
+      const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+      await prisma.client.update({
+        where: { id: client.id },
+        data: {
+          resetPasswordToken: hashToken(code),
+          resetPasswordExpires: new Date(Date.now() + PASSWORD_CODE_TTL_MS),
+        },
+      });
+
+      const name = `${client.firstName || ''} ${client.lastName || ''}`.trim();
+      try {
+        await sendMail({
+          to: client.email!,
+          subject: 'Votre code de vérification — Reza',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+              <h2 style="color: #002366;">Réinitialisation de votre mot de passe</h2>
+              <p>Bonjour ${name},</p>
+              <p>Vous avez demandé la réinitialisation de votre mot de passe Reza. Voici votre code de vérification :</p>
+              <p style="text-align: center; margin: 28px 0;">
+                <span style="display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 32px; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #002366;">${code}</span>
+              </p>
+              <p style="font-size: 13px; color: #666;">Ce code expire dans <strong>10 minutes</strong>. Si vous n'avez pas demandé cette réinitialisation, ignorez cet email.</p>
+            </div>
+          `,
+        });
+      } catch (mailError: any) {
+        await prisma.client.update({
+          where: { id: client.id },
+          data: { resetPasswordToken: null, resetPasswordExpires: null },
+        });
+        throw mailError;
+      }
+    }
+
+    return {
+      message: 'Si un compte existe pour cette adresse email, un code de vérification a été envoyé.',
+    };
+  }
 
   /**
    * Email verification for a newly registered client account (one-time token).

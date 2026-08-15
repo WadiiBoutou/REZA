@@ -6,7 +6,9 @@ class AccountService {
     final res = await apiClient.get(
       '/public/client/${Uri.encodeComponent(email)}/family-members',
     );
-    final list = List<Map<String, dynamic>>.from((res['familyMembers'] as List?) ?? []);
+    final list = List<Map<String, dynamic>>.from(
+      (res['familyMembers'] as List?) ?? [],
+    );
     return list.map(FamilyMember.fromJson).toList();
   }
 
@@ -30,7 +32,9 @@ class AccountService {
       if (avatar != null && avatar.isNotEmpty) 'avatar': avatar,
       if (gender != null && gender.isNotEmpty) 'gender': gender,
     });
-    return FamilyMember.fromJson(Map<String, dynamic>.from(res['familyMember'] as Map));
+    return FamilyMember.fromJson(
+      Map<String, dynamic>.from(res['familyMember'] as Map),
+    );
   }
 
   Future<FamilyMember> updateFamilyMember({
@@ -54,7 +58,9 @@ class AccountService {
       if (avatar != null) 'avatar': avatar,
       if (gender != null) 'gender': gender,
     });
-    return FamilyMember.fromJson(Map<String, dynamic>.from(res['familyMember'] as Map));
+    return FamilyMember.fromJson(
+      Map<String, dynamic>.from(res['familyMember'] as Map),
+    );
   }
 
   Future<void> deleteFamilyMember(String id, String clientEmail) async {
@@ -64,12 +70,17 @@ class AccountService {
     );
   }
 
-  Future<List<Map<String, dynamic>>> getAppointments(String email, {String sortBy = 'createdAt'}) async {
+  Future<List<Map<String, dynamic>>> getAppointments(
+    String email, {
+    String sortBy = 'createdAt',
+  }) async {
     final res = await apiClient.get(
       '/public/client/${Uri.encodeComponent(email)}/appointments',
       query: {'limit': '100', 'sortBy': sortBy},
     );
-    return List<Map<String, dynamic>>.from((res['appointments'] as List?) ?? []);
+    return List<Map<String, dynamic>>.from(
+      (res['appointments'] as List?) ?? [],
+    );
   }
 
   Future<void> cancelAppointment(String appointmentId, String email) async {
@@ -85,7 +96,10 @@ class AccountService {
     return List<Map<String, dynamic>>.from((res['favorites'] as List?) ?? []);
   }
 
-  Future<Map<String, dynamic>> addFavorite(String email, String tenantId) async {
+  Future<Map<String, dynamic>> addFavorite(
+    String email,
+    String tenantId,
+  ) async {
     return apiClient.post('/public/favorites', {
       'clientEmail': email,
       'tenantId': tenantId,
@@ -123,6 +137,14 @@ class AccountService {
       '/public/client/${Uri.encodeComponent(email)}/send-password-code',
       {'currentPassword': currentPassword},
     );
+  }
+
+  /// Forgot password (mobile): emails a 6-digit code to the account owner.
+  /// No current password required — used by the "Mot de passe oublié" flow.
+  Future<void> forgotPasswordCode(String email) async {
+    await apiClient.post('/public/auth/client-forgot-code', {
+      'email': email.trim(),
+    });
   }
 
   /// Step 2 — validate the emailed code and set the new password.
