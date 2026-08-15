@@ -452,9 +452,13 @@ export class InvoiceService {
     }> = [];
 
     for (const p of group.participants) {
-      const displayName = p.client
-        ? `${p.client.firstName} ${p.client.lastName}`.trim()
-        : p.displayName;
+      // The participant's booked name (displayName) is the canonical "who this
+      // is for" — two participants can share a Client row (proche merged onto
+      // the booker's record), in which case the client's name would duplicate
+      // the booker's name on every line.
+      const displayName =
+        (p.displayName || '').trim() ||
+        `${p.client?.firstName || ''} ${p.client?.lastName || ''}`.trim();
 
       if (!p.appointment) continue;
 
@@ -600,21 +604,56 @@ export class InvoiceService {
 
     const invoices: any[] = [];
 
+    // Two participants can point at the same Client row (e.g. a proche whose
+    // booking was recorded against the booker's client record). Each separate
+    // invoice must be attributed to the participant it is FOR, so detect
+    // client records shared by more than one participant and give those
+    // participants their own dedicated client below.
+    const clientIdCounts = new Map<string, number>();
+    for (const p of group.participants) {
+      if (p.clientId) clientIdCounts.set(p.clientId, (clientIdCounts.get(p.clientId) || 0) + 1);
+    }
+    const isSharedClient = (id: string | null | undefined) =>
+      !!id && (clientIdCounts.get(id) || 0) > 1;
+
+    // When participants share a client row, the first participant linked to it
+    // (the booker, created first) keeps the existing record — the others get
+    // their own dedicated client. Otherwise the booker would be duplicated.
+    const sharedClientKeepers = new Set<string>();
+    for (const p of group.participants) {
+      if (isSharedClient(p.clientId) && !sharedClientKeepers.has(p.clientId as string)) {
+        sharedClientKeepers.add(p.clientId as string);
+      }
+    }
+
     await prisma.$transaction(async (tx) => {
       for (const p of group.participants) {
         if (!p.clientId || !p.appointment) continue;
 
+        // The participant's own client record (may differ from the booked name
+        // if their client row was renamed) — resolve a dedicated record when
+        // the participant shares one with someone else in the group.
+        let invoiceClientId = p.clientId;
+        if (isSharedClient(p.clientId) && !sharedClientKeepers.has(p.clientId)) {
+          invoiceClientId = await this.resolveDedicatedParticipantClient(tx, p, group.participants);
+        }
+
         const svcItems = p.appointment.services;
         if (svcItems.length === 0) continue;
+
+        // participantName = the name the participant booked under. The client
+        // record's name is NOT reliable here: a shared client row would echo
+        // the booker's name onto the proche's invoice line.
+        const participantName =
+          (p.displayName || '').trim() ||
+          `${p.client?.firstName || ''} ${p.client?.lastName || ''}`.trim();
 
         const items = svcItems.map((si) => ({
           serviceId: si.serviceId,
           serviceName: si.serviceName,
           price: si.price,
           quantity: 1,
-          participantName: p.client
-            ? `${p.client.firstName} ${p.client.lastName}`.trim()
-            : p.displayName,
+          participantName,
         }));
 
         const amount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -626,7 +665,7 @@ export class InvoiceService {
         const invoice = await tx.invoice.create({
           data: {
             tenantId,
-            clientId: p.clientId,
+            clientId: invoiceClientId,
             bookingGroupId: data.bookingGroupId,
             appointmentId: p.appointmentId || undefined,
             invoiceNumber: this.generateInvoiceNumber(),
@@ -636,7 +675,7 @@ export class InvoiceService {
             status: 'PAID',
             paymentMethod: data.paymentMethod as any,
             paidAt: new Date(),
-            notes: `Séparation — ${p.displayName}`,
+            notes: `Séparation — ${participantName}`,
             items: { create: items },
           },
         });
@@ -652,6 +691,62 @@ export class InvoiceService {
     });
 
     return invoices;
+  }
+
+  /**
+   * Give a participant their own Client record when they currently share one
+   * with another participant of the same group (e.g. a proche recorded against
+   * the booker's client). Reuses an existing client with the same name as long
+   * as no other participant of this group is already linked to it, then heals
+   * the participant + appointment links so future billing stays correct.
+   */
+  private async resolveDedicatedParticipantClient(
+    tx: any,
+    p: { id: string; displayName: string; appointmentId: string | null },
+    participants: Array<{ id: string; clientId: string | null }>,
+  ): Promise<string> {
+    const name = (p.displayName || '').trim();
+    const parts = name.split(' ');
+    const firstName = parts[0] || name;
+    const lastName = parts.slice(1).join(' ').trim() || '';
+
+    const usedByOtherParticipants = new Set(
+      participants
+        .filter((x) => x.id !== p.id && x.clientId)
+        .map((x) => x.clientId as string)
+    );
+
+    // Reuse a matching client record (name-based, like the booking flow's
+    // fallback) — never one already linked to another participant here.
+    let client = await tx.client.findFirst({
+      where: { firstName, lastName },
+    });
+    if (client && usedByOtherParticipants.has(client.id)) {
+      client = null;
+    }
+    if (!client) {
+      client = await tx.client.create({
+        data: {
+          firstName,
+          lastName,
+          phone: `guest_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+          status: 'ACTIVE',
+        },
+      });
+    }
+
+    await tx.bookingParticipant.update({
+      where: { id: p.id },
+      data: { clientId: client.id },
+    });
+    if (p.appointmentId) {
+      await tx.appointment.update({
+        where: { id: p.appointmentId },
+        data: { clientId: client.id },
+      });
+    }
+
+    return client.id;
   }
 
   async updateInvoice(tenantIds: string | string[], id: string, data: any) {

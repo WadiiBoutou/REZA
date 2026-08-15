@@ -1144,13 +1144,18 @@ function CaissePageContent({
             <tbody className="divide-y divide-gray-100">
               {filteredTransactions.length > 0 ? (
                 filteredTransactions.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map(tx => {
+                   // Only multi-line transactions (multi-service, or a combined
+                   // group invoice with several participant rows) expand — a
+                   // single-service invoice, incl. a separately billed group
+                   // participant, is a plain one-liner.
                    const isMultiService = tx.items && tx.items.length > 1;
-                   const isGroupInvoice = !!tx.bookingGroupId;
-                   const canExpand = isMultiService || isGroupInvoice;
+                   const canExpand = isMultiService;
                    const isExpanded = expandedRows.has(tx.id);
                   const hasItems = tx.items && tx.items.length > 0;
                   const mainServiceLabel = tx.items && tx.items.length === 1
-                    ? tx.items[0].serviceName
+                    ? (tx.items[0].participantName
+                        ? `${tx.items[0].serviceName} — pour ${tx.items[0].participantName}`
+                        : tx.items[0].serviceName)
                     : (tx.items && tx.items.length > 1 ? 'Prestations multiples' : tx.note || undefined);
                   const toggleExpand = () => {
                     const next = new Set(expandedRows);
