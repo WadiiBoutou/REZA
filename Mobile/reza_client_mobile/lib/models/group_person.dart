@@ -8,6 +8,7 @@ class GroupPerson {
   final String? relationship;
   final String? familyMemberId; // Non-null if selected from existing proches
   final bool saveAsProche; // Whether to persist as a new proche
+  final String? avatar; // Profile picture (http URL or base64 data: URI)
 
   const GroupPerson({
     required this.firstName,
@@ -17,6 +18,7 @@ class GroupPerson {
     this.relationship,
     this.familyMemberId,
     this.saveAsProche = false,
+    this.avatar,
   });
 
   String get displayName => '$firstName $lastName'.trim();

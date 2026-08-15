@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -436,6 +438,8 @@ class _BookingScreenState extends State<BookingScreen> {
   bool _needsContactStep() {
     if (widget.prefillParticipant != null) {
       final p = widget.prefillParticipant!;
+      // Saved proche: all their info is already on the DB — skip the form.
+      if (p['familyMemberId'] != null) return false;
       final name = '${p['firstName'] ?? ''} ${p['lastName'] ?? ''}'.trim();
       final phone = (p['phone'] ?? '').toString();
       return name.isEmpty || phone.isEmpty;
@@ -565,6 +569,9 @@ class _BookingScreenState extends State<BookingScreen> {
       // same proche to this group-booking session.
       if (widget.prefillParticipant?['familyMemberId'] != null)
         'familyMemberId': widget.prefillParticipant!['familyMemberId'],
+      // Avatar for the recap (proche photos; booker uses the session avatar).
+      if (widget.prefillParticipant?['avatar'] != null)
+        'avatar': widget.prefillParticipant!['avatar'],
       'serviceIds': serviceIds,
       'startTimeIso': startLocal.toUtc().toIso8601String(),
       if (serviceEmployees != null) 'serviceEmployees': serviceEmployees,
@@ -666,6 +673,7 @@ class _BookingScreenState extends State<BookingScreen> {
             'phone': person.phone ?? '',
             if (person.email != null) 'email': person.email,
             if (person.familyMemberId != null) 'familyMemberId': person.familyMemberId,
+            if (person.avatar != null) 'avatar': person.avatar,
           },
         ),
       ),
@@ -1472,6 +1480,8 @@ class _BookingScreenState extends State<BookingScreen> {
 
       return _RecapPersonCard(
         name: '${p['firstName'] ?? ''} ${p['lastName'] ?? ''}'.trim(),
+        avatarUrl: (p['avatar'] ?? '').toString(),
+        isBooker: false,
         dateTime: dateTime,
         contact: null,
         services: _withServiceDividers(rows),
@@ -1497,6 +1507,8 @@ class _BookingScreenState extends State<BookingScreen> {
             children: [
               _RecapPersonCard(
                 name: personName,
+                avatarUrl: context.read<AuthViewModel>().user?.avatar ?? '',
+                isBooker: true,
                 dateTime: '${_formatFullDate(_selectedDate!)} à $_selectedTime',
                 contact: contact,
                 services: _withServiceDividers(servicesRows),
@@ -1797,14 +1809,94 @@ class _RecapServiceRow extends StatelessWidget {
   }
 }
 
+/// Round participant avatar for the recap — fetches http or base64 data: URLs
+/// (proche photos are often stored as data URIs), with a crown over the
+/// booker's avatar to mark who is creating the appointment.
+class _PersonAvatar extends StatelessWidget {
+  final String name;
+  final String avatarUrl;
+  final bool isBooker;
+  const _PersonAvatar({required this.name, required this.avatarUrl, this.isBooker = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    Widget fallback({Color? bg, Color? fg}) => Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: bg ?? AppColors.primary.withValues(alpha: 0.08),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              initials,
+              style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: fg ?? AppColors.primary),
+            ),
+          ),
+        );
+
+    final src = avatarUrl.trim();
+    Widget avatar;
+    if (src.isEmpty) {
+      avatar = fallback();
+    } else if (src.startsWith('data:')) {
+      try {
+        avatar = ClipOval(
+          child: SizedBox(
+            width: 38,
+            height: 38,
+            child: Image.memory(
+              base64Decode(src.split(',').last),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => fallback(bg: AppColors.chipBg, fg: AppColors.textGray),
+            ),
+          ),
+        );
+      } catch (_) {
+        avatar = fallback();
+      }
+    } else {
+      avatar = ClipOval(
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: Image.network(
+            src,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => fallback(bg: AppColors.chipBg, fg: AppColors.textGray),
+          ),
+        ),
+      );
+    }
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        avatar,
+        if (isBooker)
+          Positioned(
+            top: -9,
+            right: -8,
+            child: Icon(FontAwesomeIcons.crown, size: 15, color: const Color(0xFFF59E0B)),
+          ),
+      ],
+    );
+  }
+}
+
 class _RecapPersonCard extends StatelessWidget {
   final String name;
+  final String avatarUrl;
+  final bool isBooker;
   final String dateTime;
   final String? contact;
   final List<Widget> services;
 
   const _RecapPersonCard({
     required this.name,
+    this.avatarUrl = '',
+    this.isBooker = false,
     required this.dateTime,
     this.contact,
     required this.services,
@@ -1825,20 +1917,7 @@ class _RecapPersonCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.08),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary),
-                  ),
-                ),
-              ),
+              _PersonAvatar(name: name, avatarUrl: avatarUrl, isBooker: isBooker),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

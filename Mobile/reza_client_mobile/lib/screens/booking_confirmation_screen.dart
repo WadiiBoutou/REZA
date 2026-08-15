@@ -24,11 +24,26 @@ class BookingConfirmationScreen extends StatefulWidget {
   State<BookingConfirmationScreen> createState() => _BookingConfirmationScreenState();
 }
 
+class _ParticipantService {
+  final String name;
+  final int durationMin;
+  final double price;
+  const _ParticipantService({required this.name, required this.durationMin, required this.price});
+}
+
 class _ParticipantInfo {
   final String displayName;
   final bool isBooker;
   final double subtotal;
-  _ParticipantInfo({required this.displayName, required this.isBooker, required this.subtotal});
+  final String startTime;
+  final List<_ParticipantService> services;
+  _ParticipantInfo({
+    required this.displayName,
+    required this.isBooker,
+    required this.subtotal,
+    this.startTime = '',
+    this.services = const [],
+  });
 }
 
 class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
@@ -68,10 +83,21 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
     if (rawParticipants != null) {
       _participants = rawParticipants.map((p) {
         final data = p as Map<String, dynamic>;
+        final rawServices = data['services'] as List?;
+        final services = (rawServices ?? []).map((s) {
+          final m = s as Map<String, dynamic>;
+          return _ParticipantService(
+            name: (m['name'] ?? '').toString(),
+            durationMin: ((m['duration'] as num?) ?? 0).toInt(),
+            price: ((m['price'] as num?) ?? 0).toDouble(),
+          );
+        }).toList();
         return _ParticipantInfo(
           displayName: (data['displayName'] as String?) ?? '',
           isBooker: (data['isBooker'] as bool?) ?? false,
           subtotal: ((data['subtotal'] as num?) ?? 0).toDouble(),
+          startTime: (data['startTime'] as String?) ?? '',
+          services: services,
         );
       }).toList();
       _grandTotal = ((pricing?['grandTotal'] as num?) ?? 0).toDouble();
@@ -273,44 +299,19 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
                             Text('Sous-total', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray)),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                        for (final p in _participants) ...[
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  p.isBooker ? Icons.person_rounded : Icons.person_outline_rounded,
-                                  size: 16, color: AppColors.textGray,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    p.isBooker ? 'Vous' : p.displayName,
-                                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark),
-                                  ),
-                                ),
-                                Text(
-                                  '${p.subtotal.toInt()} MAD',
-                                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Divider(height: 1, color: AppColors.border),
-                        ],
+                        for (final p in _participants) ...[_ParticipantCard(info: p)],
                         const SizedBox(height: 8),
                         Row(
                           children: [
                             Expanded(
                               child: Text(
                                 'Total groupe',
-                                style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textDark),
+                                style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textDark),
                               ),
                             ),
                             Text(
                               '${_grandTotal.toInt()} MAD',
-                              style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textDark),
+                              style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textDark),
                             ),
                           ],
                         ),
@@ -377,6 +378,77 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// One participant on the receipt — their own services, timing and price,
+/// mirroring the web receipt's per-client blocks.
+class _ParticipantCard extends StatelessWidget {
+  final _ParticipantInfo info;
+  const _ParticipantCard({required this.info});
+
+  static String _formatTime(String iso) {
+    final t = DateTime.tryParse(iso)?.toLocal();
+    if (t == null) return '';
+    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = (info.isBooker ? 'Vous' : info.displayName).toUpperCase();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textDark, letterSpacing: 0.4),
+                ),
+              ),
+              if (_formatTime(info.startTime).isNotEmpty) ...[Icon(Icons.access_time_rounded, size: 13, color: AppColors.textGray), const SizedBox(width: 4)],
+              if (_formatTime(info.startTime).isNotEmpty)
+                Text(_formatTime(info.startTime), style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (info.services.isEmpty)
+            Text('—', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray))
+          else
+            ...info.services.map((s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 5),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(s.name, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark)),
+                      ),
+                      Text('${s.price.toInt()} MAD', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark)),
+                    ],
+                  ),
+                )),
+          const SizedBox(height: 6),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: Text('Sous-total', style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray)),
+              ),
+              Text('${info.subtotal.toInt()} MAD', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+            ],
+          ),
+        ],
       ),
     );
   }

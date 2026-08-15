@@ -662,6 +662,14 @@ export class BookingService {
         displayName: p.displayName,
         isBooker: p.isBooker,
         serviceIds: p.serviceIds,
+        // Per-participant service snapshot — lets the receipt render each
+        // client's own services, timing and price (mirrors the web receipt).
+        services: p.services.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          duration: s.duration ?? 0,
+          price: Math.round(getServicePrice(s) * 100) / 100,
+        })),
         duration: p.duration,
         subtotal: Math.round(p.subtotal * 100) / 100,
         employeeId: p.employeeId,

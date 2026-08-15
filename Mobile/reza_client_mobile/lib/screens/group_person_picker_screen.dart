@@ -115,6 +115,7 @@ class _GroupPersonPickerScreenState extends State<GroupPersonPickerScreen> {
         email: member.email,
         relationship: member.relationship,
         familyMemberId: member.id,
+        avatar: member.avatar,
       ),
     );
   }
