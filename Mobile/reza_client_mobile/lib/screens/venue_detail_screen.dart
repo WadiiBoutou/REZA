@@ -73,8 +73,10 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   String _description = '';
   Map<String, dynamic>? _businessHours;
 
-  static const _tabs = ['À propos', 'Prestations', 'Équipe', 'Avis', 'Autres'];
+  static const _tabs = ['À propos', 'Prestations', 'Équipe', 'Avis', 'Horaires'];
   final _keys = List.generate(5, (_) => GlobalKey());
+  /// Dedicated key for the Avis block (it lives inside the Équipe container).
+  final _avisKey = GlobalKey();
 
   @override
   void initState() {
@@ -218,7 +220,13 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
 
   void _scrollToSection(int index) {
     setState(() => _activeTab = index);
-    final ctx = _keys[index].currentContext;
+    // 'Avis' (3) lives inside the Équipe container; 'Horaires' (4) is the _keys[3] section.
+    final GlobalKey target = index == 3
+        ? _avisKey
+        : index == 4
+            ? _keys[3]
+            : _keys[index];
+    final ctx = target.currentContext;
     if (ctx != null) {
       Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
     }
@@ -591,6 +599,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                         reviews: _reviews,
                         rating: effectiveRating,
                         reviewCount: effectiveCount,
+                        avisKey: _avisKey,
                       ),
                     );
                   },
@@ -901,12 +910,14 @@ class _EquipeSection extends StatelessWidget {
   final List<Map<String, dynamic>> reviews;
   final double rating;
   final int reviewCount;
+  final GlobalKey avisKey;
 
   const _EquipeSection({
     required this.employees,
     required this.reviews,
     required this.rating,
     required this.reviewCount,
+    required this.avisKey,
   });
 
   static Widget _buildStars(double rating, double size) {
@@ -991,7 +1002,7 @@ class _EquipeSection extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 28),
-        Text('Avis', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700)),
+        Text('Avis', key: avisKey, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         _buildStars(rating, 28),
         const SizedBox(height: 4),
