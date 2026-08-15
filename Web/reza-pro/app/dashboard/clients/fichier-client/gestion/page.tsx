@@ -35,6 +35,7 @@ interface BackendClient {
   _count?: {
     appointments: number;
   };
+  addedByClient?: { id: string; firstName: string; lastName: string } | null;
 }
 
 // Frontend display structure
@@ -54,6 +55,7 @@ interface Client {
   totalVisits?: number;
   status: 'Active' | 'Inactive';
   notes?: string;
+  addedByClient?: { id: string; name: string } | null;
 }
 
 // Helper function to convert backend client to frontend display format
@@ -100,6 +102,12 @@ const mapBackendToFrontend = (backendClient: BackendClient, appointments?: any[]
     avatar: backendClient.avatar || undefined,
     status: backendClient.status === 'ACTIVE' ? 'Active' : 'Inactive',
     notes: backendClient.notes || undefined,
+    addedByClient: backendClient.addedByClient
+      ? {
+          id: backendClient.addedByClient.id,
+          name: `${backendClient.addedByClient.firstName} ${backendClient.addedByClient.lastName}`.trim()
+        }
+      : undefined,
     nextAppointment,
     nextAppointmentTime,
     lastVisit,
@@ -637,7 +645,12 @@ export default function ClientsGestionPage() {
                   )}
                   <div>
                     <h3 className="font-medium text-gray-900">{client.name}</h3>
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium mt-1 ${client.status === 'Active'
+                    {client.addedByClient && (
+                      <span className="inline-block px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-medium mt-1">
+                        Proche · ajouté par {client.addedByClient.name}
+                      </span>
+                    )}
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium mt-1 ml-1 ${client.status === 'Active'
                         ? 'bg-emerald-50 text-emerald-700'
                         : 'bg-gray-100 text-gray-600'
                       }`}>
@@ -669,10 +682,12 @@ export default function ClientsGestionPage() {
                     <span className="truncate">{client.email}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Phone size={14} className="text-gray-400" />
-                  <span>{client.phone}</span>
-                </div>
+                {client.phone && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Phone size={14} className="text-gray-400" />
+                    <span>{client.phone}</span>
+                  </div>
+                )}
                 {client.address && (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <MapPin size={14} className="text-gray-400" />
@@ -726,7 +741,14 @@ export default function ClientsGestionPage() {
                             </span>
                           </div>
                         )}
-                        <div className="font-medium text-gray-900 truncate">{client.name}</div>
+                        <div>
+                          <div className="font-medium text-gray-900 truncate">{client.name}</div>
+                          {client.addedByClient && (
+                            <div className="text-[10px] font-medium text-amber-700 mt-0.5 truncate">
+                              Proche · ajouté par {client.addedByClient.name}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-4">
@@ -737,10 +759,12 @@ export default function ClientsGestionPage() {
                             <span className="truncate">{client.email}</span>
                           </div>
                         )}
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <Phone size={12} className="text-gray-400 flex-shrink-0" />
-                          <span className="whitespace-nowrap">{client.phone}</span>
-                        </div>
+                        {client.phone && (
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Phone size={12} className="text-gray-400 flex-shrink-0" />
+                            <span className="whitespace-nowrap">{client.phone}</span>
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-4 text-sm text-gray-600 hidden xl:table-cell">

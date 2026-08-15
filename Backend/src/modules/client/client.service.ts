@@ -64,10 +64,46 @@ export class ClientService {
       prisma.client.count({ where })
     ]);
 
-    const clientsWithStatus = clients.map((c) => ({
-      ...c,
-      status: blockedIds.has(c.id) ? 'INACTIVE' : 'ACTIVE',
-    }));
+    // Proche detection: a client is a "proche" when their name matches a
+    // family_members row (added by the owning client account). Attach the
+    // owner so the admin list can show "Proche · ajouté par X".
+    const normalizeKey = (firstName?: string | null, lastName?: string | null) =>
+      `${(firstName || '').trim().toLowerCase()}|${(lastName || '').trim().toLowerCase()}`;
+
+    const familyMembers = (await (prisma as any).familyMember.findMany({
+      select: { clientId: true, firstName: true, lastName: true }
+    })) as Array<{ clientId: string; firstName: string | null; lastName: string | null }>;
+
+    const procheOwnerByKey = new Map<string, string>();
+    for (const fm of familyMembers) {
+      const key = normalizeKey(fm.firstName, fm.lastName);
+      if (key && !procheOwnerByKey.has(key)) procheOwnerByKey.set(key, fm.clientId);
+    }
+
+    const ownerIds = new Set<string>();
+    const clientsWithOwnerId = clients.map((c) => {
+      const ownerId = procheOwnerByKey.get(normalizeKey(c.firstName, c.lastName));
+      if (ownerId) ownerIds.add(ownerId);
+      return { ...c, addedByClientId: ownerId ?? null };
+    });
+
+    const owners =
+      ownerIds.size > 0
+        ? await prisma.client.findMany({
+            where: { id: { in: [...ownerIds] } },
+            select: { id: true, firstName: true, lastName: true }
+          })
+        : [];
+    const ownerById = new Map(owners.map((o) => [o.id, o]));
+
+    const clientsWithStatus = clientsWithOwnerId.map((c) => {
+      const { addedByClientId, ...rest } = c;
+      return {
+        ...rest,
+        status: blockedIds.has(c.id) ? 'INACTIVE' : 'ACTIVE',
+        addedByClient: addedByClientId ? ownerById.get(addedByClientId) ?? null : null,
+      };
+    });
 
     return {
       clients: clientsWithStatus,
