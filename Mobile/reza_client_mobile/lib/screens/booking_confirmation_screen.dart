@@ -71,16 +71,34 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
   }
 
   void _parseParticipants() {
+    void fillFromWidget() {
+      _participants = [
+        _ParticipantInfo(
+          displayName: 'Vous',
+          isBooker: true,
+          subtotal: widget.services.fold(0.0, (s, svc) => s + svc.price),
+          startTime: widget.time,
+          services: widget.services
+              .map((s) => _ParticipantService(
+                    name: s.name,
+                    durationMin: s.durationMin,
+                    price: s.price,
+                  ))
+              .toList(),
+        ),
+      ];
+      _grandTotal = _participants.first.subtotal;
+    }
+
     final result = widget.bookingResult;
     if (result == null) {
-      _participants = [];
-      _grandTotal = widget.services.fold(0.0, (s, svc) => s + svc.price);
+      fillFromWidget();
       return;
     }
 
     final pricing = result['pricing'] as Map<String, dynamic>?;
     final rawParticipants = pricing?['participants'] as List?;
-    if (rawParticipants != null) {
+    if (rawParticipants != null && rawParticipants.isNotEmpty) {
       _participants = rawParticipants.map((p) {
         final data = p as Map<String, dynamic>;
         final rawServices = data['services'] as List?;
@@ -102,8 +120,8 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
       }).toList();
       _grandTotal = ((pricing?['grandTotal'] as num?) ?? 0).toDouble();
     } else {
-      _participants = [];
-      _grandTotal = widget.services.fold(0.0, (s, svc) => s + svc.price);
+      // Safety net: never show an empty receipt if pricing data is missing.
+      fillFromWidget();
     }
   }
 
@@ -247,82 +265,35 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen>
                       const Divider(color: AppColors.border),
                       const SizedBox(height: 16),
 
-                      // Services section header
+                      // Participants — each one shows their own services, prices and time
                       Row(
                         children: [
-                          Icon(Icons.spa_outlined, size: 18, color: AppColors.textGray),
+                          Icon(Icons.people_rounded, size: 18, color: AppColors.textGray),
                           const SizedBox(width: 8),
-                          Text(
-                            'Service${widget.services.length > 1 ? 's' : ''}',
-                            style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray),
-                          ),
+                          Text('Participants', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray)),
                           const Spacer(),
-                          Icon(Icons.attach_money_rounded, size: 18, color: AppColors.textGray),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Prix',
-                            style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray),
-                          ),
+                          Text('Sous-total', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray)),
                         ],
                       ),
-                      const SizedBox(height: 8),
-
-                      // Service items
-                      for (var i = 0; i < widget.services.length; i++) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                widget.services[i].name,
-                                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark),
-                              ),
-                            ),
-                            Text(
-                              '${widget.services[i].price.toInt()} MAD',
-                              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark),
-                            ),
-                          ],
-                        ),
-                        if (i < widget.services.length - 1) const SizedBox(height: 10),
-                      ],
-                      // Participants section (group bookings)
-                      if (_participants.length > 1) ...[
-                        const SizedBox(height: 16),
-                        const Divider(color: AppColors.border),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Icon(Icons.people_rounded, size: 18, color: AppColors.textGray),
-                            const SizedBox(width: 8),
-                            Text('Participants', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray)),
-                            const Spacer(),
-                            Text('Sous-total', style: GoogleFonts.inter(fontSize: 11, color: AppColors.textGray)),
-                          ],
-                        ),
-                        for (final p in _participants) ...[_ParticipantCard(info: p)],
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Total groupe',
-                                style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textDark),
-                              ),
-                            ),
-                            Text(
-                              '${_grandTotal.toInt()} MAD',
+                      const SizedBox(height: 10),
+                      for (final p in _participants) ...[_ParticipantCard(info: p)],
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _participants.length > 1 ? 'Total groupe' : 'Total',
                               style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textDark),
                             ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          _ConfirmDetail(icon: Icons.calendar_today_rounded, label: 'Date', value: widget.date),
-                          _ConfirmDetail(icon: Icons.access_time_rounded, label: 'Heure', value: widget.time),
+                          ),
+                          Text(
+                            '${_grandTotal.toInt()} MAD',
+                            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textDark),
+                          ),
                         ],
                       ),
+                      const SizedBox(height: 14),
+                      _ConfirmDetail(icon: Icons.calendar_today_rounded, label: 'Date', value: widget.date),
                     ],
                   ),
                 ),
@@ -391,8 +362,11 @@ class _ParticipantCard extends StatelessWidget {
 
   static String _formatTime(String iso) {
     final t = DateTime.tryParse(iso)?.toLocal();
-    if (t == null) return '';
-    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    if (t != null) {
+      return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    }
+    // Already a plain HH:MM string (single-booking fallback path)
+    return iso.trim();
   }
 
   @override
