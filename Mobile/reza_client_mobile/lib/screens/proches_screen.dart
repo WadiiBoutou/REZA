@@ -546,7 +546,7 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
       }
     } else if (_avatarUrl.trim().isNotEmpty) {
       img = Image.network(
-        _avatarUrl,
+        resolveImageUrl(_avatarUrl),
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => placeholder,
       );
@@ -889,7 +889,7 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
-                onPressed: _saving ? null : _save,
+                onPressed: (_saving || _uploadingAvatar) ? null : _save,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,

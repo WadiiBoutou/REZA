@@ -12,11 +12,19 @@ import '../constants.dart';
 String resolveImageUrl(String raw) {
   final v = raw.trim();
   if (v.isEmpty) return '';
-  if (v.startsWith('http://') || v.startsWith('https://')) return v;
   final apiBase = ApiConfig.baseUrl;
   final origin = apiBase.endsWith('/api')
       ? apiBase.substring(0, apiBase.length - 4)
       : apiBase;
+  // A URL pointing at the machine's own loopback can never be fetched by a
+  // real phone (it would try to reach ITSELF). Rewrite localhost/127.0.0.1
+  // to the current API origin so stale dev URLs in the DB still render.
+  if (v.startsWith('http://localhost') || v.startsWith('http://127.0.0.1')) {
+    final slash = v.indexOf('/', 'http://'.length);
+    final pathPart = slash >= 0 ? v.substring(slash) : '/';
+    return '$origin$pathPart';
+  }
+  if (v.startsWith('http://') || v.startsWith('https://')) return v;
   if (v.startsWith('/')) return '$origin$v';
   return '$origin/$v';
 }
@@ -33,7 +41,11 @@ ImageProvider? avatarProvider(String src) {
       return null;
     }
   }
-  if (s.startsWith('http')) return NetworkImage(s);
+  // Uploaded avatars can be stored as relative paths (/uploads/...) in dev or
+  // as localhost URLs from an earlier local run — resolve both to an absolute,
+  // device-reachable URL before handing the string to NetworkImage.
+  final resolved = resolveImageUrl(s);
+  if (resolved.startsWith('http')) return NetworkImage(resolved);
   return null;
 }
 
