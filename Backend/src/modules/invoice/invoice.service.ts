@@ -744,7 +744,7 @@ export class InvoiceService {
         data: {
           firstName,
           lastName,
-          phone: `guest_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+          phone: '',
           status: 'ACTIVE',
         },
       });

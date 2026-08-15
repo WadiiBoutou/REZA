@@ -336,7 +336,7 @@ export class BookingService {
                 data: {
                   firstName: guestFirstName,
                   lastName: guestLastName,
-                  phone: guestPhone || `guest_${Date.now()}`,
+                  phone: guestPhone || '',
                   email: guestEmail?.toLowerCase() || null,
                   status: 'ACTIVE',
                 },
