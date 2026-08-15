@@ -6,8 +6,11 @@ import 'package:latlong2/latlong.dart' hide Path;
 import '../constants.dart';
 import '../models/venue_mapper.dart';
 import '../services/discovery_service.dart';
+import 'package:provider/provider.dart';
 import '../services/location_service.dart';
+import '../viewmodels/auth_viewmodel.dart';
 import '../widgets/geo_prompt_banner.dart';
+import 'login_screen.dart';
 import 'venue_detail_screen.dart';
 
 class SearchResultsScreen extends StatefulWidget {
@@ -230,6 +233,12 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
   }
 
   void _toggleLike(String id) {
+    final auth = context.read<AuthViewModel>();
+    if (!auth.isAuthenticated || auth.email == null) {
+      // Guest — redirect to the login page before allowing favorites.
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+      return;
+    }
     setState(() {
       if (_likedVenues.contains(id)) {
         _likedVenues.remove(id);
