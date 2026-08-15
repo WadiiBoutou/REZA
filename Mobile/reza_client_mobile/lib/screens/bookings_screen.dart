@@ -87,6 +87,8 @@ class _BookingsBodyState extends State<_BookingsBody> with SingleTickerProviderS
         return const Color(0xFFF59E0B);
       case 'cancelled':
         return const Color(0xFFEF4444);
+      case 'no_show':
+        return const Color(0xFFF59E0B);
       default:
         return AppColors.textGray;
     }
@@ -100,6 +102,8 @@ class _BookingsBodyState extends State<_BookingsBody> with SingleTickerProviderS
         return const Color(0xFFFEF3C7);
       case 'cancelled':
         return const Color(0xFFFEE2E2);
+      case 'no_show':
+        return const Color(0xFFFEF3C7);
       default:
         return AppColors.surface;
     }
@@ -115,6 +119,8 @@ class _BookingsBodyState extends State<_BookingsBody> with SingleTickerProviderS
         return 'Annulé';
       case 'completed':
         return 'Terminé';
+      case 'no_show':
+        return 'Absent';
       default:
         return status;
     }
