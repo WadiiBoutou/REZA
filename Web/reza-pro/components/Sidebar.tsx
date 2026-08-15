@@ -1216,6 +1216,30 @@ export default function Sidebar() {
 		if (notification.link) {
 			// Close the notification sidebar
 			setShowNotificationSidebar(false);
+
+			// Appointment notifications: open the agenda on the appointment's day
+			// (select that day on the calendar, matching the sidebar mini-calendar).
+			const isAppointment = String(notification.type || '').startsWith('APPOINTMENT');
+			const meta = notification.metadata || {};
+			const appointmentId = meta.appointmentId || meta.appointmentIds?.[0];
+			if (isAppointment && appointmentId) {
+				try {
+					const appointment = await api.getAppointment(appointmentId);
+					if (appointment?.startTime) {
+						const day = new Date(appointment.startTime);
+						day.setHours(0, 0, 0, 0);
+						// Persist so a fresh mount of the agenda page picks it up
+						try {
+							sessionStorage.setItem('rdv:currentDate', day.toISOString());
+						} catch {}
+						// If the agenda is already mounted, select the day live
+						window.dispatchEvent(new CustomEvent('sidebarDateChange', { detail: day }));
+					}
+				} catch (error) {
+					console.error('Error resolving appointment date for notification:', error);
+				}
+			}
+
 			// Navigate to the link
 			router.push(notification.link);
 		}
