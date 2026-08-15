@@ -78,8 +78,10 @@ class _BookingScreenState extends State<BookingScreen> {
 
   /// Professional step sub-phase: 0 = choice card, 1 = per-service selection.
   int _professionalPhase = 0;
+
   /// Whether the user chose 'Sélectionner par prestation' (per-service mode).
   bool _perServiceMode = false;
+
   /// Salon employee roster (date-independent capability list, mirroring the web
   /// client's `employees` prop) — lets the professional step run BEFORE the
   /// date & time step.
@@ -129,7 +131,9 @@ class _BookingScreenState extends State<BookingScreen> {
 
   /// Transform accumulated participants into the backend existingParticipants format,
   /// but ONLY include participants whose booking date matches [targetDate].
-  List<Map<String, dynamic>>? _buildExistingParticipantsForDate(DateTime targetDate) {
+  List<Map<String, dynamic>>? _buildExistingParticipantsForDate(
+    DateTime targetDate,
+  ) {
     if (widget.accumulatedParticipants.isEmpty) return null;
     final targetKey = _dateApi(targetDate);
     final relevant = <Map<String, dynamic>>[];
@@ -142,7 +146,8 @@ class _BookingScreenState extends State<BookingScreen> {
       if (startTime == null) continue;
       final pDateKey = _dateApi(startTime);
       if (pDateKey != targetKey) continue;
-      final timeStr = '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
+      final timeStr =
+          '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
       int totalDur = 0;
       for (final s in _selectedServices) {
         if (svcIds.contains(s.id)) totalDur += s.durationMin;
@@ -159,7 +164,10 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   Future<List<String>> _fetchSlotsForDate(DateTime date) async {
-    final ids = _selectedServices.map((s) => s.id).where((id) => id.isNotEmpty).toList();
+    final ids = _selectedServices
+        .map((s) => s.id)
+        .where((id) => id.isNotEmpty)
+        .toList();
     if (ids.isEmpty) return [];
     final auth = context.read<AuthViewModel>();
 
@@ -230,7 +238,9 @@ class _BookingScreenState extends State<BookingScreen> {
       setState(() {
         _bookableDates = _nextDays;
         _dateSlotMap = {};
-        _selectedDate ??= _bookableDates.isNotEmpty ? _bookableDates.first : null;
+        _selectedDate ??= _bookableDates.isNotEmpty
+            ? _bookableDates.first
+            : null;
         _datesLoading = false;
       });
       await _loadSlots();
@@ -244,17 +254,45 @@ class _BookingScreenState extends State<BookingScreen> {
 
   String _monthAbbr(DateTime d) {
     const months = [
-      'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
+      'janvier',
+      'février',
+      'mars',
+      'avril',
+      'mai',
+      'juin',
+      'juillet',
+      'août',
+      'septembre',
+      'octobre',
+      'novembre',
+      'décembre',
     ];
     return months[d.month - 1];
   }
 
   String _formatFullDate(DateTime d) {
-    const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+    const days = [
+      'Lundi',
+      'Mardi',
+      'Mercredi',
+      'Jeudi',
+      'Vendredi',
+      'Samedi',
+      'Dimanche',
+    ];
     const months = [
-      'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-      'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+      'Janvier',
+      'Février',
+      'Mars',
+      'Avril',
+      'Mai',
+      'Juin',
+      'Juillet',
+      'Août',
+      'Septembre',
+      'Octobre',
+      'Novembre',
+      'Décembre',
     ];
     return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}';
   }
@@ -299,7 +337,10 @@ class _BookingScreenState extends State<BookingScreen> {
           // and also accept a serviceId key (parity with the web filter).
           final sid = s['id']?.toString() ?? s['serviceId']?.toString();
           final sname = s['name']?.toString();
-          return sid == svc.id || sid == svc.name || sname == svc.name || sname == svc.id;
+          return sid == svc.id ||
+              sid == svc.name ||
+              sname == svc.name ||
+              sname == svc.id;
         }
         return s.toString() == svc.id || s.toString() == svc.name;
       });
@@ -355,7 +396,9 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   void _onEmployeeChanged(String serviceId, String? employeeId) {
-    final current = Map<String, String?>.from(_perServiceEmployeeMap['booker'] ?? {});
+    final current = Map<String, String?>.from(
+      _perServiceEmployeeMap['booker'] ?? {},
+    );
     current[serviceId] = employeeId;
 
     String? overallEmployeeId;
@@ -411,7 +454,9 @@ class _BookingScreenState extends State<BookingScreen> {
     }
     // 'Sélectionner par prestation' — pre-fill all services with 'Sans
     // préférence', then show the per-service step (phase 1).
-    final updated = Map<String, String?>.from(_perServiceEmployeeMap['booker'] ?? {});
+    final updated = Map<String, String?>.from(
+      _perServiceEmployeeMap['booker'] ?? {},
+    );
     for (final svc in _selectedServices) {
       final key = svc.id.isNotEmpty ? svc.id : svc.name;
       updated.putIfAbsent(key, () => _anySentinel);
@@ -489,12 +534,16 @@ class _BookingScreenState extends State<BookingScreen> {
       inputValue: _emailController.text.trim(),
     );
 
-    if (firstName.isEmpty || phone.isEmpty || (!isAddingGuest && lastName.isEmpty)) {
+    if (firstName.isEmpty ||
+        phone.isEmpty ||
+        (!isAddingGuest && lastName.isEmpty)) {
       _showError('Veuillez remplir tous les champs obligatoires.');
       return null;
     }
     if (phone.isNotEmpty && !_isValidPhoneNumber(phone)) {
-      _showError('Format de numéro invalide. Entrez un vrai numéro de téléphone.');
+      _showError(
+        'Format de numéro invalide. Entrez un vrai numéro de téléphone.',
+      );
       return null;
     }
     if (_selectedDate == null || _selectedTime == null) {
@@ -534,7 +583,9 @@ class _BookingScreenState extends State<BookingScreen> {
       }
       serviceEmployees = entries.isNotEmpty ? entries : null;
     } else {
-      final aggregate = _selectedEmployeeId == _anySentinel ? null : _selectedEmployeeId;
+      final aggregate = _selectedEmployeeId == _anySentinel
+          ? null
+          : _selectedEmployeeId;
       if (aggregate != null && aggregate.isNotEmpty) {
         serviceEmployees = serviceIds
             .map((sid) => {'serviceId': sid, 'employeeId': aggregate})
@@ -545,12 +596,16 @@ class _BookingScreenState extends State<BookingScreen> {
     // Snapshot of service details + employee names so the recap can render
     // THIS person's card accurately even after their services differ from
     // the current screen's selection (each participant has their own set).
-    final serviceDetails = _selectedServices.map((s) => <String, dynamic>{
-      'serviceId': s.id.isNotEmpty ? s.id : s.name,
-      'name': s.name,
-      'durationMin': s.durationMin,
-      'price': s.price,
-    }).toList();
+    final serviceDetails = _selectedServices
+        .map(
+          (s) => <String, dynamic>{
+            'serviceId': s.id.isNotEmpty ? s.id : s.name,
+            'name': s.name,
+            'durationMin': s.durationMin,
+            'price': s.price,
+          },
+        )
+        .toList();
     final employeeNames = <String, String>{};
     for (final svc in _selectedServices) {
       final key = svc.id.isNotEmpty ? svc.id : svc.name;
@@ -569,9 +624,12 @@ class _BookingScreenState extends State<BookingScreen> {
       // same proche to this group-booking session.
       if (widget.prefillParticipant?['familyMemberId'] != null)
         'familyMemberId': widget.prefillParticipant!['familyMemberId'],
-      // Avatar for the recap (proche photos; booker uses the session avatar).
-      if (widget.prefillParticipant?['avatar'] != null)
-        'avatar': widget.prefillParticipant!['avatar'],
+      // Avatar for the recap — every participant carries it so the recap (and
+      // later screens) can render real photos: proches keep the picker's
+      // avatar, the booker the session avatar.
+      'avatar': isAddingGuest
+          ? (widget.prefillParticipant?['avatar'] ?? '').toString()
+          : (user?.avatar ?? ''),
       'serviceIds': serviceIds,
       'startTimeIso': startLocal.toUtc().toIso8601String(),
       if (serviceEmployees != null) 'serviceEmployees': serviceEmployees,
@@ -592,7 +650,10 @@ class _BookingScreenState extends State<BookingScreen> {
     final participantData = _buildParticipantData();
     if (participantData == null) return;
     if (widget.isGroupMode) {
-      final allParticipants = [...widget.accumulatedParticipants, participantData];
+      final allParticipants = [
+        ...widget.accumulatedParticipants,
+        participantData,
+      ];
       await _finalizeGroupBooking(allParticipants);
     } else {
       await _submitSingleBooking(participantData);
@@ -605,20 +666,28 @@ class _BookingScreenState extends State<BookingScreen> {
     if (_submitting) return;
     final participantData = _buildParticipantData();
     if (participantData == null) return;
-    final allParticipants = [...widget.accumulatedParticipants, participantData];
+    final allParticipants = [
+      ...widget.accumulatedParticipants,
+      participantData,
+    ];
 
     final auth = context.read<AuthViewModel>();
     if (!auth.isAuthenticated || auth.email == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Veuillez vous connecter d'abord", style: GoogleFonts.inter(fontSize: 13)),
+          content: Text(
+            "Veuillez vous connecter d'abord",
+            style: GoogleFonts.inter(fontSize: 13),
+          ),
           backgroundColor: AppColors.primary,
           behavior: SnackBarBehavior.floating,
         ),
       );
       final loginResult = await Navigator.push<bool>(
         context,
-        MaterialPageRoute(builder: (_) => const LoginScreen(returnResultOnSuccess: true)),
+        MaterialPageRoute(
+          builder: (_) => const LoginScreen(returnResultOnSuccess: true),
+        ),
       );
       if (loginResult != true || !mounted) return;
     }
@@ -626,14 +695,16 @@ class _BookingScreenState extends State<BookingScreen> {
     // People already accumulated in THIS session (booker + prior
     // participants) — used by the picker to block duplicates.
     final alreadyAdded = allParticipants
-        .map((p) => GroupPerson(
-              firstName: (p['firstName'] ?? '').toString(),
-              lastName: (p['lastName'] ?? '').toString(),
-              phone: (p['phone'] ?? '').toString().isEmpty
-                  ? null
-                  : p['phone'].toString(),
-              familyMemberId: p['familyMemberId']?.toString(),
-            ))
+        .map(
+          (p) => GroupPerson(
+            firstName: (p['firstName'] ?? '').toString(),
+            lastName: (p['lastName'] ?? '').toString(),
+            phone: (p['phone'] ?? '').toString().isEmpty
+                ? null
+                : p['phone'].toString(),
+            familyMemberId: p['familyMemberId']?.toString(),
+          ),
+        )
         .toList();
 
     final person = await Navigator.push<GroupPerson>(
@@ -642,7 +713,8 @@ class _BookingScreenState extends State<BookingScreen> {
         builder: (_) => GroupPersonPickerScreen(alreadyAdded: alreadyAdded),
       ),
     );
-    if (!mounted || person == null) return;      if (person.saveAsProche) {
+    if (!mounted || person == null) return;
+    if (person.saveAsProche) {
       try {
         final currentAuth = context.read<AuthViewModel>();
         await accountService.createFamilyMember(
@@ -672,7 +744,8 @@ class _BookingScreenState extends State<BookingScreen> {
             'lastName': person.lastName,
             'phone': person.phone ?? '',
             if (person.email != null) 'email': person.email,
-            if (person.familyMemberId != null) 'familyMemberId': person.familyMemberId,
+            if (person.familyMemberId != null)
+              'familyMemberId': person.familyMemberId,
             if (person.avatar != null) 'avatar': person.avatar,
           },
         ),
@@ -685,7 +758,9 @@ class _BookingScreenState extends State<BookingScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      ),
     );
 
     try {
@@ -731,12 +806,16 @@ class _BookingScreenState extends State<BookingScreen> {
     }
   }
 
-  Future<void> _finalizeGroupBooking(List<Map<String, dynamic>> allParticipants) async {
+  Future<void> _finalizeGroupBooking(
+    List<Map<String, dynamic>> allParticipants,
+  ) async {
     setState(() => _submitting = true);
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      ),
     );
 
     try {
@@ -749,8 +828,10 @@ class _BookingScreenState extends State<BookingScreen> {
           'serviceIds': p['serviceIds'],
           'startTime': p['startTimeIso'],
           if (se != null) 'serviceEmployees': se,
-          if (p['phone'] != null && (p['phone'] as String).isNotEmpty) 'phone': p['phone'],
-          if (p['email'] != null && (p['email'] as String).isNotEmpty) 'email': p['email'],
+          if (p['phone'] != null && (p['phone'] as String).isNotEmpty)
+            'phone': p['phone'],
+          if (p['email'] != null && (p['email'] as String).isNotEmpty)
+            'email': p['email'],
         };
       }).toList();
 
@@ -825,7 +906,8 @@ class _BookingScreenState extends State<BookingScreen> {
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
-                transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+                transitionBuilder: (child, anim) =>
+                    FadeTransition(opacity: anim, child: child),
                 child: KeyedSubtree(
                   key: ValueKey('$_step'),
                   child: _stepBody(),
@@ -855,10 +937,21 @@ class _BookingScreenState extends State<BookingScreen> {
         children: [
           Row(
             children: [
-              IconButton(icon: const Icon(Icons.arrow_back, color: AppColors.textDark, size: 22), onPressed: _goBack),
+              IconButton(
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: AppColors.textDark,
+                  size: 22,
+                ),
+                onPressed: _goBack,
+              ),
               const Spacer(),
               IconButton(
-                icon: const Icon(Icons.close, color: AppColors.textDark, size: 22),
+                icon: const Icon(
+                  Icons.close,
+                  color: AppColors.textDark,
+                  size: 22,
+                ),
                 onPressed: () => Navigator.pop(context),
               ),
             ],
@@ -871,7 +964,10 @@ class _BookingScreenState extends State<BookingScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: _isParticipant
                       ? AppColors.primary.withValues(alpha: 0.08)
@@ -884,7 +980,9 @@ class _BookingScreenState extends State<BookingScreen> {
                   style: GoogleFonts.inter(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: _isParticipant ? AppColors.primary : AppColors.purpleAccent,
+                    color: _isParticipant
+                        ? AppColors.primary
+                        : AppColors.purpleAccent,
                   ),
                 ),
               ),
@@ -900,18 +998,34 @@ class _BookingScreenState extends State<BookingScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-          child: Text("Sélectionnez la date et\nl'heure", style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textDark)),
+          child: Text(
+            "Sélectionnez la date et\nl'heure",
+            style: GoogleFonts.inter(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textDark,
+            ),
+          ),
         ),
         const SizedBox(height: 24),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Text('Sélectionner une date', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textDark)),
+          child: Text(
+            'Sélectionner une date',
+            style: GoogleFonts.inter(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textDark,
+            ),
+          ),
         ),
         const SizedBox(height: 12),
         if (_datesLoading)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-            child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+            child: Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
           )
         else if (_bookableDates.isEmpty)
           Padding(
@@ -931,7 +1045,8 @@ class _BookingScreenState extends State<BookingScreen> {
               itemBuilder: (context, index) {
                 final date = _bookableDates[index];
                 final dateKey = _dateApi(date);
-                final isSelected = _selectedDate?.day == date.day &&
+                final isSelected =
+                    _selectedDate?.day == date.day &&
                     _selectedDate?.month == date.month &&
                     _selectedDate?.year == date.year;
                 final hasSlots = _dateSlotMap.isNotEmpty
@@ -955,15 +1070,15 @@ class _BookingScreenState extends State<BookingScreen> {
                       color: isSelected
                           ? AppColors.purpleAccent
                           : hasSlots
-                              ? Colors.white
-                              : Colors.grey.shade100,
+                          ? Colors.white
+                          : Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: isSelected
                             ? AppColors.purpleAccent
                             : hasSlots
-                                ? AppColors.border
-                                : Colors.grey.shade300,
+                            ? AppColors.border
+                            : Colors.grey.shade300,
                       ),
                     ),
                     child: Column(
@@ -977,8 +1092,8 @@ class _BookingScreenState extends State<BookingScreen> {
                             color: isSelected
                                 ? Colors.white70
                                 : hasSlots
-                                    ? AppColors.textGray
-                                    : Colors.grey.shade400,
+                                ? AppColors.textGray
+                                : Colors.grey.shade400,
                           ),
                         ),
                         Text(
@@ -989,8 +1104,8 @@ class _BookingScreenState extends State<BookingScreen> {
                             color: isSelected
                                 ? Colors.white
                                 : hasSlots
-                                    ? AppColors.textDark
-                                    : Colors.grey.shade400,
+                                ? AppColors.textDark
+                                : Colors.grey.shade400,
                           ),
                         ),
                         Text(
@@ -1000,8 +1115,8 @@ class _BookingScreenState extends State<BookingScreen> {
                             color: isSelected
                                 ? Colors.white70
                                 : hasSlots
-                                    ? AppColors.textGray
-                                    : Colors.grey.shade400,
+                                ? AppColors.textGray
+                                : Colors.grey.shade400,
                           ),
                         ),
                       ],
@@ -1014,36 +1129,69 @@ class _BookingScreenState extends State<BookingScreen> {
         const SizedBox(height: 24),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Text('Choisissez une heure', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textDark)),
+          child: Text(
+            'Choisissez une heure',
+            style: GoogleFonts.inter(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textDark,
+            ),
+          ),
         ),
         const SizedBox(height: 12),
         Expanded(
           child: _slotsLoading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary),
+                )
               : _timeSlots.isEmpty
-                  ? Center(child: Text('Aucun créneau disponible', style: GoogleFonts.inter(color: AppColors.textGray)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                      itemCount: _timeSlots.length,
-                      itemBuilder: (context, index) {
-                        final time = _timeSlots[index];
-                        final isSelected = _selectedTime == time;
-                        return GestureDetector(
-                          onTap: () => setState(() => _selectedTime = time),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: isSelected ? AppColors.purpleAccent : AppColors.border, width: isSelected ? 2 : 1),
-                            ),
-                            child: Text(time, style: GoogleFonts.inter(fontSize: 15, fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400, color: isSelected ? AppColors.purpleAccent : AppColors.textDark)),
+              ? Center(
+                  child: Text(
+                    'Aucun créneau disponible',
+                    style: GoogleFonts.inter(color: AppColors.textGray),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  itemCount: _timeSlots.length,
+                  itemBuilder: (context, index) {
+                    final time = _timeSlots[index];
+                    final isSelected = _selectedTime == time;
+                    return GestureDetector(
+                      onTap: () => setState(() => _selectedTime = time),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? AppColors.purpleAccent
+                                : AppColors.border,
+                            width: isSelected ? 2 : 1,
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                        child: Text(
+                          time,
+                          style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: isSelected
+                                ? AppColors.purpleAccent
+                                : AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
         ),
         _bottomBar(
           priceLabel: '${_totalPrice.toInt()} MAD',
@@ -1064,49 +1212,66 @@ class _BookingScreenState extends State<BookingScreen> {
             _professionalPhase == 0
                 ? 'Choisissez votre\nprofessionnel'
                 : 'Professionnel par\npersonnel',
-            style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textDark),
+            style: GoogleFonts.inter(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textDark,
+            ),
           ),
         ),
         Expanded(
           child: _rosterLoading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))                  : _rosterEmployees.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'Aucun professionnel disponible.',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Vous pouvez continuer : l\'attribution des professionnels se fera automatiquement.',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.inter(fontSize: 12, color: AppColors.textLight),
-                            ),
-                          ],
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary),
+                )
+              : _rosterEmployees.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Aucun professionnel disponible.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            color: AppColors.textGray,
+                          ),
                         ),
-                      ),
-                    )
-                  : _professionalPhase == 0
-                      ? _buildProfessionalChoice()
-                      : _buildPerServiceSelection(),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Vous pouvez continuer : l\'attribution des professionnels se fera automatiquement.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : _professionalPhase == 0
+              ? _buildProfessionalChoice()
+              : _buildPerServiceSelection(),
         ),
         _bottomBar(
           priceLabel: '${_totalPrice.toInt()} MAD',
           subtitle: _professionalPhase == 0
-              ? (_perServiceMode ? 'Sélection par personnel' : 'Attribution automatique')
+              ? (_perServiceMode
+                    ? 'Sélection par personnel'
+                    : 'Attribution automatique')
               : _perServiceSelectionComplete
-                  ? 'Prestations assignées'
-                  : 'Sélectionnez pour chaque prestation',
+              ? 'Prestations assignées'
+              : 'Sélectionnez pour chaque prestation',
           onContinue: _rosterLoading
               ? null
               : _professionalPhase == 0
-                  ? _continueFromProfessionalChoice
-                  : (_perServiceSelectionComplete ? _continueFromProfessional : null),
+              ? _continueFromProfessionalChoice
+              : (_perServiceSelectionComplete
+                    ? _continueFromProfessional
+                    : null),
         ),
       ],
     );
@@ -1119,13 +1284,18 @@ class _BookingScreenState extends State<BookingScreen> {
       children: [
         Text(
           'Comment souhaitez-vous choisir le(s) professionnel(s) pour vos prestations ?',
-          style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray, height: 1.4),
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textGray,
+            height: 1.4,
+          ),
         ),
         const SizedBox(height: 16),
         _ProfessionalChoiceCard(
           icon: Icons.shuffle_rounded,
           title: 'Sans préférence',
-          subtitle: 'Attribution automatique — les meilleurs professionnels disponibles seront choisis pour chaque service.',
+          subtitle:
+              'Attribution automatique — les meilleurs professionnels disponibles seront choisis pour chaque service.',
           selected: !_perServiceMode,
           onTap: () => setState(() {
             _perServiceMode = false;
@@ -1137,7 +1307,8 @@ class _BookingScreenState extends State<BookingScreen> {
         _ProfessionalChoiceCard(
           icon: Icons.groups_rounded,
           title: 'Sélectionner par personnel',
-          subtitle: 'Choisissez un professionnel différent pour chaque prestation.',
+          subtitle:
+              'Choisissez un professionnel différent pour chaque prestation.',
           selected: _perServiceMode,
           onTap: () => setState(() => _perServiceMode = true),
         ),
@@ -1152,7 +1323,11 @@ class _BookingScreenState extends State<BookingScreen> {
       children: [
         Text(
           'Sélectionnez un professionnel pour chaque prestation.',
-          style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray, height: 1.4),
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            color: AppColors.textGray,
+            height: 1.4,
+          ),
         ),
         const SizedBox(height: 16),
         ..._selectedServices.map((svc) {
@@ -1166,10 +1341,18 @@ class _BookingScreenState extends State<BookingScreen> {
               children: [
                 Text(
                   svc.name,
-                  style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textDark),
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textDark,
+                  ),
                 ),
                 const SizedBox(height: 8),
-                ..._buildAnyCard(capable, currentEmpId, () => _onEmployeeChanged(key, _anySentinel)),
+                ..._buildAnyCard(
+                  capable,
+                  currentEmpId,
+                  () => _onEmployeeChanged(key, _anySentinel),
+                ),
                 ...capable.map((emp) {
                   final id = emp['id']?.toString() ?? '';
                   final firstName = emp['firstName']?.toString() ?? '';
@@ -1192,11 +1375,18 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
-  List<Widget> _buildAnyCard(List<Map<String, dynamic>> employees, String? selectedId, VoidCallback onSelect) {
+  List<Widget> _buildAnyCard(
+    List<Map<String, dynamic>> employees,
+    String? selectedId,
+    VoidCallback onSelect,
+  ) {
     // Roster entries have no 'available' flag (no date picked yet) — treat them
     // as available. Availability-based lists carry explicit true/false.
-    final anyRealAvailable = employees.isEmpty ||
-        employees.any((emp) => emp['available'] == null || emp['available'] == true);
+    final anyRealAvailable =
+        employees.isEmpty ||
+        employees.any(
+          (emp) => emp['available'] == null || emp['available'] == true,
+        );
     return [
       GestureDetector(
         onTap: anyRealAvailable ? onSelect : null,
@@ -1206,10 +1396,14 @@ class _BookingScreenState extends State<BookingScreen> {
             margin: const EdgeInsets.only(bottom: 4),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             decoration: BoxDecoration(
-              color: selectedId == _anySentinel ? AppColors.purpleLight : Colors.white,
+              color: selectedId == _anySentinel
+                  ? AppColors.purpleLight
+                  : Colors.white,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: selectedId == _anySentinel ? AppColors.purpleAccent : AppColors.border,
+                color: selectedId == _anySentinel
+                    ? AppColors.purpleAccent
+                    : AppColors.border,
                 width: selectedId == _anySentinel ? 2 : 1,
               ),
             ),
@@ -1223,7 +1417,11 @@ class _BookingScreenState extends State<BookingScreen> {
                     shape: BoxShape.circle,
                   ),
                   child: const Center(
-                    child: Icon(Icons.shuffle, size: 18, color: AppColors.textGray),
+                    child: Icon(
+                      Icons.shuffle,
+                      size: 18,
+                      color: AppColors.textGray,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1258,7 +1456,11 @@ class _BookingScreenState extends State<BookingScreen> {
                       color: AppColors.purpleAccent,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.check, size: 13, color: Colors.white),
+                    child: const Icon(
+                      Icons.check,
+                      size: 13,
+                      color: Colors.white,
+                    ),
                   ),
               ],
             ),
@@ -1269,15 +1471,20 @@ class _BookingScreenState extends State<BookingScreen> {
     ];
   }
 
-
-
   Widget _buildGuestStep() {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Vos informations', style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textDark)),
+          Text(
+            'Vos informations',
+            style: GoogleFonts.inter(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textDark,
+            ),
+          ),
           const SizedBox(height: 8),
           Text(
             'Nécessaire pour confirmer la réservation.',
@@ -1290,7 +1497,11 @@ class _BookingScreenState extends State<BookingScreen> {
           const SizedBox(height: 12),
           _field('Téléphone', _phoneController, keyboard: TextInputType.phone),
           const SizedBox(height: 12),
-          _field('Email', _emailController, keyboard: TextInputType.emailAddress),
+          _field(
+            'Email',
+            _emailController,
+            keyboard: TextInputType.emailAddress,
+          ),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
@@ -1301,9 +1512,17 @@ class _BookingScreenState extends State<BookingScreen> {
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
-              child: Text('Continuer', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600)),
+              child: Text(
+                'Continuer',
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
@@ -1331,7 +1550,8 @@ class _BookingScreenState extends State<BookingScreen> {
         // Fallback for older payloads: filter the current selection.
         final svcIds = List<String>.from(p['serviceIds'] ?? []);
         for (final s in _selectedServices) {
-          if (svcIds.contains(s.id.isNotEmpty ? s.id : s.name)) total += s.price;
+          if (svcIds.contains(s.id.isNotEmpty ? s.id : s.name))
+            total += s.price;
         }
       }
     }
@@ -1347,7 +1567,8 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   String _employeeNameForId(String? id) {
-    if (id == null || id.isEmpty || id == _anySentinel) return 'Attribution automatique';
+    if (id == null || id.isEmpty || id == _anySentinel)
+      return 'Attribution automatique';
     for (final emp in _rosterEmployees) {
       if (emp['id']?.toString() == id) {
         final first = emp['firstName']?.toString() ?? '';
@@ -1366,7 +1587,9 @@ class _BookingScreenState extends State<BookingScreen> {
     for (var i = 0; i < rows.length; i++) {
       out.add(rows[i]);
       if (i < rows.length - 1) {
-        out.add(const Divider(height: 17, thickness: 1, color: AppColors.border));
+        out.add(
+          const Divider(height: 17, thickness: 1, color: AppColors.border),
+        );
       }
     }
     return out;
@@ -1383,7 +1606,8 @@ class _BookingScreenState extends State<BookingScreen> {
     }
     final user = context.read<AuthViewModel>().user;
     final name = _firstNameController.text.trim().isNotEmpty
-        ? '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'.trim()
+        ? '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
+              .trim()
         : '${user?.firstName ?? ''} ${user?.lastName ?? ''}'.trim();
     final phone = _phoneController.text.trim().isNotEmpty
         ? _phoneController.text.trim()
@@ -1418,75 +1642,18 @@ class _BookingScreenState extends State<BookingScreen> {
       );
     }).toList();
 
-    final priorCards = widget.accumulatedParticipants.map((p) {
-      // Prefer the snapshot (each participant has their own service set);
-      // fall back to filtering the current selection for older payloads.
-      final details = p['serviceDetails'];
-      final employeeNames = p['employeeNames'];
-      final startIso = p['startTimeIso']?.toString() ?? '';
-      String dateTime = '';
-      if (startIso.isNotEmpty) {
-        final t = DateTime.tryParse(startIso)?.toLocal();
-        if (t != null) {
-          final d = DateTime(t.year, t.month, t.day);
-          dateTime =
-              '${_formatFullDate(d)} à ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-        }
-      }
+    // Continuing a group session: the booker sits at index 0 of the
+    // accumulated participants (pushed when they hit 'Ajouter une personne').
+    // On the very first screen the booker is the current person instead.
+    final continuingGroup = widget.accumulatedParticipants.isNotEmpty;
+    final Map<String, dynamic>? bookerData = continuingGroup
+        ? widget.accumulatedParticipants.first
+        : null;
 
-      List<Widget> rows = [];
-      if (details is List && details.isNotEmpty) {
-        rows = details.map((d) {
-          final key = (d is Map) ? (d['serviceId']?.toString() ?? '') : '';
-          String emp = '';
-          if (employeeNames is Map) {
-            emp = (employeeNames[key] ?? '').toString();
-          }
-          return _RecapServiceRow(
-            name: (d is Map ? d['name'] ?? '' : '').toString(),
-            durationLabel: _durationLabel(((d is Map ? d['durationMin'] : null) as num?)?.toInt() ?? 0),
-            price: ((d is Map ? d['price'] : null) as num?)?.toDouble() ?? 0,
-            employee: emp.isEmpty ? 'Attribution automatique' : emp,
-          );
-        }).toList();
-      } else {
-        final pSvcIds = List<String>.from(p['serviceIds'] ?? []);
-        final pServices = _selectedServices
-            .where((s) => pSvcIds.contains(s.id.isNotEmpty ? s.id : s.name))
-            .toList();
-        final seMap = <String, String>{};
-        final se = p['serviceEmployees'];
-        if (se is List) {
-          for (final e in se) {
-            if (e is Map) {
-              final sid = e['serviceId']?.toString();
-              final eid = e['employeeId']?.toString();
-              if (sid != null && eid != null && sid.isNotEmpty && eid.isNotEmpty) {
-                seMap[sid] = eid;
-              }
-            }
-          }
-        }
-        rows = pServices.map((s) {
-          final key = s.id.isNotEmpty ? s.id : s.name;
-          return _RecapServiceRow(
-            name: s.name,
-            durationLabel: _durationLabel(s.durationMin),
-            price: s.price,
-            employee: _employeeNameForId(seMap[key]),
-          );
-        }).toList();
-      }
-
-      return _RecapPersonCard(
-        name: '${p['firstName'] ?? ''} ${p['lastName'] ?? ''}'.trim(),
-        avatarUrl: (p['avatar'] ?? '').toString(),
-        isBooker: false,
-        dateTime: dateTime,
-        contact: null,
-        services: _withServiceDividers(rows),
-      );
-    }).toList();
+    final priorCards = widget.accumulatedParticipants
+        .skip(1)
+        .map((p) => _buildAccumulatedPersonCard(p, isBooker: false))
+        .toList();
 
     final total = widget.isGroupMode ? _groupTotal : _totalPrice;
     final peopleCount = widget.accumulatedParticipants.length + 1;
@@ -1498,23 +1665,47 @@ class _BookingScreenState extends State<BookingScreen> {
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
           child: Text(
             'Récapitulatif de la réservation',
-            style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textDark),
+            style: GoogleFonts.inter(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textDark,
+            ),
           ),
         ),
         Expanded(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
             children: [
-              _RecapPersonCard(
-                name: personName,
-                avatarUrl: context.read<AuthViewModel>().user?.avatar ?? '',
-                isBooker: true,
-                dateTime: '${_formatFullDate(_selectedDate!)} à $_selectedTime',
-                contact: contact,
-                services: _withServiceDividers(servicesRows),
-              ),
+              // The main client is ALWAYS first on the recap, with the crown.
+              if (bookerData != null)
+                _buildAccumulatedPersonCard(bookerData, isBooker: true)
+              else
+                _RecapPersonCard(
+                  name: personName,
+                  avatarUrl: context.read<AuthViewModel>().user?.avatar ?? '',
+                  isBooker: true,
+                  dateTime:
+                      '${_formatFullDate(_selectedDate!)} à $_selectedTime',
+                  contact: contact,
+                  services: _withServiceDividers(servicesRows),
+                ),
               ...priorCards,
-              if (widget.isGroupMode) ...[const SizedBox(height: 4), _AddPersonCard(onTap: _addAnotherPerson)],
+              // The person being configured right now (anyone but the booker).
+              if (continuingGroup)
+                _RecapPersonCard(
+                  name: personName,
+                  avatarUrl: (widget.prefillParticipant?['avatar'] ?? '')
+                      .toString(),
+                  isBooker: false,
+                  dateTime:
+                      '${_formatFullDate(_selectedDate!)} à $_selectedTime',
+                  contact: contact,
+                  services: _withServiceDividers(servicesRows),
+                ),
+              if (widget.isGroupMode) ...[
+                const SizedBox(height: 4),
+                _AddPersonCard(onTap: _addAnotherPerson),
+              ],
             ],
           ),
         ),
@@ -1530,6 +1721,85 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
+  /// Build a recap card for an already-configured participant from its
+  /// snapshot data (serviceDetails / startTimeIso / avatar). Used for the
+  /// booker (with crown) and every other accumulated participant.
+  _RecapPersonCard _buildAccumulatedPersonCard(
+    Map<String, dynamic> p, {
+    required bool isBooker,
+  }) {
+    final employeeNames = p['employeeNames'];
+    final startIso = p['startTimeIso']?.toString() ?? '';
+    String dateTime = '';
+    if (startIso.isNotEmpty) {
+      final t = DateTime.tryParse(startIso)?.toLocal();
+      if (t != null) {
+        final d = DateTime(t.year, t.month, t.day);
+        dateTime =
+            '${_formatFullDate(d)} à ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+      }
+    }
+
+    List<Widget> rows = [];
+    final details = p['serviceDetails'];
+    if (details is List && details.isNotEmpty) {
+      rows = details.map((d) {
+        final key = (d is Map) ? (d['serviceId']?.toString() ?? '') : '';
+        String emp = '';
+        if (employeeNames is Map) {
+          emp = (employeeNames[key] ?? '').toString();
+        }
+        return _RecapServiceRow(
+          name: (d is Map ? d['name'] ?? '' : '').toString(),
+          durationLabel: _durationLabel(
+            ((d is Map ? d['durationMin'] : null) as num?)?.toInt() ?? 0,
+          ),
+          price: ((d is Map ? d['price'] : null) as num?)?.toDouble() ?? 0,
+          employee: emp.isEmpty ? 'Attribution automatique' : emp,
+        );
+      }).toList();
+    } else {
+      final pSvcIds = List<String>.from(p['serviceIds'] ?? []);
+      final pServices = _selectedServices
+          .where((s) => pSvcIds.contains(s.id.isNotEmpty ? s.id : s.name))
+          .toList();
+      final seMap = <String, String>{};
+      final se = p['serviceEmployees'];
+      if (se is List) {
+        for (final e in se) {
+          if (e is Map) {
+            final sid = e['serviceId']?.toString();
+            final eid = e['employeeId']?.toString();
+            if (sid != null &&
+                eid != null &&
+                sid.isNotEmpty &&
+                eid.isNotEmpty) {
+              seMap[sid] = eid;
+            }
+          }
+        }
+      }
+      rows = pServices.map((s) {
+        final key = s.id.isNotEmpty ? s.id : s.name;
+        return _RecapServiceRow(
+          name: s.name,
+          durationLabel: _durationLabel(s.durationMin),
+          price: s.price,
+          employee: _employeeNameForId(seMap[key]),
+        );
+      }).toList();
+    }
+
+    return _RecapPersonCard(
+      name: '${p['firstName'] ?? ''} ${p['lastName'] ?? ''}'.trim(),
+      avatarUrl: (p['avatar'] ?? '').toString(),
+      isBooker: isBooker,
+      dateTime: dateTime,
+      contact: null,
+      services: _withServiceDividers(rows),
+    );
+  }
+
   Widget _bottomBar({
     required String priceLabel,
     String? subtitle,
@@ -1541,7 +1811,13 @@ class _BookingScreenState extends State<BookingScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         border: const Border(top: BorderSide(color: AppColors.border)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -4))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -4),
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1555,14 +1831,26 @@ class _BookingScreenState extends State<BookingScreen> {
                   priceLabel,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textDark, height: 1.2),
+                  style: GoogleFonts.inter(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textDark,
+                    height: 1.2,
+                  ),
                 ),
-                if (subtitle != null) ...[const SizedBox(height: 3), Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray, height: 1.3),
-                )],
+                if (subtitle != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: AppColors.textGray,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1573,7 +1861,9 @@ class _BookingScreenState extends State<BookingScreen> {
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               decoration: BoxDecoration(
-                color: onContinue != null ? AppColors.primary : AppColors.border,
+                color: onContinue != null
+                    ? AppColors.primary
+                    : AppColors.border,
                 borderRadius: BorderRadius.circular(28),
               ),
               child: Row(
@@ -1587,10 +1877,19 @@ class _BookingScreenState extends State<BookingScreen> {
                     style: GoogleFonts.inter(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: onContinue != null ? Colors.white : AppColors.textGray,
+                      color: onContinue != null
+                          ? Colors.white
+                          : AppColors.textGray,
                     ),
                   ),
-                  if (onContinue != null) ...[const SizedBox(width: 6), const Icon(Icons.arrow_forward, color: Colors.white, size: 18)],
+                  if (onContinue != null) ...[
+                    const SizedBox(width: 6),
+                    const Icon(
+                      Icons.arrow_forward,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1600,11 +1899,22 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
-  Widget _field(String label, TextEditingController c, {TextInputType? keyboard}) {
+  Widget _field(
+    String label,
+    TextEditingController c, {
+    TextInputType? keyboard,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textDark)),
+        Text(
+          label,
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textDark,
+          ),
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: c,
@@ -1613,10 +1923,25 @@ class _BookingScreenState extends State<BookingScreen> {
           decoration: InputDecoration(
             filled: true,
             fillColor: Colors.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.primary,
+                width: 1.5,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
           ),
         ),
       ],
@@ -1677,7 +2002,10 @@ class _EmployeeAvatar extends StatelessWidget {
                 child: SizedBox(
                   width: 14,
                   height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textGray),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.textGray,
+                  ),
                 ),
               ),
             );
@@ -1726,10 +2054,7 @@ class _EmployeeCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              _EmployeeAvatar(
-                name: name,
-                avatarUrl: avatarUrl,
-              ),
+              _EmployeeAvatar(name: name, avatarUrl: avatarUrl),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1748,7 +2073,9 @@ class _EmployeeCard extends StatelessWidget {
                       available ? 'Disponible' : 'Indisponible',
                       style: GoogleFonts.inter(
                         fontSize: 11,
-                        color: available ? AppColors.textGray : AppColors.textLight,
+                        color: available
+                            ? AppColors.textGray
+                            : AppColors.textLight,
                       ),
                     ),
                   ],
@@ -1794,14 +2121,25 @@ class _RecapServiceRow extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              employee == 'Attribution automatique' ? name : '$name par $employee',
-              style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark, height: 1.3),
+              employee == 'Attribution automatique'
+                  ? name
+                  : '$name par $employee',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark,
+                height: 1.3,
+              ),
             ),
           ),
           const SizedBox(width: 12),
           Text(
             '$durationLabel · ${price.toInt()} MAD',
-            style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray, height: 1.3),
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: AppColors.textGray,
+              height: 1.3,
+            ),
           ),
         ],
       ),
@@ -1816,25 +2154,33 @@ class _PersonAvatar extends StatelessWidget {
   final String name;
   final String avatarUrl;
   final bool isBooker;
-  const _PersonAvatar({required this.name, required this.avatarUrl, this.isBooker = false});
+  const _PersonAvatar({
+    required this.name,
+    required this.avatarUrl,
+    this.isBooker = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
     Widget fallback({Color? bg, Color? fg}) => Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: bg ?? AppColors.primary.withValues(alpha: 0.08),
-            shape: BoxShape.circle,
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: bg ?? AppColors.primary.withValues(alpha: 0.08),
+        shape: BoxShape.circle,
+      ),
+      child: Center(
+        child: Text(
+          initials,
+          style: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: fg ?? AppColors.primary,
           ),
-          child: Center(
-            child: Text(
-              initials,
-              style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: fg ?? AppColors.primary),
-            ),
-          ),
-        );
+        ),
+      ),
+    );
 
     final src = avatarUrl.trim();
     Widget avatar;
@@ -1849,7 +2195,8 @@ class _PersonAvatar extends StatelessWidget {
             child: Image.memory(
               base64Decode(src.split(',').last),
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => fallback(bg: AppColors.chipBg, fg: AppColors.textGray),
+              errorBuilder: (_, __, ___) =>
+                  fallback(bg: AppColors.chipBg, fg: AppColors.textGray),
             ),
           ),
         );
@@ -1864,7 +2211,8 @@ class _PersonAvatar extends StatelessWidget {
           child: Image.network(
             src,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => fallback(bg: AppColors.chipBg, fg: AppColors.textGray),
+            errorBuilder: (_, __, ___) =>
+                fallback(bg: AppColors.chipBg, fg: AppColors.textGray),
           ),
         ),
       );
@@ -1877,8 +2225,15 @@ class _PersonAvatar extends StatelessWidget {
         if (isBooker)
           Positioned(
             top: -9,
-            right: -8,
-            child: Icon(FontAwesomeIcons.crown, size: 15, color: const Color(0xFFF59E0B)),
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Icon(
+                FontAwesomeIcons.crown,
+                size: 15,
+                color: const Color(0xFFF59E0B),
+              ),
+            ),
           ),
       ],
     );
@@ -1917,24 +2272,51 @@ class _RecapPersonCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              _PersonAvatar(name: name, avatarUrl: avatarUrl, isBooker: isBooker),
+              _PersonAvatar(
+                name: name,
+                avatarUrl: avatarUrl,
+                isBooker: isBooker,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+                    Text(
+                      name,
+                      style: GoogleFonts.inter(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
+                    ),
                     if (contact != null && contact!.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 3),
-                        child: Text(contact!, style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray)),
+                        child: Text(
+                          contact!,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: AppColors.textGray,
+                          ),
+                        ),
                       ),
                   ],
                 ),
               ),
             ],
           ),
-          if (dateTime.isNotEmpty) ...[const SizedBox(height: 16), Text(dateTime, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark))],
+          if (dateTime.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              dateTime,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           const Divider(height: 1, color: AppColors.border),
           const SizedBox(height: 6),
@@ -1967,8 +2349,15 @@ class _AddPersonCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                child: const Icon(Icons.person_add_rounded, color: Colors.white, size: 22),
+                decoration: const BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.person_add_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -1977,17 +2366,27 @@ class _AddPersonCard extends StatelessWidget {
                   children: [
                     Text(
                       'Ajouter une personne à la réservation',
-                      style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textDark),
+                      style: GoogleFonts.inter(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Choisissez un proche ou un invité',
-                      style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray),
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: AppColors.textGray,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: AppColors.textGray),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textGray,
+              ),
             ],
           ),
         ),
@@ -2037,7 +2436,11 @@ class _ProfessionalChoiceCard extends StatelessWidget {
                 color: selected ? AppColors.purpleAccent : AppColors.chipBg,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: selected ? Colors.white : AppColors.textGray, size: 24),
+              child: Icon(
+                icon,
+                color: selected ? Colors.white : AppColors.textGray,
+                size: 24,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -2057,7 +2460,11 @@ class _ProfessionalChoiceCard extends StatelessWidget {
                         ),
                       ),
                       if (selected)
-                        const Icon(Icons.check_circle_rounded, color: AppColors.purpleAccent, size: 20),
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          color: AppColors.purpleAccent,
+                          size: 20,
+                        ),
                     ],
                   ),
                   const SizedBox(height: 4),
