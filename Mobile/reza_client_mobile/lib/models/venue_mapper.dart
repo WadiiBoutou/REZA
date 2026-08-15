@@ -28,6 +28,9 @@ Map<String, dynamic> tenantToVenue(Map<String, dynamic> t) {
   }
   lat ??= (t['latitude'] as num?)?.toDouble();
   lng ??= (t['longitude'] as num?)?.toDouble();
+  // Only true when the backend actually provided coordinates — not the
+  // Casablanca fallback below, so the UI never fakes a distance.
+  final hasCoordinates = lat != null && lng != null;
 
   final rating = (t['rating'] as num?)?.toDouble() ??
       (t['averageRating'] as num?)?.toDouble() ??
@@ -49,6 +52,7 @@ Map<String, dynamic> tenantToVenue(Map<String, dynamic> t) {
     'distance': t['distanceKm'] != null ? '${t['distanceKm']} km' : '',
     'latitude': lat ?? 33.5731,
     'longitude': lng ?? -7.5898,
+    'hasCoordinates': hasCoordinates,
     'nextAvailable': t['nextAvailable']?.toString() ?? '',
     'price': t['price']?.toString() ?? '',
     'description': (t['description'] ?? '').toString(),
@@ -99,6 +103,7 @@ VenueItem venueMapToItem(
         : '',
     latitude: (m['latitude'] as num?)?.toDouble() ?? 33.5731,
     longitude: (m['longitude'] as num?)?.toDouble() ?? -7.5898,
+    hasCoordinates: (m['hasCoordinates'] as bool?) ?? false,
     nextAvailable: m['nextAvailable']?.toString() ?? '',
     services: services,
   );

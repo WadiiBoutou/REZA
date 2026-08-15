@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants.dart';
@@ -574,7 +576,7 @@ class _HomeScreenState extends State<_HomeScreenBody> {
             ),
             const SizedBox(height: 4),
             Text(
-              venueMetaLine(venue),
+              _metaLine(venue),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray),
@@ -620,7 +622,7 @@ class _HomeScreenState extends State<_HomeScreenBody> {
             Text('${venue.category} · ${venue.reviews} avis', style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray)),
             const SizedBox(height: 2),
             Text(
-              venueMetaLine(venue),
+              _metaLine(venue),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray),
@@ -664,7 +666,7 @@ class _HomeScreenState extends State<_HomeScreenBody> {
             ),
             const SizedBox(height: 4),
             Text(
-              venueMetaLine(venue),
+              _metaLine(venue),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray),
@@ -675,10 +677,38 @@ class _HomeScreenState extends State<_HomeScreenBody> {
     );
   }
 
-  /// Parses '1.2 km' → 1.2 ; empty/unparseable → infinity (sorts last).
+  /// Real km from the user's GPS position (haversine — same calc as the search
+  /// screen) when the user shared location and the salon has real coordinates.
+  /// Falls back to the API's '1.2 km' string; empty/unparseable → infinity
+  /// (sorts last, so no-coords salons never pretend to be "à proximité").
   double _distanceKm(VenueItem v) {
+    final vm = _vm;
+    if (vm.hasUserLocation && v.hasCoordinates) {
+      final lat = vm.userLat!;
+      final lng = vm.userLng!;
+      const r = 6371.0;
+      final dLat = (v.latitude - lat) * pi / 180;
+      final dLng = (v.longitude - lng) * pi / 180;
+      final a = sin(dLat / 2) * sin(dLat / 2) +
+          cos(lat * pi / 180) * cos(v.latitude * pi / 180) * sin(dLng / 2) * sin(dLng / 2);
+      return r * 2 * atan2(sqrt(a), sqrt(1 - a));
+    }
     final m = RegExp(r'([\d.,]+)\s*km').firstMatch(v.distance);
     if (m == null) return double.infinity;
     return double.tryParse(m.group(1)!.replaceAll(',', '.')) ?? double.infinity;
+  }
+
+  /// Meta line with a REAL distance when GPS is on: computed locally from the
+  /// user's position (covers fallback queries where the API string is missing).
+  /// Otherwise the API's '1.2 km · Casablanca', then just the location.
+  String _metaLine(VenueItem venue) {
+    if (_vm.hasUserLocation && venue.hasCoordinates) {
+      final km = _distanceKm(venue);
+      if (km.isFinite) {
+        final s = km.toStringAsFixed(1).replaceAll('.', ',');
+        return '$s km · ${venue.location}';
+      }
+    }
+    return venueMetaLine(venue);
   }
 }

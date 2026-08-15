@@ -691,6 +691,7 @@ extension on VenueItem {
         distance: distance,
         latitude: latitude,
         longitude: longitude,
+        hasCoordinates: hasCoordinates,
         nextAvailable: nextAvailable,
         services: services,
       );

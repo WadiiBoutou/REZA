@@ -64,6 +64,8 @@ class VenueItem {
   final String distance;
   final double latitude;
   final double longitude;
+  /// Whether the venue carries real coordinates (vs the mapper's fallback).
+  final bool hasCoordinates;
   final String nextAvailable;
   final List<ServiceItem> services;
 
@@ -79,6 +81,7 @@ class VenueItem {
     required this.distance,
     required this.latitude,
     required this.longitude,
+    required this.hasCoordinates,
     required this.nextAvailable,
     required this.services,
   });
