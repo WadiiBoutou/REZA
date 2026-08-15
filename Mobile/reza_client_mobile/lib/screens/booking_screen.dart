@@ -501,6 +501,10 @@ class _BookingScreenState extends State<BookingScreen> {
     final auth = context.read<AuthViewModel>();
     final user = auth.user;
     final isAddingGuest = widget.prefillParticipant != null;
+    // Saved proches already exist on the DB with their info — phone is NOT
+    // required for them. Only guests added on the fly (and the booker) need a
+    // phone, matching the web flow and the backend's booking schema.
+    final isSavedProche = widget.prefillParticipant?['familyMemberId'] != null;
 
     String pickField({
       required bool overrideWithInput,
@@ -535,7 +539,7 @@ class _BookingScreenState extends State<BookingScreen> {
     );
 
     if (firstName.isEmpty ||
-        phone.isEmpty ||
+        (!isSavedProche && phone.isEmpty) ||
         (!isAddingGuest && lastName.isEmpty)) {
       _showError('Veuillez remplir tous les champs obligatoires.');
       return null;
