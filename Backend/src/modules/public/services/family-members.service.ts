@@ -115,6 +115,7 @@ export class FamilyMembersService {
           phone: familyMemberData.phone || null,
           relationship: familyMemberData.relationship,
           avatar: familyMemberData.avatar || null,
+          gender: familyMemberData.gender || null,
         },
       });
 
@@ -177,6 +178,10 @@ export class FamilyMembersService {
 
       if (data.avatar !== undefined) {
         familyMemberUpdateData.avatar = data.avatar || null;
+      }
+
+      if (data.gender !== undefined) {
+        familyMemberUpdateData.gender = data.gender || null;
       }
 
       const familyMember = await prisma.familyMember.update({

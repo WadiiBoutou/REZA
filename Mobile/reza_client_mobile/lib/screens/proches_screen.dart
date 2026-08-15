@@ -39,6 +39,22 @@ class _ProchesScreenState extends State<_ProchesBody> {
   bool get _loading => _pvm.loading;
   String? get _error => _pvm.error;
 
+  /// Reuse the SAME ImageProvider instance per avatar string so the Flutter
+  /// image cache gets a hit. MemoryImage (base64) has identity equality — a
+  /// fresh instance every build misses the cache and re-decodes → flicker.
+  final Map<String, ImageProvider> _avatarCache = {};
+
+  ImageProvider? _avatarFor(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return null;
+    final cached = _avatarCache[s];
+    if (cached != null) return cached;
+    final provider = avatarProvider(s);
+    if (provider == null) return null;
+    _avatarCache[s] = provider;
+    return provider;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -73,16 +89,28 @@ class _ProchesScreenState extends State<_ProchesBody> {
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
-        title: Text('Supprimer le proche', style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: AppColors.textDark)),
+        title: Text(
+          'Supprimer le proche',
+          style: GoogleFonts.inter(
+            fontWeight: FontWeight.w700,
+            color: AppColors.textDark,
+          ),
+        ),
         content: Text(
           'Supprimer ${m.name} ?',
           style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Supprimer', style: GoogleFonts.inter(color: Colors.red)),
+            child: Text(
+              'Supprimer',
+              style: GoogleFonts.inter(color: Colors.red),
+            ),
           ),
         ],
       ),
@@ -93,7 +121,9 @@ class _ProchesScreenState extends State<_ProchesBody> {
       await _load();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -129,21 +159,38 @@ class _ProchesScreenState extends State<_ProchesBody> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.people_outline_rounded, size: 64, color: AppColors.textLight),
+                const Icon(
+                  Icons.people_outline_rounded,
+                  size: 64,
+                  color: AppColors.textLight,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Connectez-vous pour gérer vos proches',
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textGray),
+                  style: GoogleFonts.inter(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textGray,
+                  ),
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: () async {
-                    await Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    );
                     await _load();
                   },
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
-                  child: Text('Se connecter', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(
+                    'Se connecter',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
                 ),
               ],
             ),
@@ -169,20 +216,39 @@ class _ProchesScreenState extends State<_ProchesBody> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Mes Proches', style: GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.textDark)),
+                          Text(
+                            'Mes Proches',
+                            style: GoogleFonts.inter(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textDark,
+                            ),
+                          ),
                           const SizedBox(height: 4),
-                          Text('Gérez les comptes de votre famille', style: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray)),
+                          Text(
+                            'Gérez les comptes de votre famille',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: AppColors.textGray,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     TextButton.icon(
                       onPressed: () => _showForm(),
                       icon: const Icon(Icons.add, size: 18),
-                      label: Text('Ajouter', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                      label: Text(
+                        'Ajouter',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                      ),
                       style: TextButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
                     ),
                   ],
@@ -190,7 +256,11 @@ class _ProchesScreenState extends State<_ProchesBody> {
               ),
             ),
             if (_loading)
-              const SliverFillRemaining(child: Center(child: CircularProgressIndicator(color: AppColors.primary)))
+              const SliverFillRemaining(
+                child: Center(
+                  child: CircularProgressIndicator(color: AppColors.primary),
+                ),
+              )
             else if (_error != null)
               SliverFillRemaining(
                 child: Center(
@@ -199,9 +269,16 @@ class _ProchesScreenState extends State<_ProchesBody> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(_error!, textAlign: TextAlign.center, style: GoogleFonts.inter(color: AppColors.textGray)),
+                        Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(color: AppColors.textGray),
+                        ),
                         const SizedBox(height: 12),
-                        TextButton(onPressed: _load, child: const Text('Réessayer')),
+                        TextButton(
+                          onPressed: _load,
+                          child: const Text('Réessayer'),
+                        ),
                       ],
                     ),
                   ),
@@ -215,14 +292,24 @@ class _ProchesScreenState extends State<_ProchesBody> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.people_outline, size: 48, color: AppColors.textLight),
+                        const Icon(
+                          Icons.people_outline,
+                          size: 48,
+                          color: AppColors.textLight,
+                        ),
                         const SizedBox(height: 12),
-                        Text('Aucun proche enregistré', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                        Text(
+                          'Aucun proche enregistré',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                        ),
                         const SizedBox(height: 8),
                         Text(
                           'Ajoutez famille et amis pour réserver pour eux.',
                           textAlign: TextAlign.center,
-                          style: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray),
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: AppColors.textGray,
+                          ),
                         ),
                       ],
                     ),
@@ -233,82 +320,125 @@ class _ProchesScreenState extends State<_ProchesBody> {
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
                 sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final m = _members[index];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: Column(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final m = _members[index];
+                    final avatar = _avatarFor(m.avatar ?? '');
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+                            child: Row(
+                              children: [
+                                RepaintBoundary(
+                                  child: CircleAvatar(
                                     radius: 24,
                                     backgroundColor: AppColors.primary,
-                                    backgroundImage: avatarProvider(m.avatar ?? ''),
-                                    child: avatarProvider(m.avatar ?? '') == null
-                                        ? Text(m.initials, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700))
+                                    backgroundImage: avatar,
+                                    child: avatar == null
+                                        ? Text(
+                                            m.initials,
+                                            style: GoogleFonts.inter(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          )
                                         : null,
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(m.name, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700)),
-                                        Text(m.relationship, style: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray)),
-                                      ],
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        m.name,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      Text(
+                                        m.relationship,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 13,
+                                          color: AppColors.textGray,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 20,
+                                    color: AppColors.textGray,
+                                  ),
+                                  onPressed: () => _showForm(existing: m),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 20,
+                                    color: AppColors.textGray,
+                                  ),
+                                  onPressed: () => _delete(m),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (m.phone != null && m.phone!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.phone_outlined,
+                                    size: 16,
+                                    color: AppColors.textLight,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    m.phone!,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13,
+                                      color: AppColors.textGray,
                                     ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_outlined, size: 20, color: AppColors.textGray),
-                                    onPressed: () => _showForm(existing: m),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textGray),
-                                    onPressed: () => _delete(m),
                                   ),
                                 ],
                               ),
                             ),
-                            if (m.phone != null && m.phone!.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.phone_outlined, size: 16, color: AppColors.textLight),
-                                    const SizedBox(width: 8),
-                                    Text(m.phone!, style: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray)),
-                                  ],
-                                ),
-                              ),
-                            const Divider(height: 1),
-                            InkWell(
-                              onTap: () => _bookFor(m),
-                              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                child: Center(
-                                  child: Text(
-                                    'Réserver pour ${m.firstName}',
-                                    style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textDark),
+                          const Divider(height: 1),
+                          InkWell(
+                            onTap: () => _bookFor(m),
+                            borderRadius: const BorderRadius.vertical(
+                              bottom: Radius.circular(16),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              child: Center(
+                                child: Text(
+                                  'Réserver pour ${m.firstName}',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textDark,
                                   ),
                                 ),
                               ),
                             ),
-                          ],
-                        ),
-                      );
-                    },
-                    childCount: _members.length,
-                  ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }, childCount: _members.length),
                 ),
               ),
           ],
@@ -337,6 +467,14 @@ class _ProcheFormSheet extends StatefulWidget {
   State<_ProcheFormSheet> createState() => _ProcheFormSheetState();
 }
 
+/// Mirrors the backend's proche phone rule (Moroccan format):
+/// +212XXXXXXXXX or 0XXXXXXXXX (exactly 10 local digits). Separators allowed.
+bool _isValidProchePhone(String phone) {
+  final cleaned = phone.replaceAll(RegExp(r'[\s\-()]'), '').trim();
+  if (cleaned.isEmpty) return true; // optional
+  return RegExp(r'^(\+212\d{9}|0\d{9})$').hasMatch(cleaned);
+}
+
 class _ProcheFormSheetState extends State<_ProcheFormSheet> {
   late final TextEditingController _firstCtrl;
   late final TextEditingController _lastCtrl;
@@ -348,6 +486,11 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
   bool _uploadingAvatar = false;
   String? _gender;
   bool _saving = false;
+
+  /// Inline errors — a snackbar is invisible behind the open modal sheet, so
+  /// validation and API errors are shown INSIDE the form instead.
+  String? _formError;
+  String? _phoneError;
 
   FamilyMember? get _existing => widget.existing;
 
@@ -383,19 +526,30 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
         shape: BoxShape.circle,
         border: Border.all(color: AppColors.border, width: 2),
       ),
-      child: const Icon(Icons.person_outline_rounded, size: 40, color: AppColors.textGray),
+      child: const Icon(
+        Icons.person_outline_rounded,
+        size: 40,
+        color: AppColors.textGray,
+      ),
     );
     Widget img;
     if (_avatarBytes.isNotEmpty) {
       img = Image.memory(Uint8List.fromList(_avatarBytes), fit: BoxFit.cover);
     } else if (_avatarUrl.trim().startsWith('data:')) {
       try {
-        img = Image.memory(base64Decode(_avatarUrl.split(',').last), fit: BoxFit.cover);
+        img = Image.memory(
+          base64Decode(_avatarUrl.split(',').last),
+          fit: BoxFit.cover,
+        );
       } catch (_) {
         return placeholder;
       }
     } else if (_avatarUrl.trim().isNotEmpty) {
-      img = Image.network(_avatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => placeholder);
+      img = Image.network(
+        _avatarUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => placeholder,
+      );
     } else {
       return placeholder;
     }
@@ -411,16 +565,29 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
         _avatarBytes = bytes;
         _uploadingAvatar = true;
       });
-      final ext = picked.name.contains('.') ? picked.name.split('.').last.toLowerCase() : 'jpg';
-      final mime = ext == 'png' ? 'image/png' : ext == 'webp' ? 'image/webp' : 'image/jpeg';
+      final ext = picked.name.contains('.')
+          ? picked.name.split('.').last.toLowerCase()
+          : 'jpg';
+      final mime = ext == 'png'
+          ? 'image/png'
+          : ext == 'webp'
+          ? 'image/webp'
+          : 'image/jpeg';
       final res = await apiClient.uploadAvatar(bytes, 'avatar.$ext', mime);
       if (!mounted) return;
       setState(() {
         _avatarUrl = (res['avatar'] as String?) ?? '';
         _uploadingAvatar = false;
+        _formError = null;
       });
     } catch (_) {
-      if (mounted) setState(() => _uploadingAvatar = false);
+      if (mounted) {
+        setState(() {
+          _uploadingAvatar = false;
+          _formError =
+              "Échec de l'envoi de la photo. Vérifiez votre connexion et réessayez.";
+        });
+      }
     }
   }
 
@@ -432,14 +599,23 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: selected ? AppColors.primary.withValues(alpha: 0.1) : Colors.white,
+            color: selected
+                ? AppColors.primary.withValues(alpha: 0.1)
+                : Colors.white,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.5 : 1),
+            border: Border.all(
+              color: selected ? AppColors.primary : AppColors.border,
+              width: selected ? 1.5 : 1,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 18, color: selected ? AppColors.primary : AppColors.textGray),
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? AppColors.primary : AppColors.textGray,
+              ),
               const SizedBox(width: 8),
               Text(
                 label,
@@ -459,10 +635,20 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
   Future<void> _save() async {
     final first = _firstCtrl.text.trim();
     final rel = _relCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
+    setState(() {
+      _formError = null;
+      _phoneError = null;
+    });
     if (first.isEmpty || rel.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Prénom et lien requis')),
-      );
+      setState(() => _formError = 'Prénom et lien sont requis.');
+      return;
+    }
+    if (phone.isNotEmpty && !_isValidProchePhone(phone)) {
+      setState(() {
+        _phoneError =
+            'Format invalide. Utilisez +212XXXXXXXXX ou 0XXXXXXXXX (10 chiffres).';
+      });
       return;
     }
     setState(() => _saving = true);
@@ -496,34 +682,102 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
       widget.onSaved();
     } on ApiException catch (e) {
       if (mounted) {
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        setState(() {
+          _saving = false;
+          _formError = e.message;
+        });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        setState(() {
+          _saving = false;
+          _formError =
+              "Une erreur est survenue. Vérifiez votre connexion et réessayez.";
+        });
       }
     }
   }
 
-  Widget _sheetField(String label, TextEditingController c, {TextInputType? keyboard}) {
+  Widget _errorBanner(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 16,
+            color: Color(0xFFDC2626),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: const Color(0xFFB91C1C),
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sheetField(
+    String label,
+    TextEditingController c, {
+    TextInputType? keyboard,
+    String? errorText,
+    ValueChanged<String>? onChanged,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
+        Text(
+          label,
+          style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
         const SizedBox(height: 6),
         TextField(
           controller: c,
           keyboardType: keyboard,
+          onChanged: onChanged,
           style: GoogleFonts.inter(fontSize: 15),
           decoration: InputDecoration(
+            errorText: errorText,
+            errorStyle: GoogleFonts.inter(
+              fontSize: 11,
+              color: const Color(0xFFDC2626),
+            ),
             filled: true,
             fillColor: Colors.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: AppColors.primary,
+                width: 1.5,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
           ),
         ),
       ],
@@ -546,8 +800,15 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
           children: [
             Text(
               _existing == null ? 'Ajouter un proche' : 'Modifier le proche',
-              style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800),
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
             ),
+            if (_formError != null) ...[
+              const SizedBox(height: 12),
+              _errorBanner(_formError!),
+            ],
             const SizedBox(height: 16),
             // ── Avatar (optional) ─────────────────────────
             Center(
@@ -562,13 +823,23 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
                       child: Container(
                         width: 30,
                         height: 30,
-                        decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                        decoration: const BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                        ),
                         child: _uploadingAvatar
                             ? const Padding(
                                 padding: EdgeInsets.all(7),
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
-                            : const Icon(Icons.photo_camera_rounded, size: 16, color: Colors.white),
+                            : const Icon(
+                                Icons.photo_camera_rounded,
+                                size: 16,
+                                color: Colors.white,
+                              ),
                       ),
                     ),
                   ],
@@ -582,11 +853,29 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
             const SizedBox(height: 10),
             _sheetField('Lien (ami, frère...) *', _relCtrl),
             const SizedBox(height: 10),
-            _sheetField('Téléphone', _phoneCtrl, keyboard: TextInputType.phone),
+            _sheetField(
+              'Téléphone',
+              _phoneCtrl,
+              keyboard: TextInputType.phone,
+              errorText: _phoneError,
+              onChanged: (_) {
+                if (_phoneError != null) setState(() => _phoneError = null);
+              },
+            ),
             const SizedBox(height: 10),
-            _sheetField('Email', _emailCtrl, keyboard: TextInputType.emailAddress),
+            _sheetField(
+              'Email',
+              _emailCtrl,
+              keyboard: TextInputType.emailAddress,
+            ),
             const SizedBox(height: 10),
-            Text('Genre', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
+            Text(
+              'Genre',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 6),
             Row(
               children: [
@@ -605,7 +894,9 @@ class _ProcheFormSheetState extends State<_ProcheFormSheet> {
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
                 child: Text(
                   _existing == null ? 'Ajouter' : 'Enregistrer',

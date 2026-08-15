@@ -21,7 +21,8 @@ export const createPublicFamilyMemberSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   phone: optionalPhoneSchema,
   relationship: z.string().min(1, 'Relationship is required'),
-  avatar: z.string().optional()
+  avatar: z.string().optional(),
+  gender: z.enum(['male', 'female']).optional()
 });
 
 export const updatePublicFamilyMemberSchema = z.object({
@@ -31,7 +32,8 @@ export const updatePublicFamilyMemberSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   phone: optionalPhoneSchema,
   relationship: z.string().min(1).optional(),
-  avatar: z.string().optional()
+  avatar: z.string().optional(),
+  gender: z.enum(['male', 'female']).optional()
 });
 
 const serviceEmployeeItemSchema = z.object({
