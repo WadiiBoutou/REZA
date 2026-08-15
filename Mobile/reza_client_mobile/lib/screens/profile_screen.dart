@@ -6,8 +6,9 @@ import '../models/venue_mapper.dart';
 import '../viewmodels/auth_viewmodel.dart';
 import '../services/account_service.dart';
 import '../services/api_client.dart';
-import '../services/session_store.dart';
+import 'edit_profile_screen.dart';
 import 'login_screen.dart';
+import 'privacy_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -103,7 +104,10 @@ class ProfileScreen extends StatelessWidget {
                     _SettingsItem(
                       icon: Icons.person_outline_rounded,
                       label: 'Mes informations',
-                      onTap: () => _showEditProfile(context, user),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => EditProfileScreen(user: user)),
+                      ),
                     ),
                     _SettingsItem(
                       icon: Icons.lock_outline_rounded,
@@ -114,10 +118,16 @@ class ProfileScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 _SettingsSection(
-                  title: 'Support',
+                  title: 'Légal',
                   items: [
-                    _SettingsItem(icon: Icons.help_outline_rounded, label: "Centre d'aide", onTap: () {}),
-                    _SettingsItem(icon: Icons.privacy_tip_outlined, label: 'Politique de confidentialité', onTap: () {}),
+                    _SettingsItem(
+                      icon: Icons.privacy_tip_outlined,
+                      label: 'Politique de confidentialité',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const PrivacyScreen()),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -128,8 +138,10 @@ class ProfileScreen extends StatelessWidget {
                       showDialog(
                         context: context,
                         builder: (_) => AlertDialog(
+                          backgroundColor: Colors.white,
+                          surfaceTintColor: Colors.transparent,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          title: Text('Déconnexion', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 18)),
+                          title: Text('Déconnexion', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 18, color: AppColors.textDark)),
                           content: Text('Voulez-vous vraiment vous déconnecter ?', style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray)),
                           actions: [
                             TextButton(
@@ -175,106 +187,255 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  static Future<void> _showEditProfile(BuildContext context, SessionUser user) async {
-    final firstCtrl = TextEditingController(text: user.firstName);
-    final lastCtrl = TextEditingController(text: user.lastName);
-    final phoneCtrl = TextEditingController(text: user.phone ?? '');
-
+  static Future<void> _showChangePassword(BuildContext context, String email) async {
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Mes informations', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 18)),
-        content: Column(
+      builder: (_) => _ChangePasswordDialog(email: email),
+    );
+  }
+}
+
+/// Two-step password change matching the web: current password → emailed
+/// 6-digit code → new password. Styled to the app palette (no pink tint).
+class _ChangePasswordDialog extends StatefulWidget {
+  final String email;
+
+  const _ChangePasswordDialog({required this.email});
+
+  @override
+  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
+}
+
+class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
+  final _currentCtrl = TextEditingController();
+  final _codeCtrl = TextEditingController();
+  final _newCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  bool _sending = false;
+  bool _saving = false;
+  bool _codeSent = false;
+  bool _showCurrent = false;
+  bool _showNew = false;
+  bool _showConfirm = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _currentCtrl.dispose();
+    _codeCtrl.dispose();
+    _newCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendCode() async {
+    if (_currentCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Le mot de passe actuel est requis.');
+      return;
+    }
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      await accountService.sendPasswordCode(
+        email: widget.email,
+        currentPassword: _currentCtrl.text,
+      );
+      if (!mounted) return;
+      setState(() => _codeSent = true);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = "Erreur lors de l'envoi du code. Veuillez réessayer.");
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _save() async {
+    final code = _codeCtrl.text.trim();
+    final newPwd = _newCtrl.text;
+    if (code.length < 6) {
+      setState(() => _error = 'Veuillez entrer le code reçu par email.');
+      return;
+    }
+    if (newPwd.length < 8) {
+      setState(() => _error = 'Le nouveau mot de passe doit contenir au moins 8 caractères.');
+      return;
+    }
+    if (newPwd != _confirmCtrl.text) {
+      setState(() => _error = 'Les mots de passe ne correspondent pas.');
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await accountService.changePassword(
+        email: widget.email,
+        code: code,
+        newPassword: newPwd,
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mot de passe changé avec succès')),
+      );
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Erreur lors du changement de mot de passe. Veuillez réessayer.');
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text(
+        'Changer le mot de passe',
+        style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textDark),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(controller: firstCtrl, decoration: const InputDecoration(labelText: 'Prénom')),
-            TextField(controller: lastCtrl, decoration: const InputDecoration(labelText: 'Nom')),
-            TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Téléphone'), keyboardType: TextInputType.phone),
+            if (_error != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFECACA)),
+                ),
+                child: Text(
+                  _error!,
+                  style: GoogleFonts.inter(fontSize: 13, color: const Color(0xFFB91C1C)),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (!_codeSent) ...[
+              Text(
+                'Un code de vérification sera envoyé à ${widget.email}. Saisissez d\'abord votre mot de passe actuel pour recevoir le code.',
+                style: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray, height: 1.4),
+              ),
+              const SizedBox(height: 14),
+              _pwdField(_currentCtrl, 'Mot de passe actuel', _showCurrent, () {
+                setState(() => _showCurrent = !_showCurrent);
+              }),
+            ] else ...[
+              Text(
+                'Un code à 6 chiffres a été envoyé à ${widget.email}. Saisissez-le avec votre nouveau mot de passe.',
+                style: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray, height: 1.4),
+              ),
+              const SizedBox(height: 14),
+              _field(_codeCtrl, 'Code de vérification', keyboard: TextInputType.number, maxLen: 6),
+              const SizedBox(height: 12),
+              _pwdField(_newCtrl, 'Nouveau mot de passe', _showNew, () {
+                setState(() => _showNew = !_showNew);
+              }),
+              const SizedBox(height: 12),
+              _pwdField(_confirmCtrl, 'Confirmer le mot de passe', _showConfirm, () {
+                setState(() => _showConfirm = !_showConfirm);
+              }),
+            ],
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Annuler', style: GoogleFonts.inter(color: AppColors.textGray, fontWeight: FontWeight.w600)),
+        ),
+        if (!_codeSent)
           TextButton(
-            onPressed: () async {
-              try {
-                final res = await accountService.updateProfile(user.email, {
-                  'firstName': firstCtrl.text.trim(),
-                  'lastName': lastCtrl.text.trim(),
-                  'phone': phoneCtrl.text.trim(),
-                });
-                final client = res['client'] as Map<String, dynamic>? ?? res;
-                final updated = SessionUser(
-                  id: client['id']?.toString() ?? user.id,
-                  email: client['email']?.toString() ?? user.email,
-                  firstName: client['firstName']?.toString() ?? firstCtrl.text.trim(),
-                  lastName: client['lastName']?.toString() ?? lastCtrl.text.trim(),
-                  phone: client['phone']?.toString() ?? phoneCtrl.text.trim(),
-                  avatar: client['avatar']?.toString() ?? user.avatar,
-                );
-                await sessionStore.save(updated);
-                if (!context.mounted) return;
-                await context.read<AuthViewModel>().refreshFromStore();
-                if (!ctx.mounted) return;
-                Navigator.pop(ctx);
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profil mis à jour')));
-              } on ApiException catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-                }
-              }
-            },
-            child: const Text('Enregistrer'),
+            onPressed: _sending ? null : _sendCode,
+            child: Text(
+              _sending ? 'Envoi...' : 'Envoyer le code',
+              style: GoogleFonts.inter(color: AppColors.textDark, fontWeight: FontWeight.w700),
+            ),
+          )
+        else
+          TextButton(
+            onPressed: _saving ? null : _save,
+            child: Text(
+              _saving ? 'Enregistrement...' : 'Changer le mot de passe',
+              style: GoogleFonts.inter(color: AppColors.textDark, fontWeight: FontWeight.w700),
+            ),
           ),
-        ],
+      ],
+    );
+  }
+
+  Widget _field(TextEditingController c, String label, {TextInputType? keyboard, int? maxLen}) {
+    return TextField(
+      controller: c,
+      keyboardType: keyboard,
+      maxLength: maxLen,
+      style: GoogleFonts.inter(fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray),
+        counterText: '',
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.textDark, width: 1.5),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       ),
     );
   }
 
-  static Future<void> _showChangePassword(BuildContext context, String email) async {
-    final currentCtrl = TextEditingController();
-    final newCtrl = TextEditingController();
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Mot de passe', style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 18)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: currentCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Mot de passe actuel')),
-            TextField(controller: newCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Nouveau mot de passe')),
-          ],
+  Widget _pwdField(TextEditingController c, String label, bool visible, VoidCallback toggle) {
+    return TextField(
+      controller: c,
+      obscureText: !visible,
+      style: GoogleFonts.inter(fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.border),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
-          TextButton(
-            onPressed: () async {
-              if (newCtrl.text.length < 6) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Min 6 caractères')));
-                return;
-              }
-              try {
-                await accountService.changePassword(
-                  email: email,
-                  currentPassword: currentCtrl.text,
-                  newPassword: newCtrl.text,
-                );
-                if (context.mounted) {
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Mot de passe changé')));
-                }
-              } on ApiException catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-                }
-              }
-            },
-            child: const Text('Changer'),
-          ),
-        ],
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppColors.textDark, width: 1.5),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        suffixIcon: IconButton(
+          icon: Icon(visible ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20, color: AppColors.textGray),
+          onPressed: toggle,
+        ),
       ),
     );
   }

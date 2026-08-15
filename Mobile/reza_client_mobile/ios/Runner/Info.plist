@@ -28,6 +28,10 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>REZA utilise votre position pour afficher les salons près de vous. Sans localisation, tous les salons restent visibles.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>REZA accède à vos photos pour vous permettre de choisir une photo de profil.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>REZA utilise l'appareil photo pour prendre une photo de profil.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

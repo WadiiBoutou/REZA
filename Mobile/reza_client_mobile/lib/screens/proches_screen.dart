@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../constants.dart';
 import '../models/family_member.dart';
@@ -12,6 +11,7 @@ import '../viewmodels/proches_viewmodel.dart';
 import '../services/account_service.dart';
 import '../services/api_client.dart';
 import '../services/booking_for_proche.dart';
+import '../widgets/avatar_picker.dart';
 import 'login_screen.dart';
 
 class ProchesScreen extends StatelessWidget {
@@ -152,12 +152,7 @@ class _ProchesScreenState extends State<_ProchesBody> {
 
             Future<void> pickAvatar() async {
               try {
-                final picked = await ImagePicker().pickImage(
-                  source: ImageSource.gallery,
-                  maxWidth: 800,
-                  maxHeight: 800,
-                  imageQuality: 85,
-                );
+                final picked = await pickAvatarImage(ctx);
                 if (picked == null) return;
                 final bytes = await picked.readAsBytes();
                 setModal(() {

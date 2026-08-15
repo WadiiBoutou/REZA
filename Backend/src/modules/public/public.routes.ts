@@ -136,6 +136,9 @@ router.get('/client/:email/favorites', (req, res, next) =>
   publicController.getClientFavorites(req, res, next)
 );
 router.post('/favorites', (req, res, next) => publicController.addFavorite(req, res, next));
+router.get('/client/:email', (req, res, next) =>
+  publicController.getClientProfile(req, res, next)
+);
 router.put('/client/:email', (req, res, next) =>
   publicController.updateClientProfile(req, res, next)
 );

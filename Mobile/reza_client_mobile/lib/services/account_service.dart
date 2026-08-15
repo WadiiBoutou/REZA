@@ -106,17 +106,34 @@ class AccountService {
     return apiClient.put('/public/client/${Uri.encodeComponent(email)}', data);
   }
 
-  Future<void> changePassword({
+  /// Full client profile (avatar, gender, dateOfBirth...) for the edit page.
+  Future<Map<String, dynamic>> getProfile(String email) async {
+    final res = await apiClient.get(
+      '/public/client/${Uri.encodeComponent(email)}',
+    );
+    return Map<String, dynamic>.from(res['client'] as Map);
+  }
+
+  /// Step 1 — verify the current password and email a 6-digit code.
+  Future<void> sendPasswordCode({
     required String email,
     required String currentPassword,
+  }) async {
+    await apiClient.post(
+      '/public/client/${Uri.encodeComponent(email)}/send-password-code',
+      {'currentPassword': currentPassword},
+    );
+  }
+
+  /// Step 2 — validate the emailed code and set the new password.
+  Future<void> changePassword({
+    required String email,
+    required String code,
     required String newPassword,
   }) async {
     await apiClient.put(
       '/public/client/${Uri.encodeComponent(email)}/change-password',
-      {
-        'currentPassword': currentPassword,
-        'newPassword': newPassword,
-      },
+      {'code': code, 'newPassword': newPassword},
     );
   }
 }

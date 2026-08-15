@@ -1,12 +1,12 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../constants.dart';
 import '../viewmodels/auth_viewmodel.dart';
 import '../services/api_client.dart';
+import '../widgets/avatar_picker.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, this.returnResultOnSuccess = false});
@@ -208,12 +208,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   Future<void> _pickAvatar() async {
     try {
-      final picked = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 85,
-      );
+      final picked = await pickAvatarImage(context);
       if (picked == null) return;
       final bytes = await picked.readAsBytes();
       setState(() {

@@ -10,9 +10,45 @@ const PASSWORD_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const hashCode = (code: string) => crypto.createHash('sha256').update(code).digest('hex');
 
 export class ClientAccountService {
+  /**
+   * Full client profile for the edit-profile page (avatar, gender, birthdate...).
+   */
+  async getClientProfile(email: string) {
+    if (!email) {
+      fail(400, {
+        error: 'Email required',
+        message: 'Veuillez fournir votre adresse email.'
+      });
+    }
+
+    const client = await prisma.client.findFirst({
+      where: { email: decodeURIComponent(email) },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        avatar: true,
+        gender: true,
+        dateOfBirth: true,
+      } as any // Temporary cast until Prisma client is regenerated
+    });
+
+    if (!client) {
+      fail(404, {
+        error: 'Client not found',
+        message: 'Le client n\'a pas été trouvé.'
+      });
+    }
+
+    return { client };
+  }
+
   async updateClientProfile(email: string, body: any) {
     try {
-    const { firstName, lastName, phone, address, avatar, gender } = body;
+    const { firstName, lastName, phone, address, avatar, gender, dateOfBirth } = body;
 
     if (!email) {
       fail(400, {
@@ -63,6 +99,18 @@ export class ClientAccountService {
       updateData.avatar = avatar || null;
     }
 
+    // Optional birthdate — accept an ISO string or null to clear it.
+    if (dateOfBirth !== undefined) {
+      if (dateOfBirth === null || dateOfBirth === '') {
+        updateData.dateOfBirth = null;
+      } else {
+        const d = new Date(dateOfBirth);
+        if (!isNaN(d.getTime())) {
+          updateData.dateOfBirth = d;
+        }
+      }
+    }
+
     await prisma.client.updateMany({
       where: { email: decodeURIComponent(email) },
       data: updateData,
@@ -79,6 +127,7 @@ export class ClientAccountService {
         address: true,
         gender: true,
         avatar: true,
+        dateOfBirth: true,
         tenantId: true
       } as any // Temporary cast until Prisma client is regenerated
     });
