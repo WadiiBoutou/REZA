@@ -1153,9 +1153,7 @@ function CaissePageContent({
                    const isExpanded = expandedRows.has(tx.id);
                   const hasItems = tx.items && tx.items.length > 0;
                   const mainServiceLabel = tx.items && tx.items.length === 1
-                    ? (tx.items[0].participantName
-                        ? `${tx.items[0].serviceName} — pour ${tx.items[0].participantName}`
-                        : tx.items[0].serviceName)
+                    ? tx.items[0].serviceName
                     : (tx.items && tx.items.length > 1 ? 'Prestations multiples' : tx.note || undefined);
                   const toggleExpand = () => {
                     const next = new Set(expandedRows);

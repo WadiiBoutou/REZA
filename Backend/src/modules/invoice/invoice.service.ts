@@ -616,14 +616,29 @@ export class InvoiceService {
     const isSharedClient = (id: string | null | undefined) =>
       !!id && (clientIdCounts.get(id) || 0) > 1;
 
-    // When participants share a client row, the first participant linked to it
-    // (the booker, created first) keeps the existing record — the others get
-    // their own dedicated client. Otherwise the booker would be duplicated.
-    const sharedClientKeepers = new Set<string>();
-    for (const p of group.participants) {
-      if (isSharedClient(p.clientId) && !sharedClientKeepers.has(p.clientId as string)) {
-        sharedClientKeepers.add(p.clientId as string);
+    // When participants share a Client row, ONE of them is the natural owner
+    // and keeps the existing record — the participant whose booked name matches
+    // the client's name (i.e. the booker). Everyone else sharing the row gets
+    // their own dedicated client; otherwise the booker would be duplicated and
+    // the proche's invoice would stay tied to the booker's record.
+    const sharedClientKeeperParticipantIds = new Set<string>();
+    {
+      const keeperByClient = new Map<string, string>(); // clientId -> participantId
+      for (const p of group.participants) {
+        if (!isSharedClient(p.clientId) || keeperByClient.has(p.clientId as string)) continue;
+        const clientName =
+          `${p.client?.firstName || ''} ${p.client?.lastName || ''}`.trim().toLowerCase();
+        if (clientName && (p.displayName || '').trim().toLowerCase() === clientName) {
+          keeperByClient.set(p.clientId as string, p.id);
+        }
       }
+      // No participant's booked name matched the client — keep the first one.
+      for (const p of group.participants) {
+        if (isSharedClient(p.clientId) && !keeperByClient.has(p.clientId as string)) {
+          keeperByClient.set(p.clientId as string, p.id);
+        }
+      }
+      for (const pid of keeperByClient.values()) sharedClientKeeperParticipantIds.add(pid);
     }
 
     await prisma.$transaction(async (tx) => {
@@ -634,7 +649,7 @@ export class InvoiceService {
         // if their client row was renamed) — resolve a dedicated record when
         // the participant shares one with someone else in the group.
         let invoiceClientId = p.clientId;
-        if (isSharedClient(p.clientId) && !sharedClientKeepers.has(p.clientId)) {
+        if (isSharedClient(p.clientId) && !sharedClientKeeperParticipantIds.has(p.id)) {
           invoiceClientId = await this.resolveDedicatedParticipantClient(tx, p, group.participants);
         }
 
