@@ -459,6 +459,9 @@ export class ClientAuthService {
         firstName: client.firstName,
         lastName: client.lastName,
         phone: client.phone,
+        avatar: client.avatar,
+        gender: client.gender,
+        dateOfBirth: client.dateOfBirth,
         tenantId: client.tenantId,
         tenant: client.tenant ? {
           id: client.tenant.id,

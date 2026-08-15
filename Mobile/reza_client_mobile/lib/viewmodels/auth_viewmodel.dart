@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../services/account_service.dart';
 import '../services/auth_service.dart';
 import '../services/session_store.dart';
 
@@ -15,6 +16,48 @@ class AuthViewModel extends ChangeNotifier {
     _user = await sessionStore.load();
     _loading = false;
     notifyListeners();
+    // Non-blocking backfill: sessions saved before the backend returned the
+    // avatar at login have a null avatar — refresh from the profile endpoint
+    // so avatars render everywhere (profile, recap, etc.).
+    if (_user != null) {
+      // Fire and forget — the app must not wait on the network at startup.
+      _backfillAvatar();
+    }
+  }
+
+  Future<void> _backfillAvatar() async {
+    final email = _user?.email;
+    if (email == null || email.isEmpty) return;
+    try {
+      final profile = await accountService.getProfile(email);
+      final newAvatar = (profile['avatar'] ?? '').toString();
+      final current = _user;
+      if (current == null) return;
+      if ((current.avatar ?? '') == newAvatar) {
+        debugPrint(
+          '[avatar] session already has avatar: '
+          '${newAvatar.isEmpty ? 'EMPTY (no photo on DB)' : 'present'}',
+        );
+        return;
+      }
+      final updated = SessionUser(
+        id: current.id,
+        email: current.email,
+        firstName: current.firstName,
+        lastName: current.lastName,
+        phone: current.phone,
+        avatar: newAvatar.isEmpty ? null : newAvatar,
+      );
+      _user = updated;
+      await sessionStore.save(updated);
+      notifyListeners();
+      debugPrint(
+        '[avatar] session backfilled: '
+        '${newAvatar.isEmpty ? 'EMPTY (no photo on DB)' : 'loaded (${newAvatar.length} chars)'}',
+      );
+    } catch (e) {
+      debugPrint('[avatar] profile backfill failed: $e');
+    }
   }
 
   Future<void> login(String email, String password) async {

@@ -1628,9 +1628,19 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   Widget _buildRecapStep() {
-    final personName = _personLabel;
     final contact = _currentContactLine();
     final currentEmps = _currentPersonEmployees();
+
+    // Plain names on the recap — no "Pour …" prefix (the label style only
+    // belongs on the step banner, not on the person cards).
+    final bookerUser = context.read<AuthViewModel>().user;
+    final bookerName = (bookerUser?.name.isNotEmpty ?? false)
+        ? bookerUser!.name
+        : 'Vous';
+    final prefill = widget.prefillParticipant;
+    final prefillName =
+        '${prefill?['firstName'] ?? ''} ${prefill?['lastName'] ?? ''}'.trim();
+    final currentPersonName = prefillName.isNotEmpty ? prefillName : bookerName;
 
     final servicesRows = _selectedServices.map((s) {
       final key = s.id.isNotEmpty ? s.id : s.name;
@@ -1681,8 +1691,8 @@ class _BookingScreenState extends State<BookingScreen> {
                 _buildAccumulatedPersonCard(bookerData, isBooker: true)
               else
                 _RecapPersonCard(
-                  name: personName,
-                  avatarUrl: context.read<AuthViewModel>().user?.avatar ?? '',
+                  name: bookerName,
+                  avatarUrl: bookerUser?.avatar ?? '',
                   isBooker: true,
                   dateTime:
                       '${_formatFullDate(_selectedDate!)} à $_selectedTime',
@@ -1693,7 +1703,7 @@ class _BookingScreenState extends State<BookingScreen> {
               // The person being configured right now (anyone but the booker).
               if (continuingGroup)
                 _RecapPersonCard(
-                  name: personName,
+                  name: currentPersonName,
                   avatarUrl: (widget.prefillParticipant?['avatar'] ?? '')
                       .toString(),
                   isBooker: false,
@@ -2160,6 +2170,20 @@ class _PersonAvatar extends StatelessWidget {
     this.isBooker = false,
   });
 
+  /// Short human-readable summary of an avatar URL for console debugging
+  /// (never dumps the full base64 payload).
+  static String _describeUrl(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return 'EMPTY';
+    if (s.startsWith('data:')) {
+      final comma = s.indexOf(',');
+      final meta = comma > 0 ? s.substring(0, comma) : 'data';
+      final b64 = comma > 0 ? s.substring(comma + 1) : '';
+      return '$meta · ${b64.length} chars base64';
+    }
+    return s;
+  }
+
   @override
   Widget build(BuildContext context) {
     final initials = name.isNotEmpty ? name[0].toUpperCase() : '?';
@@ -2183,27 +2207,37 @@ class _PersonAvatar extends StatelessWidget {
     );
 
     final src = avatarUrl.trim();
+    debugPrint(
+      '[avatar] recap card "$name": ${_describeUrl(src)} isBooker=$isBooker',
+    );
     Widget avatar;
     if (src.isEmpty) {
+      debugPrint('[avatar]   → no URL, showing initial "$initials"');
       avatar = fallback();
     } else if (src.startsWith('data:')) {
       try {
+        final bytes = base64Decode(src.split(',').last);
+        debugPrint('[avatar]   → decoding base64 (${bytes.length} bytes)');
         avatar = ClipOval(
           child: SizedBox(
             width: 38,
             height: 38,
             child: Image.memory(
-              base64Decode(src.split(',').last),
+              bytes,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
-                  fallback(bg: AppColors.chipBg, fg: AppColors.textGray),
+              errorBuilder: (_, err, __) {
+                debugPrint('[avatar]   → base64 decode ERROR: $err');
+                return fallback(bg: AppColors.chipBg, fg: AppColors.textGray);
+              },
             ),
           ),
         );
-      } catch (_) {
+      } catch (e) {
+        debugPrint('[avatar]   → base64 decode threw: $e');
         avatar = fallback();
       }
     } else {
+      debugPrint('[avatar]   → network image: $src');
       avatar = ClipOval(
         child: SizedBox(
           width: 38,
@@ -2211,8 +2245,10 @@ class _PersonAvatar extends StatelessWidget {
           child: Image.network(
             src,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) =>
-                fallback(bg: AppColors.chipBg, fg: AppColors.textGray),
+            errorBuilder: (_, err, __) {
+              debugPrint('[avatar]   → network ERROR: $err');
+              return fallback(bg: AppColors.chipBg, fg: AppColors.textGray);
+            },
           ),
         ),
       );
