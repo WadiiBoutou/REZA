@@ -6,6 +6,7 @@ import '../constants.dart';
 import 'package:provider/provider.dart';
 import '../models/venue_mapper.dart';
 import '../viewmodels/home_viewmodel.dart';
+import '../viewmodels/proches_viewmodel.dart';
 import '../widgets/geo_prompt_banner.dart';
 import '../widgets/reza_bottom_nav.dart';
 import 'search_results_screen.dart';
@@ -45,7 +46,11 @@ class _VenueCardImage extends StatelessWidget {
       height: height,
       width: double.infinity,
       color: AppColors.surface,
-      child: const Icon(Icons.image_rounded, color: AppColors.textLight, size: 40),
+      child: const Icon(
+        Icons.image_rounded,
+        color: AppColors.textLight,
+        size: 40,
+      ),
     );
     if (!image.startsWith('http')) return placeholder;
     return Image.network(
@@ -68,6 +73,10 @@ class _HomeScreenBody extends StatefulWidget {
 class _HomeScreenState extends State<_HomeScreenBody> {
   int _navIndex = 0;
 
+  /// True while a pull-to-refresh is in flight — suppresses the floating loader
+  /// (RefreshIndicator already shows its own spinner for that gesture).
+  bool _refreshing = false;
+
   HomeViewModel get _vm => context.watch<HomeViewModel>();
 
   Future<void> _loadTenants({List<String>? categories}) =>
@@ -77,7 +86,8 @@ class _HomeScreenState extends State<_HomeScreenBody> {
 
   String get _searchCityLabel => _vm.searchCityLabel;
 
-  bool _isCategorySelected(String label) => _vm.selectedCategories.contains(label);
+  bool _isCategorySelected(String label) =>
+      _vm.selectedCategories.contains(label);
 
   String get _searchCategory => _vm.searchCategory;
 
@@ -97,14 +107,19 @@ class _HomeScreenState extends State<_HomeScreenBody> {
   }
 
   void _showCategoryPicker() async {
-    final categories = ['Tous', ...serviceCategories.map((c) => c['label'] as String)];
+    final categories = [
+      'Tous',
+      ...serviceCategories.map((c) => c['label'] as String),
+    ];
     final vm = context.read<HomeViewModel>();
     final Set<String> before = Set<String>.from(vm.selectedCategories);
     await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (context) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
@@ -119,7 +134,10 @@ class _HomeScreenState extends State<_HomeScreenBody> {
                         children: [
                           Text(
                             'Catégories',
-                            style: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700),
+                            style: GoogleFonts.inter(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                           const Spacer(),
                           TextButton(
@@ -147,10 +165,21 @@ class _HomeScreenState extends State<_HomeScreenBody> {
                               ? vm.selectedCategories.isEmpty
                               : vm.selectedCategories.contains(label);
                           return ListTile(
-                            title: Text(label, style: GoogleFonts.inter(fontSize: 16)),
+                            title: Text(
+                              label,
+                              style: GoogleFonts.inter(fontSize: 16),
+                            ),
                             trailing: isSelected
-                                ? const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 20)
-                                : const Icon(Icons.circle_outlined, color: AppColors.border, size: 20),
+                                ? const Icon(
+                                    Icons.check_circle_rounded,
+                                    color: AppColors.primary,
+                                    size: 20,
+                                  )
+                                : const Icon(
+                                    Icons.circle_outlined,
+                                    color: AppColors.border,
+                                    size: 20,
+                                  ),
                             onTap: () {
                               if (isAll) {
                                 vm.clearCategories();
@@ -171,7 +200,8 @@ class _HomeScreenState extends State<_HomeScreenBody> {
         );
       },
     );
-    final changed = before.length != vm.selectedCategories.length ||
+    final changed =
+        before.length != vm.selectedCategories.length ||
         before.any((c) => !vm.selectedCategories.contains(c));
     if (changed) {
       vm.loadTenants();
@@ -179,7 +209,14 @@ class _HomeScreenState extends State<_HomeScreenBody> {
   }
 
   void _showCityPicker() {
-    final cities = ['Toutes les villes', 'Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir'];
+    final cities = [
+      'Toutes les villes',
+      'Casablanca',
+      'Rabat',
+      'Marrakech',
+      'Tanger',
+      'Agadir',
+    ];
     // Capture the VM from the State's context (under the provider) BEFORE opening
     // the bottom sheet — the builder's context lives in a new route that cannot
     // see the provider and would throw ProviderNotFoundException.
@@ -187,7 +224,9 @@ class _HomeScreenState extends State<_HomeScreenBody> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (sheetContext) {
         return ListView.builder(
           shrinkWrap: true,
@@ -195,8 +234,14 @@ class _HomeScreenState extends State<_HomeScreenBody> {
           itemCount: cities.length,
           itemBuilder: (context, index) {
             return ListTile(
-              leading: const Icon(Icons.location_on_outlined, color: AppColors.textGray),
-              title: Text(cities[index], style: GoogleFonts.inter(fontSize: 16)),
+              leading: const Icon(
+                Icons.location_on_outlined,
+                color: AppColors.textGray,
+              ),
+              title: Text(
+                cities[index],
+                style: GoogleFonts.inter(fontSize: 16),
+              ),
               onTap: () {
                 final label = cities[index];
                 vm.setSearchCity(label == 'Toutes les villes' ? '' : label);
@@ -218,9 +263,16 @@ class _HomeScreenState extends State<_HomeScreenBody> {
         index: _navIndex,
         children: [
           _buildHomeBody(),
-          SearchResultsScreen(onGoToBookings: () => setState(() => _navIndex = 2)),
+          SearchResultsScreen(
+            onGoToBookings: () => setState(() => _navIndex = 2),
+          ),
           BookingsScreen(navIndex: _navIndex),
-          ProchesScreen(onExplore: () => setState(() => _navIndex = 1)),
+          ChangeNotifierProvider(
+            create: (_) => ProchesViewModel(),
+            child: ProchesScreen(
+              onExplore: () => setState(() => _navIndex = 1),
+            ),
+          ),
           const ProfileScreen(),
         ],
       ),
@@ -234,298 +286,389 @@ class _HomeScreenState extends State<_HomeScreenBody> {
   Widget _buildHomeBody() {
     final list = _filteredVenues;
     // Nearest first — GPS actif : l'API trie déjà par distance, ce tri local est un filet de sécurité.
-    final nearest = [...list]..sort((a, b) => _distanceKm(a).compareTo(_distanceKm(b)));
+    final nearest = [...list]
+      ..sort((a, b) => _distanceKm(a).compareTo(_distanceKm(b)));
     // Recommandés = les mieux notés (le plus d'avis), dans un rayon de 10 km (appliqué côté API quand GPS actif).
-    final recommended = [...nearest]..sort((a, b) => b.reviews.compareTo(a.reviews));
+    final recommended = [...nearest]
+      ..sort((a, b) => b.reviews.compareTo(a.reviews));
     final recTop = recommended.take(3).toList();
     // Récemment consulté — sans reprendre les salons déjà affichés dans Recommandés.
     var recent = list.where((v) => !recTop.contains(v)).take(2).toList();
     if (recent.isEmpty && list.isNotEmpty) recent = list.take(2).toList();
     // Salons à proximité — les plus proches en premier (sans reprendre ceux déjà affichés).
     final shownIds = {...recTop.map((v) => v.id), ...recent.map((v) => v.id)};
-    var nearby = nearest.where((v) => !shownIds.contains(v.id)).take(2).toList();
+    var nearby = nearest
+        .where((v) => !shownIds.contains(v.id))
+        .take(2)
+        .toList();
     if (nearby.isEmpty && nearest.isNotEmpty) nearby = nearest.take(2).toList();
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        final vm = context.read<HomeViewModel>();
-        if (vm.hasUserLocation) {
-          await vm.requestUserLocation();
-        } else {
-          await vm.loadTenants();
-        }
-      },
-      color: AppColors.primary,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-        SliverToBoxAdapter(
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: Center(
-                child: Text(
-                  'REZA',
-                  style: GoogleFonts.inter(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 4),
-                ),
-              ),
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              SizedBox(
-                height: 280,
-                width: double.infinity,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.network(
-                      'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=800&auto=format&fit=crop',
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        color: Colors.grey[800],
-                        child: const Icon(Icons.image_not_supported, color: Colors.white30, size: 50),
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: () async {
+            setState(() => _refreshing = true);
+            final vm = context.read<HomeViewModel>();
+            try {
+              if (vm.hasUserLocation) {
+                await vm.requestUserLocation();
+              } else {
+                await vm.loadTenants();
+              }
+            } finally {
+              if (mounted) setState(() => _refreshing = false);
+            }
+          },
+          color: AppColors.primary,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    child: Center(
+                      child: Text(
+                        'REZA',
+                        style: GoogleFonts.inter(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 4,
+                        ),
                       ),
                     ),
-                    Container(color: Colors.black.withValues(alpha: 0.3)),
-                  ],
+                  ),
                 ),
               ),
-              Positioned(
-                bottom: -40,
-                left: 20,
-                right: 20,
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10)),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      GestureDetector(
-                        onTap: _showCategoryPicker,
-                        child: Container(
-                          height: 50,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.search_rounded, color: AppColors.textGray, size: 20),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  _searchCategory,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.inter(
-                                    color: _searchCategory.startsWith('Prestations') ? AppColors.textGray : AppColors.textDark,
-                                    fontSize: 14,
-                                    fontWeight: _searchCategory.startsWith('Prestations') ? FontWeight.w400 : FontWeight.w600,
+              SliverToBoxAdapter(
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    SizedBox(
+                      height: 280,
+                      width: double.infinity,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(
+                            'https://images.unsplash.com/photo-1560066984-138dadb4c035?q=80&w=800&auto=format&fit=crop',
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
+                                  color: Colors.grey[800],
+                                  child: const Icon(
+                                    Icons.image_not_supported,
+                                    color: Colors.white30,
+                                    size: 50,
                                   ),
                                 ),
-                              ),
-                            ],
                           ),
-                        ),
+                          Container(color: Colors.black.withValues(alpha: 0.3)),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      GestureDetector(
-                        onTap: _showCityPicker,
-                        child: Container(
-                          height: 50,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.location_on_outlined, color: AppColors.textGray, size: 20),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  _searchCityLabel,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.inter(color: AppColors.textDark, fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                    Positioned(
+                      bottom: -40,
+                      left: 20,
+                      right: 20,
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.1),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            GestureDetector(
+                              onTap: _showCategoryPicker,
+                              child: Container(
+                                height: 50,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: AppColors.border),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.search_rounded,
+                                      color: AppColors.textGray,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        _searchCategory,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.inter(
+                                          color:
+                                              _searchCategory.startsWith(
+                                                'Prestations',
+                                              )
+                                              ? AppColors.textGray
+                                              : AppColors.textDark,
+                                          fontSize: 14,
+                                          fontWeight:
+                                              _searchCategory.startsWith(
+                                                'Prestations',
+                                              )
+                                              ? FontWeight.w400
+                                              : FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          onPressed: () => setState(() => _navIndex = 1),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          icon: const Icon(Icons.search_rounded, size: 20),
-                          label: Text('Rechercher', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 60),
-              const SizedBox(height: 16),
-              if (_loading)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                ),
-              if (_error != null && !_loading)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Text(
-                    'Impossible de charger les salons. Vérifiez la connexion API.',
-                    style: GoogleFonts.inter(fontSize: 12, color: AppColors.textLight),
-                  ),
-                ),
-              if (!_loading && _error == null && list.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: Text(
-                    'Aucun salon trouvé. Essayez une autre ville ou élargissez la recherche.',
-                    style: GoogleFonts.inter(fontSize: 13, color: AppColors.textGray),
-                  ),
-                ),
-              if ((_vm.showGeoPrompt == true || _vm.geoError != null) && !_vm.hasUserLocation)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                  child: GeoPromptBanner(
-                    loading: _vm.geoLoading,
-                    error: _vm.geoError,
-                    onUseLocation: () => context.read<HomeViewModel>().requestUserLocation(),
-                    onDismiss: () => context.read<HomeViewModel>().dismissGeoPrompt(),
-                  ),
-                ),
-              SizedBox(
-                height: 115,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: serviceCategories.length,
-                  itemBuilder: (context, index) {
-                    final cat = serviceCategories[index];
-                    final label = cat['label'] as String;
-                    final selected = _isCategorySelected(label);
-                    return GestureDetector(
-                      onTap: () {
-                        context.read<HomeViewModel>().toggleCategory(label);
-                        _loadTenants();
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(right: 16),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 64,
-                              height: 64,
-                              decoration: BoxDecoration(
-                                color: selected ? AppColors.textDark : const Color(0xFFF5F5F7),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Icon(
-                                cat['icon'] as IconData,
-                                size: 26,
-                                color: selected ? Colors.white : const Color(0xFF1D1D1F),
+                            ),
+                            const SizedBox(height: 12),
+                            GestureDetector(
+                              onTap: _showCityPicker,
+                              child: Container(
+                                height: 50,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: AppColors.border),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.location_on_outlined,
+                                      color: AppColors.textGray,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        _searchCityLabel,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.inter(
+                                          color: AppColors.textDark,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 16),
                             SizedBox(
-                              width: 64,
-                              child: Text(
-                                label,
-                                textAlign: TextAlign.center,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.inter(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: const Color(0xFF1D1D1F),
+                              width: double.infinity,
+                              height: 50,
+                              child: ElevatedButton.icon(
+                                onPressed: () => setState(() => _navIndex = 1),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.search_rounded,
+                                  size: 20,
+                                ),
+                                label: Text(
+                                  'Rechercher',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 28),
-              _buildSectionHeader('Recommandés', 'Voir tout'),
-              const SizedBox(height: 14),
-              SizedBox(
-                height: 250,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: recTop.length,
-                  itemBuilder: (context, index) => _buildRecommandeCard(recTop[index]),
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 60),
+                    const SizedBox(height: 16),
+                    if (_error != null && !_loading)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Text(
+                          'Impossible de charger les salons. Vérifiez la connexion API.',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                      ),
+                    if (!_loading && _error == null && list.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          'Aucun salon trouvé. Essayez une autre ville ou élargissez la recherche.',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: AppColors.textGray,
+                          ),
+                        ),
+                      ),
+                    if ((_vm.showGeoPrompt == true || _vm.geoError != null) &&
+                        !_vm.hasUserLocation)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                        child: GeoPromptBanner(
+                          loading: _vm.geoLoading,
+                          error: _vm.geoError,
+                          onUseLocation: () => context
+                              .read<HomeViewModel>()
+                              .requestUserLocation(),
+                          onDismiss: () =>
+                              context.read<HomeViewModel>().dismissGeoPrompt(),
+                        ),
+                      ),
+                    SizedBox(
+                      height: 115,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: serviceCategories.length,
+                        itemBuilder: (context, index) {
+                          final cat = serviceCategories[index];
+                          final label = cat['label'] as String;
+                          final selected = _isCategorySelected(label);
+                          return GestureDetector(
+                            onTap: () {
+                              context.read<HomeViewModel>().toggleCategory(
+                                label,
+                              );
+                              _loadTenants();
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 16),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 64,
+                                    height: 64,
+                                    decoration: BoxDecoration(
+                                      color: selected
+                                          ? AppColors.textDark
+                                          : const Color(0xFFF5F5F7),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Icon(
+                                      cat['icon'] as IconData,
+                                      size: 26,
+                                      color: selected
+                                          ? Colors.white
+                                          : const Color(0xFF1D1D1F),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  SizedBox(
+                                    width: 64,
+                                    child: Text(
+                                      label,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                        color: const Color(0xFF1D1D1F),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    _buildSectionHeader('Recommandés', 'Voir tout'),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 250,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: recTop.length,
+                        itemBuilder: (context, index) =>
+                            _buildRecommandeCard(recTop[index]),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    _buildSectionHeader('Récemment consulté', 'Voir tout'),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 270,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: recent.length,
+                        itemBuilder: (context, index) =>
+                            _buildRecemmentConsulteCard(recent[index]),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    _buildSectionHeader('Salons à proximité', 'Voir tout'),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 230,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: nearby.length.clamp(0, 2),
+                        itemBuilder: (context, index) =>
+                            _buildNearbyCard(nearby[index]),
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                  ],
                 ),
               ),
-              const SizedBox(height: 28),
-              _buildSectionHeader('Récemment consulté', 'Voir tout'),
-              const SizedBox(height: 14),
-              SizedBox(
-                height: 270,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: recent.length,
-                  itemBuilder: (context, index) => _buildRecemmentConsulteCard(recent[index]),
-                ),
-              ),
-              const SizedBox(height: 28),
-              _buildSectionHeader('Salons à proximité', 'Voir tout'),
-              const SizedBox(height: 14),
-              SizedBox(
-                height: 230,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: nearby.length.clamp(0, 2),
-                  itemBuilder: (context, index) => _buildNearbyCard(nearby[index]),
-                ),
-              ),
-              const SizedBox(height: 40),
             ],
           ),
         ),
+        if (_loading && !_refreshing)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 60,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(child: Center(child: _FloatingLoader())),
+          ),
       ],
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildSectionHeader(String title, String action) {
     return Padding(
@@ -533,10 +676,24 @@ class _HomeScreenState extends State<_HomeScreenBody> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+          Text(
+            title,
+            style: GoogleFonts.inter(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textDark,
+            ),
+          ),
           GestureDetector(
             onTap: () => setState(() => _navIndex = 1),
-            child: Text(action, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textGray)),
+            child: Text(
+              action,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textGray,
+              ),
+            ),
           ),
         ],
       ),
@@ -561,15 +718,33 @@ class _HomeScreenState extends State<_HomeScreenBody> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Text(venue.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+                  child: Text(
+                    venue.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                  ),
                 ),
                 Row(
                   children: [
-                    const Icon(Icons.star_rounded, size: 14, color: AppColors.starColor),
+                    const Icon(
+                      Icons.star_rounded,
+                      size: 14,
+                      color: AppColors.starColor,
+                    ),
                     const SizedBox(width: 2),
-                    Text(venue.rating.toStringAsFixed(1).replaceAll('.', ','),
-                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+                    Text(
+                      venue.rating.toStringAsFixed(1).replaceAll('.', ','),
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -605,21 +780,42 @@ class _HomeScreenState extends State<_HomeScreenBody> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Text(venue.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+                  child: Text(
+                    venue.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                  ),
                 ),
                 Row(
                   children: [
-                    const Icon(Icons.star_rounded, size: 14, color: AppColors.starColor),
+                    const Icon(
+                      Icons.star_rounded,
+                      size: 14,
+                      color: AppColors.starColor,
+                    ),
                     const SizedBox(width: 2),
-                    Text(venue.rating.toStringAsFixed(1).replaceAll('.', ','),
-                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+                    Text(
+                      venue.rating.toStringAsFixed(1).replaceAll('.', ','),
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
+                    ),
                   ],
                 ),
               ],
             ),
             const SizedBox(height: 2),
-            Text('${venue.category} · ${venue.reviews} avis', style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray)),
+            Text(
+              '${venue.category} · ${venue.reviews} avis',
+              style: GoogleFonts.inter(fontSize: 12, color: AppColors.textGray),
+            ),
             const SizedBox(height: 2),
             Text(
               _metaLine(venue),
@@ -651,15 +847,33 @@ class _HomeScreenState extends State<_HomeScreenBody> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Text(venue.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+                  child: Text(
+                    venue.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                  ),
                 ),
                 Row(
                   children: [
-                    const Icon(Icons.star_rounded, size: 14, color: AppColors.starColor),
+                    const Icon(
+                      Icons.star_rounded,
+                      size: 14,
+                      color: AppColors.starColor,
+                    ),
                     const SizedBox(width: 2),
-                    Text(venue.rating.toStringAsFixed(1).replaceAll('.', ','),
-                        style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+                    Text(
+                      venue.rating.toStringAsFixed(1).replaceAll('.', ','),
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -689,8 +903,12 @@ class _HomeScreenState extends State<_HomeScreenBody> {
       const r = 6371.0;
       final dLat = (v.latitude - lat) * pi / 180;
       final dLng = (v.longitude - lng) * pi / 180;
-      final a = sin(dLat / 2) * sin(dLat / 2) +
-          cos(lat * pi / 180) * cos(v.latitude * pi / 180) * sin(dLng / 2) * sin(dLng / 2);
+      final a =
+          sin(dLat / 2) * sin(dLat / 2) +
+          cos(lat * pi / 180) *
+              cos(v.latitude * pi / 180) *
+              sin(dLng / 2) *
+              sin(dLng / 2);
       return r * 2 * atan2(sqrt(a), sqrt(1 - a));
     }
     final m = RegExp(r'([\d.,]+)\s*km').firstMatch(v.distance);
@@ -710,5 +928,63 @@ class _HomeScreenState extends State<_HomeScreenBody> {
       }
     }
     return venueMetaLine(venue);
+  }
+}
+
+/// Floating loading pill — hovers at the top-center of the dashboard while
+/// data is being fetched, WITHOUT pushing the content below it down. The
+/// dashboard stays fully visible in the background.
+class _FloatingLoader extends StatelessWidget {
+  const _FloatingLoader();
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      builder: (context, t, child) {
+        return Opacity(
+          opacity: t,
+          child: Transform.scale(scale: 0.9 + 0.1 * t, child: child),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.2,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Chargement…',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
