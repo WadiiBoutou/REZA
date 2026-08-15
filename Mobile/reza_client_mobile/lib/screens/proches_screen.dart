@@ -16,21 +16,19 @@ import 'login_screen.dart';
 
 class ProchesScreen extends StatelessWidget {
   final VoidCallback? onExplore;
-
   const ProchesScreen({super.key, this.onExplore});
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => ProchesViewModel(),
-      child: _ProchesBody(onExplore: onExplore),
-    );
+    return _ProchesBody(onExplore: onExplore);
   }
 }
 
 class _ProchesBody extends StatefulWidget {
   final VoidCallback? onExplore;
+
   const _ProchesBody({this.onExplore});
+
   @override
   State<_ProchesBody> createState() => _ProchesScreenState();
 }
@@ -73,10 +71,12 @@ class _ProchesScreenState extends State<_ProchesBody> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Supprimer le proche', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        title: Text('Supprimer le proche', style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: AppColors.textDark)),
         content: Text(
           'Supprimer ${m.name} ?',
-          style: GoogleFonts.inter(fontSize: 14),
+          style: GoogleFonts.inter(fontSize: 14, color: AppColors.textGray),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
@@ -101,17 +101,6 @@ class _ProchesScreenState extends State<_ProchesBody> {
     final auth = context.read<AuthViewModel>();
     if (auth.email == null) return;
 
-    final firstCtrl = TextEditingController(text: existing?.firstName ?? '');
-    final lastCtrl = TextEditingController(text: existing?.lastName ?? '');
-    final relCtrl = TextEditingController(text: existing?.relationship ?? '');
-    final phoneCtrl = TextEditingController(text: existing?.phone ?? '');
-    final emailCtrl = TextEditingController(text: existing?.email ?? '');
-    var avatarBytes = <int>[];
-    var avatarUrl = existing?.avatar ?? '';
-    var uploadingAvatar = false;
-    String? gender = existing?.gender;
-    var saving = false;
-
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -119,263 +108,11 @@ class _ProchesScreenState extends State<_ProchesBody> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setModal) {
-            Widget avatarPreview() {
-              final placeholder = Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.border, width: 2),
-                ),
-                child: const Icon(Icons.person_outline_rounded, size: 40, color: AppColors.textGray),
-              );
-              Widget img;
-              if (avatarBytes.isNotEmpty) {
-                img = Image.memory(Uint8List.fromList(avatarBytes), fit: BoxFit.cover);
-              } else if (avatarUrl.trim().startsWith('data:')) {
-                try {
-                  img = Image.memory(base64Decode(avatarUrl.split(',').last), fit: BoxFit.cover);
-                } catch (_) {
-                  return placeholder;
-                }
-              } else if (avatarUrl.trim().isNotEmpty) {
-                img = Image.network(avatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => placeholder);
-              } else {
-                return placeholder;
-              }
-              return ClipOval(child: SizedBox(width: 88, height: 88, child: img));
-            }
-
-            Future<void> pickAvatar() async {
-              try {
-                final picked = await pickAvatarImage(ctx);
-                if (picked == null) return;
-                final bytes = await picked.readAsBytes();
-                setModal(() {
-                  avatarBytes = bytes;
-                  uploadingAvatar = true;
-                });
-                final ext = picked.name.contains('.') ? picked.name.split('.').last.toLowerCase() : 'jpg';
-                final mime = ext == 'png' ? 'image/png' : ext == 'webp' ? 'image/webp' : 'image/jpeg';
-                final res = await apiClient.uploadAvatar(bytes, 'avatar.$ext', mime);
-                if (ctx.mounted) {
-                  setModal(() {
-                    avatarUrl = (res['avatar'] as String?) ?? '';
-                    uploadingAvatar = false;
-                  });
-                }
-              } catch (_) {
-                if (ctx.mounted) setModal(() => uploadingAvatar = false);
-              }
-            }
-
-            Widget genderChip(String value, String label, IconData icon) {
-              final selected = gender == value;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => setModal(() => gender = selected ? null : value),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: selected ? AppColors.primary.withValues(alpha: 0.1) : Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.5 : 1),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(icon, size: 18, color: selected ? AppColors.primary : AppColors.textGray),
-                        const SizedBox(width: 8),
-                        Text(
-                          label,
-                          style: GoogleFonts.inter(
-                            fontSize: 14,
-                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                            color: selected ? AppColors.primary : AppColors.textGray,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }
-
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      existing == null ? 'Ajouter un proche' : 'Modifier le proche',
-                      style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 16),
-                    // ── Avatar (optional) ─────────────────────────
-                    Center(
-                      child: GestureDetector(
-                        onTap: uploadingAvatar ? null : pickAvatar,
-                        child: Stack(
-                          children: [
-                            avatarPreview(),
-                            Positioned(
-                              right: 0,
-                              bottom: 0,
-                              child: Container(
-                                width: 30,
-                                height: 30,
-                                decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-                                child: uploadingAvatar
-                                    ? const Padding(
-                                        padding: EdgeInsets.all(7),
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      )
-                                    : const Icon(Icons.photo_camera_rounded, size: 16, color: Colors.white),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _sheetField('Prénom *', firstCtrl),
-                    const SizedBox(height: 10),
-                    _sheetField('Nom', lastCtrl),
-                    const SizedBox(height: 10),
-                    _sheetField('Lien (ami, frère...) *', relCtrl),
-                    const SizedBox(height: 10),
-                    _sheetField('Téléphone', phoneCtrl, keyboard: TextInputType.phone),
-                    const SizedBox(height: 10),
-                    _sheetField('Email', emailCtrl, keyboard: TextInputType.emailAddress),
-                    const SizedBox(height: 10),
-                    Text('Genre', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        genderChip('female', 'Femme', Icons.female_rounded),
-                        const SizedBox(width: 12),
-                        genderChip('male', 'Homme', Icons.male_rounded),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: saving
-                            ? null
-                            : () async {
-                                final first = firstCtrl.text.trim();
-                                final rel = relCtrl.text.trim();
-                                if (first.isEmpty || rel.isEmpty) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Prénom et lien requis')),
-                                  );
-                                  return;
-                                }
-                                setModal(() => saving = true);
-                                try {
-                                  if (existing == null) {
-                                    await accountService.createFamilyMember(
-                                      clientEmail: auth.email!,
-                                      firstName: first,
-                                      lastName: lastCtrl.text.trim(),
-                                      relationship: rel,
-                                      phone: phoneCtrl.text.trim(),
-                                      email: emailCtrl.text.trim(),
-                                      avatar: avatarUrl.isEmpty ? null : avatarUrl,
-                                      gender: gender,
-                                    );
-                                  } else {
-                                    await accountService.updateFamilyMember(
-                                      id: existing.id,
-                                      clientEmail: auth.email!,
-                                      firstName: first,
-                                      lastName: lastCtrl.text.trim(),
-                                      relationship: rel,
-                                      phone: phoneCtrl.text.trim(),
-                                      email: emailCtrl.text.trim(),
-                                      avatar: avatarUrl.isEmpty ? null : avatarUrl,
-                                      gender: gender,
-                                    );
-                                  }
-                                  if (ctx.mounted) Navigator.pop(ctx);
-                                  await _load();
-                                } on ApiException catch (e) {
-                                  setModal(() => saving = false);
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text(e.message)),
-                                    );
-                                  }
-                                } catch (e) {
-                                  setModal(() => saving = false);
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text(e.toString())),
-                                    );
-                                  }
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        child: Text(
-                          existing == null ? 'Ajouter' : 'Enregistrer',
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    firstCtrl.dispose();
-    lastCtrl.dispose();
-    relCtrl.dispose();
-    phoneCtrl.dispose();
-    emailCtrl.dispose();
-  }
-
-  Widget _sheetField(String label, TextEditingController c, {TextInputType? keyboard}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        TextField(
-          controller: c,
-          keyboardType: keyboard,
-          style: GoogleFonts.inter(fontSize: 15),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          ),
-        ),
-      ],
+      builder: (ctx) => _ProcheFormSheet(
+        clientEmail: auth.email!,
+        existing: existing,
+        onSaved: _load,
+      ),
     );
   }
 
@@ -574,6 +311,308 @@ class _ProchesScreenState extends State<_ProchesBody> {
                   ),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Add/edit proche sheet. A real StatefulWidget so the TextEditingControllers
+/// are disposed when the route (and its exit animation) is fully gone — never
+/// while the sheet is still animating out (would crash "controller used after
+/// being disposed" when the user swipes the sheet down).
+class _ProcheFormSheet extends StatefulWidget {
+  final String clientEmail;
+  final FamilyMember? existing;
+  final VoidCallback onSaved;
+
+  const _ProcheFormSheet({
+    required this.clientEmail,
+    this.existing,
+    required this.onSaved,
+  });
+
+  @override
+  State<_ProcheFormSheet> createState() => _ProcheFormSheetState();
+}
+
+class _ProcheFormSheetState extends State<_ProcheFormSheet> {
+  late final TextEditingController _firstCtrl;
+  late final TextEditingController _lastCtrl;
+  late final TextEditingController _relCtrl;
+  late final TextEditingController _phoneCtrl;
+  late final TextEditingController _emailCtrl;
+  List<int> _avatarBytes = [];
+  late String _avatarUrl;
+  bool _uploadingAvatar = false;
+  String? _gender;
+  bool _saving = false;
+
+  FamilyMember? get _existing => widget.existing;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    _firstCtrl = TextEditingController(text: e?.firstName ?? '');
+    _lastCtrl = TextEditingController(text: e?.lastName ?? '');
+    _relCtrl = TextEditingController(text: e?.relationship ?? '');
+    _phoneCtrl = TextEditingController(text: e?.phone ?? '');
+    _emailCtrl = TextEditingController(text: e?.email ?? '');
+    _avatarUrl = e?.avatar ?? '';
+    _gender = e?.gender;
+  }
+
+  @override
+  void dispose() {
+    _firstCtrl.dispose();
+    _lastCtrl.dispose();
+    _relCtrl.dispose();
+    _phoneCtrl.dispose();
+    _emailCtrl.dispose();
+    super.dispose();
+  }
+
+  Widget _avatarPreview() {
+    final placeholder = Container(
+      width: 88,
+      height: 88,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.border, width: 2),
+      ),
+      child: const Icon(Icons.person_outline_rounded, size: 40, color: AppColors.textGray),
+    );
+    Widget img;
+    if (_avatarBytes.isNotEmpty) {
+      img = Image.memory(Uint8List.fromList(_avatarBytes), fit: BoxFit.cover);
+    } else if (_avatarUrl.trim().startsWith('data:')) {
+      try {
+        img = Image.memory(base64Decode(_avatarUrl.split(',').last), fit: BoxFit.cover);
+      } catch (_) {
+        return placeholder;
+      }
+    } else if (_avatarUrl.trim().isNotEmpty) {
+      img = Image.network(_avatarUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => placeholder);
+    } else {
+      return placeholder;
+    }
+    return ClipOval(child: SizedBox(width: 88, height: 88, child: img));
+  }
+
+  Future<void> _pickAvatar() async {
+    try {
+      final picked = await pickAvatarImage(context);
+      if (picked == null || !mounted) return;
+      final bytes = await picked.readAsBytes();
+      setState(() {
+        _avatarBytes = bytes;
+        _uploadingAvatar = true;
+      });
+      final ext = picked.name.contains('.') ? picked.name.split('.').last.toLowerCase() : 'jpg';
+      final mime = ext == 'png' ? 'image/png' : ext == 'webp' ? 'image/webp' : 'image/jpeg';
+      final res = await apiClient.uploadAvatar(bytes, 'avatar.$ext', mime);
+      if (!mounted) return;
+      setState(() {
+        _avatarUrl = (res['avatar'] as String?) ?? '';
+        _uploadingAvatar = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _uploadingAvatar = false);
+    }
+  }
+
+  Widget _genderChip(String value, String label, IconData icon) {
+    final selected = _gender == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _gender = selected ? null : value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.primary.withValues(alpha: 0.1) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.5 : 1),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 18, color: selected ? AppColors.primary : AppColors.textGray),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? AppColors.primary : AppColors.textGray,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    final first = _firstCtrl.text.trim();
+    final rel = _relCtrl.text.trim();
+    if (first.isEmpty || rel.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Prénom et lien requis')),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      if (_existing == null) {
+        await accountService.createFamilyMember(
+          clientEmail: widget.clientEmail,
+          firstName: first,
+          lastName: _lastCtrl.text.trim(),
+          relationship: rel,
+          phone: _phoneCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+          avatar: _avatarUrl.isEmpty ? null : _avatarUrl,
+          gender: _gender,
+        );
+      } else {
+        await accountService.updateFamilyMember(
+          id: _existing!.id,
+          clientEmail: widget.clientEmail,
+          firstName: first,
+          lastName: _lastCtrl.text.trim(),
+          relationship: rel,
+          phone: _phoneCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+          avatar: _avatarUrl.isEmpty ? null : _avatarUrl,
+          gender: _gender,
+        );
+      }
+      if (!mounted) return;
+      Navigator.pop(context);
+      widget.onSaved();
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  Widget _sheetField(String label, TextEditingController c, {TextInputType? keyboard}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: c,
+          keyboardType: keyboard,
+          style: GoogleFonts.inter(fontSize: 15),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.border)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 1.5)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _existing == null ? 'Ajouter un proche' : 'Modifier le proche',
+              style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 16),
+            // ── Avatar (optional) ─────────────────────────
+            Center(
+              child: GestureDetector(
+                onTap: _uploadingAvatar ? null : _pickAvatar,
+                child: Stack(
+                  children: [
+                    _avatarPreview(),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                        child: _uploadingAvatar
+                            ? const Padding(
+                                padding: EdgeInsets.all(7),
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.photo_camera_rounded, size: 16, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            _sheetField('Prénom *', _firstCtrl),
+            const SizedBox(height: 10),
+            _sheetField('Nom', _lastCtrl),
+            const SizedBox(height: 10),
+            _sheetField('Lien (ami, frère...) *', _relCtrl),
+            const SizedBox(height: 10),
+            _sheetField('Téléphone', _phoneCtrl, keyboard: TextInputType.phone),
+            const SizedBox(height: 10),
+            _sheetField('Email', _emailCtrl, keyboard: TextInputType.emailAddress),
+            const SizedBox(height: 10),
+            Text('Genre', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                _genderChip('female', 'Femme', Icons.female_rounded),
+                const SizedBox(width: 12),
+                _genderChip('male', 'Homme', Icons.male_rounded),
+              ],
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _save,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: Text(
+                  _existing == null ? 'Ajouter' : 'Enregistrer',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
           ],
         ),
       ),
