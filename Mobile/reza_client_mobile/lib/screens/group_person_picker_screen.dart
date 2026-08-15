@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../constants.dart';
 import '../models/family_member.dart';
 import '../models/group_person.dart';
+import '../models/venue_mapper.dart';
 import '../services/account_service.dart';
 import '../viewmodels/auth_viewmodel.dart';
 
@@ -242,6 +243,37 @@ class _ProcheCard extends StatelessWidget {
 
   const _ProcheCard({required this.member, required this.onTap, this.isAdded = false});
 
+  /// Avatar circle — fetches http or base64 data: URLs, falls back to initials.
+  Widget _buildAvatar(String src, String initials) {
+    final img = avatarProvider(src);
+    if (img == null) {
+      return Center(
+        child: Text(
+          initials,
+          style: GoogleFonts.inter(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primary,
+          ),
+        ),
+      );
+    }
+    return Image(
+      image: img,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => Center(
+        child: Text(
+          initials,
+          style: GoogleFonts.inter(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primary,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -270,31 +302,7 @@ class _ProcheCard extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     child: ClipOval(
-                      child: (member.avatar ?? '').trim().isNotEmpty
-                          ? Image.network(
-                              member.avatar!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Center(
-                                child: Text(
-                                  member.initials,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.primary,
-                                  ),
-                                ),
-                              ),
-                            )
-                          : Center(
-                              child: Text(
-                                member.initials,
-                                style: GoogleFonts.inter(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                            ),
+                      child: _buildAvatar(member.avatar ?? '', member.initials),
                     ),
                   ),
                   const SizedBox(width: 14),

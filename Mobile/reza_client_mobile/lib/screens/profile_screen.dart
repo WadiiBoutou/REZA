@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../constants.dart';
+import '../models/venue_mapper.dart';
 import '../viewmodels/auth_viewmodel.dart';
 import '../services/account_service.dart';
 import '../services/api_client.dart';
@@ -42,6 +43,7 @@ class ProfileScreen extends StatelessWidget {
     }
 
     final initial = user.firstName.isNotEmpty ? user.firstName[0].toUpperCase() : '?';
+    final avatarImg = avatarProvider(user.avatar ?? '');
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -62,8 +64,20 @@ class ProfileScreen extends StatelessWidget {
                       border: Border.all(color: Colors.white, width: 3),
                       boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10)],
                     ),
-                    child: Center(
-                      child: Text(initial, style: GoogleFonts.inter(fontSize: 36, fontWeight: FontWeight.w700, color: Colors.white)),
+                    child: ClipOval(
+                      child: avatarImg != null
+                          ? Image(
+                              image: avatarImg,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Center(
+                                child: Text(initial,
+                                    style: GoogleFonts.inter(fontSize: 36, fontWeight: FontWeight.w700, color: Colors.white)),
+                              ),
+                            )
+                          : Center(
+                              child: Text(initial,
+                                  style: GoogleFonts.inter(fontSize: 36, fontWeight: FontWeight.w700, color: Colors.white)),
+                            ),
                     ),
                   ),
                   const SizedBox(height: 14),

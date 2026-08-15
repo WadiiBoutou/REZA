@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:flutter/widgets.dart';
+
 import '../config/api_config.dart';
 import '../constants.dart';
 
@@ -15,6 +19,22 @@ String resolveImageUrl(String raw) {
       : apiBase;
   if (v.startsWith('/')) return '$origin$v';
   return '$origin/$v';
+}
+
+/// Resolves an avatar string (http URL or base64 data: URI) into an ImageProvider,
+/// or null when empty/unusable so callers can fall back to initials.
+ImageProvider? avatarProvider(String src) {
+  final s = src.trim();
+  if (s.isEmpty) return null;
+  if (s.startsWith('data:')) {
+    try {
+      return MemoryImage(base64Decode(s.split(',').last));
+    } catch (_) {
+      return null;
+    }
+  }
+  if (s.startsWith('http')) return NetworkImage(s);
+  return null;
 }
 
 /// Map Backend tenant JSON → UI-friendly venue map used across screens.

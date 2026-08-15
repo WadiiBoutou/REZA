@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../constants.dart';
 import '../models/family_member.dart';
+import '../models/venue_mapper.dart';
 import '../viewmodels/auth_viewmodel.dart';
 import '../viewmodels/proches_viewmodel.dart';
 import '../services/account_service.dart';
@@ -360,22 +361,6 @@ class _ProchesScreenState extends State<_ProchesBody> {
     emailCtrl.dispose();
   }
 
-  /// Resolves an avatar string (http URL or base64 data: URI) into an
-  /// ImageProvider, or null when empty/unusable (initials fallback).
-  ImageProvider? _avatarProvider(String src) {
-    final s = src.trim();
-    if (s.isEmpty) return null;
-    if (s.startsWith('data:')) {
-      try {
-        return MemoryImage(base64Decode(s.split(',').last));
-      } catch (_) {
-        return null;
-      }
-    }
-    if (s.startsWith('http')) return NetworkImage(s);
-    return null;
-  }
-
   Widget _sheetField(String label, TextEditingController c, {TextInputType? keyboard}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -535,8 +520,8 @@ class _ProchesScreenState extends State<_ProchesBody> {
                                   CircleAvatar(
                                     radius: 24,
                                     backgroundColor: AppColors.primary,
-                                    backgroundImage: _avatarProvider(m.avatar ?? ''),
-                                    child: _avatarProvider(m.avatar ?? '') == null
+                                    backgroundImage: avatarProvider(m.avatar ?? ''),
+                                    child: avatarProvider(m.avatar ?? '') == null
                                         ? Text(m.initials, style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700))
                                         : null,
                                   ),

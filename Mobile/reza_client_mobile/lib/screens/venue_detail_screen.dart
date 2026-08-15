@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,20 +13,6 @@ import '../services/api_client.dart';
 import '../services/discovery_service.dart';
 import 'booking_summary_screen.dart';
 import 'login_screen.dart';
-
-/// Resolves an avatar string (http URL or base64 data: URI) into an ImageProvider,
-/// or null when empty/unusable so callers can fall back to initials.
-ImageProvider? _avatarProvider(String src) {
-  if (src.startsWith('data:')) {
-    try {
-      return MemoryImage(base64Decode(src.split(',').last));
-    } catch (_) {
-      return null;
-    }
-  }
-  if (src.startsWith('http')) return NetworkImage(src);
-  return null;
-}
 
 class VenueDetailScreen extends StatefulWidget {
   final String tenantId;
@@ -996,7 +981,7 @@ class _EquipeSection extends StatelessWidget {
                 final name = '$first $last'.trim().isEmpty ? (m['name']?.toString() ?? 'Pro') : '$first $last'.trim();
                 final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
                 final avatar = (m['avatar'] ?? m['photo'] ?? '').toString();
-                final avatarProvider = _avatarProvider(avatar);
+                final avatarImg = avatarProvider(avatar);
                 return Padding(
                   padding: const EdgeInsets.only(right: 24),
                   child: Column(
@@ -1008,10 +993,9 @@ class _EquipeSection extends StatelessWidget {
                           color: Color(0xFFEDE9FE),
                           shape: BoxShape.circle,
                         ),
-                        child: ClipOval(
-                          child: avatarProvider != null
-                              ? Image(
-                                  image: avatarProvider,
+                        child: ClipOval(                          child: avatarImg != null
+                          ? Image(
+                              image: avatarImg,
                                   fit: BoxFit.cover,
                                   errorBuilder: (context, error, stackTrace) => Center(
                                     child: Text(initial,
@@ -1052,7 +1036,7 @@ class _EquipeSection extends StatelessWidget {
                 ? '$cFirst $cLast'.trim()
                 : (r['clientName'] ?? r['author'] ?? 'Client').toString();
             final avatar = (client?['avatar'] ?? '').toString();
-            final avatarProvider = _avatarProvider(avatar);
+            final avatarImg = avatarProvider(avatar);
             final text = (r['comment'] ?? r['text'] ?? r['content'] ?? '').toString();
             final initials = name.isNotEmpty ? name.substring(0, name.length >= 2 ? 2 : 1).toUpperCase() : 'CL';
             final raw = r['rating'] ?? r['stars'] ?? r['score'] ?? r['note'] ?? 0;
@@ -1065,8 +1049,8 @@ class _EquipeSection extends StatelessWidget {
                     CircleAvatar(
                       radius: 20,
                       backgroundColor: AppColors.surface,
-                      backgroundImage: avatarProvider,
-                      child: avatarProvider == null
+                      backgroundImage: avatarImg,
+                      child: avatarImg == null
                           ? Text(initials, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textDark))
                           : null,
                     ),
