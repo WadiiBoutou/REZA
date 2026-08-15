@@ -1617,7 +1617,10 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
   const hoverKey = apt.bookingGroupId || apt.id;
   const isSiblingHovered = hoveredBookingId != null && hoveredBookingId === hoverKey;
 
-  // Generate lighter background and border colors from the main color
+  // Generate lighter background and border colors from the main color.
+  // The background is OPAQUE (solid pastel blended toward white) so the agenda
+  // grid lines / strip shading behind the card never show through it — the
+  // old rgba(…, 0.1) was translucent and let the grid lines render inside the card.
   const getLightColorStyle = (color: string) => {
     if (!showColorInRDV) return {};
     
@@ -1627,9 +1630,10 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
     const g = parseInt(hex.substring(2, 4), 16) || 0;
     const b = parseInt(hex.substring(4, 6), 16) || 0;
     
+    const blend = (c: number, w: number) => Math.round(c * (1 - w) + 255 * w);
     return {
-      backgroundColor: `rgba(${r}, ${g}, ${b}, 0.1)`,
-      borderColor: `rgba(${r}, ${g}, ${b}, 0.28)`,
+      backgroundColor: `rgb(${blend(r, 0.88)}, ${blend(g, 0.88)}, ${blend(b, 0.88)})`,
+      borderColor: `rgb(${blend(r, 0.72)}, ${blend(g, 0.72)}, ${blend(b, 0.72)})`,
     };
   };
 
