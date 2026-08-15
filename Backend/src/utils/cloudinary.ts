@@ -104,9 +104,18 @@ export async function uploadImage(input: UploadImageInput, folder: string): Prom
   }
 
   // Dev fallback: keep the existing local-disk behaviour.
-  // __dirname is src/utils (tsx dev) or dist/src/utils (compiled); 3 × '..'
-  // reaches the project root in both cases, matching the server.ts convention.
-  const uploadsDir = path.resolve(__dirname, '..', '..', '..', 'public', 'uploads');
+  // The static server (server.ts) serves from <BackendRoot>/public/uploads:
+  //   dev  → path.resolve(__dirname, '..', 'public', 'uploads')  (src → Backend)
+  //   prod → path.resolve(__dirname, '..', 'public', 'uploads')  (dist → Backend)
+  // We must write to THAT SAME folder — a naive 3 × '..' from src/utils lands
+  // on the repo root (REZA/public/uploads), which the server never serves (404).
+  const isDist = __dirname.includes(`${path.sep}dist${path.sep}`);
+  // dev:  src/utils      → 2 × '..' → Backend
+  // prod: dist/src/utils → 3 × '..' → Backend
+  const projectRoot = isDist
+    ? path.resolve(__dirname, '..', '..', '..')
+    : path.resolve(__dirname, '..', '..');
+  const uploadsDir = path.join(projectRoot, 'public', 'uploads');
   const targetDir = path.join(uploadsDir, folder);
   fs.mkdirSync(targetDir, { recursive: true });
   const ext = (path.extname(originalname) || `.${mimetype.split('/')[1] || 'jpg'}`).toLowerCase();
