@@ -178,11 +178,15 @@ class _HomeScreenState extends State<_HomeScreenBody> {
 
   void _showCityPicker() {
     final cities = ['Toutes les villes', 'Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir'];
+    // Capture the VM from the State's context (under the provider) BEFORE opening
+    // the bottom sheet — the builder's context lives in a new route that cannot
+    // see the provider and would throw ProviderNotFoundException.
+    final vm = context.read<HomeViewModel>();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) {
+      builder: (sheetContext) {
         return ListView.builder(
           shrinkWrap: true,
           padding: const EdgeInsets.symmetric(vertical: 20),
@@ -192,10 +196,9 @@ class _HomeScreenState extends State<_HomeScreenBody> {
               leading: const Icon(Icons.location_on_outlined, color: AppColors.textGray),
               title: Text(cities[index], style: GoogleFonts.inter(fontSize: 16)),
               onTap: () {
-                final vm = context.read<HomeViewModel>();
                 final label = cities[index];
                 vm.setSearchCity(label == 'Toutes les villes' ? '' : label);
-                Navigator.pop(context);
+                Navigator.pop(sheetContext);
                 vm.loadTenants();
               },
             );
