@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -12,6 +13,20 @@ import '../services/api_client.dart';
 import '../services/discovery_service.dart';
 import 'booking_summary_screen.dart';
 import 'login_screen.dart';
+
+/// Resolves an avatar string (http URL or base64 data: URI) into an ImageProvider,
+/// or null when empty/unusable so callers can fall back to initials.
+ImageProvider? _avatarProvider(String src) {
+  if (src.startsWith('data:')) {
+    try {
+      return MemoryImage(base64Decode(src.split(',').last));
+    } catch (_) {
+      return null;
+    }
+  }
+  if (src.startsWith('http')) return NetworkImage(src);
+  return null;
+}
 
 class VenueDetailScreen extends StatefulWidget {
   final String tenantId;
@@ -340,12 +355,10 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   }
 
   static String _formatRatingCeil(double value, int decimals) {
-    if (decimals <= 0) {
-      final c = value.ceil();
-      return '$c'.replaceAll('.', ',');
-    }
     final shift = pow(10, decimals).toDouble();
     final ceiled = (value * shift).ceil() / shift;
+    // Whole numbers: show "5", not "5,00".
+    if (ceiled == ceiled.roundToDouble()) return '${ceiled.toInt()}';
     return ceiled.toStringAsFixed(decimals).replaceAll('.', ',');
   }
 
@@ -591,7 +604,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
                 const Divider(height: 32, indent: 20, endIndent: 20, color: AppColors.border),
                 Container(
                   key: _keys[4],
-                  child: _AutresSection(venue: venue),
+                  child: _AutresSection(venue: venue, rating: _computeEffectiveRating(venue.rating, venue.reviews, _reviews)),
                 ),
                 const SizedBox(height: 24),
               ],
@@ -915,11 +928,10 @@ class _EquipeSection extends StatelessWidget {
   }
 
   static String _fmtCeil(double value, int decimals) {
-    if (decimals <= 0) {
-      return '${value.ceil()}'.replaceAll('.', ',');
-    }
     final shift = pow(10, decimals).toDouble();
     final ceiled = (value * shift).ceil() / shift;
+    // Whole numbers: show "5", not "5,00".
+    if (ceiled == ceiled.roundToDouble()) return '${ceiled.toInt()}';
     return ceiled.toStringAsFixed(decimals).replaceAll('.', ',');
   }
 
@@ -942,6 +954,7 @@ class _EquipeSection extends StatelessWidget {
                 final name = '$first $last'.trim().isEmpty ? (m['name']?.toString() ?? 'Pro') : '$first $last'.trim();
                 final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
                 final avatar = (m['avatar'] ?? m['photo'] ?? '').toString();
+                final avatarProvider = _avatarProvider(avatar);
                 return Padding(
                   padding: const EdgeInsets.only(right: 24),
                   child: Column(
@@ -954,9 +967,9 @@ class _EquipeSection extends StatelessWidget {
                           shape: BoxShape.circle,
                         ),
                         child: ClipOval(
-                          child: avatar.startsWith('http')
-                              ? Image.network(
-                                  avatar,
+                          child: avatarProvider != null
+                              ? Image(
+                                  image: avatarProvider,
                                   fit: BoxFit.cover,
                                   errorBuilder: (context, error, stackTrace) => Center(
                                     child: Text(initial,
@@ -997,6 +1010,7 @@ class _EquipeSection extends StatelessWidget {
                 ? '$cFirst $cLast'.trim()
                 : (r['clientName'] ?? r['author'] ?? 'Client').toString();
             final avatar = (client?['avatar'] ?? '').toString();
+            final avatarProvider = _avatarProvider(avatar);
             final text = (r['comment'] ?? r['text'] ?? r['content'] ?? '').toString();
             final initials = name.isNotEmpty ? name.substring(0, name.length >= 2 ? 2 : 1).toUpperCase() : 'CL';
             final raw = r['rating'] ?? r['stars'] ?? r['score'] ?? r['note'] ?? 0;
@@ -1009,10 +1023,10 @@ class _EquipeSection extends StatelessWidget {
                     CircleAvatar(
                       radius: 20,
                       backgroundColor: AppColors.surface,
-                      backgroundImage: avatar.startsWith('http') ? NetworkImage(avatar) : null,
-                      child: avatar.startsWith('http')
-                          ? null
-                          : Text(initials, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textDark)),
+                      backgroundImage: avatarProvider,
+                      child: avatarProvider == null
+                          ? Text(initials, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textDark))
+                          : null,
                     ),
                     const SizedBox(width: 12),
                     Text(name, style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600)),
@@ -1087,8 +1101,10 @@ class _HorairesSection extends StatelessWidget {
 
 class _AutresSection extends StatelessWidget {
   final VenueItem venue;
+  final double rating;
   const _AutresSection({
     required this.venue,
+    required this.rating,
   });
 
   @override
@@ -1102,27 +1118,46 @@ class _AutresSection extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             child: SizedBox(
               height: 180,
-              child: FlutterMap(
-                options: MapOptions(
-                  initialCenter: LatLng(venue.latitude, venue.longitude),
-                  initialZoom: 14,
-                  interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
-                ),
+              child: Stack(
                 children: [
-                  TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.example.mobile_app',
-                  ),
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: LatLng(venue.latitude, venue.longitude),
-                        width: 50,
-                        height: 40,
-                        alignment: Alignment.topCenter,
-                        child: const _RatingMarker(),
+                  FlutterMap(
+                    options: MapOptions(
+                      initialCenter: LatLng(venue.latitude, venue.longitude),
+                      initialZoom: 14,
+                      interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.example.mobile_app',
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: LatLng(venue.latitude, venue.longitude),
+                            width: 50,
+                            height: 40,
+                            alignment: Alignment.topCenter,
+                            child: _RatingMarker(rating: rating),
+                          ),
+                        ],
                       ),
                     ],
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Material(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      shape: const CircleBorder(),
+                      elevation: 2,
+                      child: IconButton(
+                        icon: const Icon(Icons.fullscreen, color: AppColors.textDark, size: 20),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => _FullscreenMapScreen(venue: venue)),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -1139,7 +1174,15 @@ class _AutresSection extends StatelessWidget {
 }
 
 class _RatingMarker extends StatelessWidget {
-  const _RatingMarker();
+  const _RatingMarker({required this.rating});
+  final double rating;
+
+  static String _fmt(double value) {
+    final ceiled = (value * 10).ceil() / 10;
+    if (ceiled == ceiled.roundToDouble()) return '${ceiled.toInt()}';
+    return ceiled.toStringAsFixed(1).replaceAll('.', ',');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1147,7 +1190,10 @@ class _RatingMarker extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(color: AppColors.textDark, borderRadius: BorderRadius.circular(20)),
-          child: Text('★', style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+          child: Text(
+            rating > 0 ? '★ ${_fmt(rating)}' : '★',
+            style: GoogleFonts.inter(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+          ),
         ),
         CustomPaint(size: const Size(10, 6), painter: _TriPainter()),
       ],
@@ -1169,6 +1215,47 @@ class _TriPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter _) => false;
+}
+
+class _FullscreenMapScreen extends StatelessWidget {
+  final VenueItem venue;
+  const _FullscreenMapScreen({required this.venue});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.textDark,
+        title: Text(venue.name, style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700)),
+      ),
+      body: FlutterMap(
+        options: MapOptions(
+          initialCenter: LatLng(venue.latitude, venue.longitude),
+          initialZoom: 15,
+          interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.example.mobile_app',
+          ),
+          MarkerLayer(
+            markers: [
+              Marker(
+                point: LatLng(venue.latitude, venue.longitude),
+                width: 50,
+                height: 40,
+                alignment: Alignment.topCenter,
+                child: const _RatingMarker(rating: 0),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _BookingChoiceCard extends StatelessWidget {
