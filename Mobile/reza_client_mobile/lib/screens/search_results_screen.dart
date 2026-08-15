@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -34,6 +35,15 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
   bool _geoLoading = false;
   String? _geoError;
   bool? _showGeoPrompt;
+  /// Same sort options as the web search-results page.
+  String _sortBy = 'recommended';
+
+  static const _sortOptions = [
+    {'key': 'recommended', 'label': 'Recommandé'},
+    {'key': 'rating', 'label': 'Meilleure note'},
+    {'key': 'distance', 'label': 'Plus proche'},
+    {'key': 'price', 'label': 'Prix'},
+  ];
 
   bool get _hasUserLocation => _userLat != null && _userLng != null;
   String get _cityLabel => _city.isEmpty ? 'Toutes les villes' : _city;
@@ -143,6 +153,49 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
     await _loadTenants();
   }
 
+  /// Results re-sorted per the active filter (mirrors web sortBy).
+  List<VenueItem> get _sortedResults {
+    final list = [..._results];
+    switch (_sortBy) {
+      case 'rating':
+        list.sort((a, b) => b.rating.compareTo(a.rating));
+        break;
+      case 'distance':
+        if (_hasUserLocation) {
+          list.sort((a, b) => _distanceKm(a).compareTo(_distanceKm(b)));
+        } else {
+          list.sort((a, b) => _parseDistance(a.distance).compareTo(_parseDistance(b.distance)));
+        }
+        break;
+      case 'price':
+        list.sort((a, b) => _minPrice(a).compareTo(_minPrice(b)));
+        break;
+      default:
+        break; // 'recommended' — keep API order
+    }
+    return list;
+  }
+
+  static double _parseDistance(String s) {
+    final n = double.tryParse(s.replaceAll(',', '.').replaceAll(RegExp(r'[^0-9.]'), ''));
+    return n ?? double.infinity;
+  }
+
+  static double _minPrice(VenueItem v) {
+    if (v.services.isEmpty) return double.infinity;
+    return v.services.map((s) => s.price).reduce(min);
+  }
+
+  double _distanceKm(VenueItem v) {
+    final lat = _userLat ?? 0, lng = _userLng ?? 0;
+    const r = 6371.0;
+    final dLat = (v.latitude - lat) * pi / 180;
+    final dLng = (v.longitude - lng) * pi / 180;
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(lat * pi / 180) * cos(v.latitude * pi / 180) * sin(dLng / 2) * sin(dLng / 2);
+    return r * 2 * atan2(sqrt(a), sqrt(1 - a));
+  }
+
   Future<void> _dismissGeoPrompt() async {
     await locationService.markPromptDismissed();
     if (!mounted) return;
@@ -200,7 +253,7 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final results = _results;
+    final results = _sortedResults;
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -350,44 +403,15 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: Row(
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: AppColors.border),
-                                    shape: BoxShape.circle,
+                                for (final opt in _sortOptions)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: _SortChip(
+                                      label: opt['label']!,
+                                      selected: _sortBy == opt['key'],
+                                      onTap: () => setState(() => _sortBy = opt['key']!),
+                                    ),
                                   ),
-                                  child: const Icon(Icons.tune_rounded, size: 18, color: AppColors.textDark),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: AppColors.border),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Text('Établissements', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
-                                      const SizedBox(width: 4),
-                                      const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: AppColors.border),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Text('Meilleure correspondance', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500)),
-                                      const SizedBox(width: 4),
-                                      const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
-                                    ],
-                                  ),
-                                ),
                               ],
                             ),
                           ),
@@ -451,6 +475,43 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SortChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SortChip({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: selected ? AppColors.primary : AppColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (selected) ...[const Icon(Icons.check_rounded, size: 14, color: Colors.white), const SizedBox(width: 4)],
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: selected ? Colors.white : AppColors.textDark,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
