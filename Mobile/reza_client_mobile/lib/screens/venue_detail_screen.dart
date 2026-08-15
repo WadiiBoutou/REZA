@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' hide Path;
@@ -63,6 +64,8 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
   bool _loading = true;
   String? _error;
   String _activeServiceCat = 'all';
+  /// Pretty web slug (slug > subdomain > domain > id) for the share link.
+  String _salonSlug = '';
 
   VenueItem? _venue;
   List<ServiceItem> _services = [];
@@ -138,9 +141,19 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
         } catch (_) {}
       }
 
+      String salonSlug = widget.tenantId;
+      for (final k in ['slug', 'subdomain', 'domain']) {
+        final v = (tenant[k] ?? '').toString().trim();
+        if (v.isNotEmpty) {
+          salonSlug = v;
+          break;
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _venue = venue;
+        _salonSlug = salonSlug;
         _services = services;
         _employees = employees;
         _reviews = reviews;
@@ -230,6 +243,23 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
     if (ctx != null) {
       Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
     }
+  }
+
+  /// Copies the salon's public web URL — same link as the web "Partager"
+  /// button — and confirms it with a snackbar.
+  void _shareVenue() {
+    final slug = _salonSlug.isEmpty ? widget.tenantId : _salonSlug;
+    final url = 'https://reza-client.vercel.app/salon/$slug';
+    Clipboard.setData(ClipboardData(text: url));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Lien copié dans le presse-papiers !', style: GoogleFonts.inter(fontSize: 13)),
+        backgroundColor: AppColors.textDark,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
   }
 
   void _openBooking() {
@@ -464,7 +494,7 @@ class _VenueDetailScreenState extends State<VenueDetailScreen> {
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 4),
-                child: _CircleBtn(icon: Icons.share_outlined, onTap: () {}),
+                child: _CircleBtn(icon: Icons.share_outlined, onTap: _shareVenue),
               ),
               Padding(
                 padding: const EdgeInsets.only(right: 8),
