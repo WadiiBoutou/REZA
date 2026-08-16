@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
-import { getMoroccanPhoneError, normalizeMoroccanPhone } from '@/lib/utils';
+import { getMoroccanPhoneError, normalizeMoroccanPhone, getImageUrl } from '@/lib/utils';
 
 const AVATAR_MAX_SIZE = 5 * 1024 * 1024; // 5 Mo
 const AVATAR_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
@@ -131,6 +131,7 @@ export default function ClientsGestionPage() {
   const [saving, setSaving] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Inactive'>('all');
+  const [showGuestsOnly, setShowGuestsOnly] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
@@ -497,7 +498,9 @@ export default function ClientsGestionPage() {
 
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    const matchesGuest = !showGuestsOnly || client.addedAs === 'INVITE';
+
+    return matchesSearch && matchesStatus && matchesGuest;
   });
 
   if (loading && clients.length === 0) {
@@ -617,6 +620,24 @@ export default function ClientsGestionPage() {
             >
               Inactifs
             </button>
+            <div className="h-6 w-px bg-gray-200 mx-1"></div>
+            <button
+              onClick={() => setShowGuestsOnly((v) => !v)}
+              role="switch"
+              aria-checked={showGuestsOnly}
+              title="Afficher uniquement les clients invités"
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all border ${showGuestsOnly
+                  ? 'bg-sky-50 text-sky-700 border-sky-200'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                }`}
+            >
+              <span className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${showGuestsOnly ? 'bg-sky-500' : 'bg-gray-300'
+                }`}>
+                <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${showGuestsOnly ? 'translate-x-3.5' : 'translate-x-0.5'
+                  }`} />
+              </span>
+              Invités
+            </button>
           </div>
         </div>
       </div>
@@ -635,7 +656,7 @@ export default function ClientsGestionPage() {
                   {client.avatar ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={client.avatar}
+                      src={getImageUrl(client.avatar)}
                       alt={client.name}
                       className="w-12 h-12 rounded-full object-cover"
                     />
@@ -736,7 +757,7 @@ export default function ClientsGestionPage() {
                         {client.avatar ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
-                            src={client.avatar}
+                            src={getImageUrl(client.avatar)}
                             alt={client.name}
                             className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                           />
@@ -890,7 +911,7 @@ export default function ClientsGestionPage() {
                     <div className="w-28 h-28 rounded-full overflow-hidden flex items-center justify-center border-2 border-gray-200 shadow-sm transition-shadow group-hover:shadow-md bg-[#002366]">
                       {formData.avatar ? (
                         <img
-                          src={formData.avatar}
+                          src={getImageUrl(formData.avatar)}
                           alt="Photo de profil"
                           className="w-full h-full object-cover"
                         />

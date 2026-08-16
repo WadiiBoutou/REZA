@@ -724,7 +724,8 @@ class _DetailsSheet extends StatelessWidget {
             ...appointment.services.map((s) => Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(
-                '• ${s.name} • ${s.duration} min • ${s.price.toStringAsFixed(0)} MAD',
+                '• ${s.name} • ${s.duration} min • ${s.price.toStringAsFixed(0)} MAD'
+                '${s.employeeName != null && s.employeeName!.isNotEmpty ? ' — ${s.employeeName}' : ''}',
                 style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textGray),
               ),
             )),

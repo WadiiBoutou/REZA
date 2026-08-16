@@ -19,3 +19,7 @@ coverage/
 # Local agent workspace (never commit)
 .freebuff/
 .opencode/
+.agents/
+
+# Root env file with secrets (DB, Cloudinary, Brevo) — never commit
+REZA.env

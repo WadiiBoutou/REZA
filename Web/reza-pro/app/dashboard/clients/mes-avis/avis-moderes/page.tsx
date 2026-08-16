@@ -5,6 +5,7 @@ import { Search, Star, MessageSquare, Trash2, User, Bubbles } from 'lucide-react
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { api } from '@/lib/api';
+import { getImageUrl } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
 interface Review {
@@ -240,7 +241,7 @@ export default function AvisModeresPage() {
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className="w-10 h-10 rounded-full overflow-hidden accent-bg flex items-center justify-center flex-shrink-0">
                         {review.clientAvatar ? (
-                          <img src={review.clientAvatar} alt={review.clientName} className="w-full h-full object-cover" />
+                          <img src={getImageUrl(review.clientAvatar)} alt={review.clientName} className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-white font-medium text-sm">{review.clientName.charAt(0).toUpperCase()}</span>
                         )}
@@ -310,7 +311,7 @@ export default function AvisModeresPage() {
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full overflow-hidden accent-bg flex items-center justify-center flex-shrink-0">
                         {review.clientAvatar ? (
-                          <img src={review.clientAvatar} alt={review.clientName} className="w-full h-full object-cover" />
+                          <img src={getImageUrl(review.clientAvatar)} alt={review.clientName} className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-white font-medium text-xs">{review.clientName.charAt(0).toUpperCase()}</span>
                         )}

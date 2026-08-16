@@ -5,8 +5,8 @@ import '../../constants/app_colors.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/admin_viewmodel.dart';
 import '../../services/api_client.dart';
-import '../../services/employee_service.dart';
 import '../../services/service_catalog_service.dart';
+import '../../utils/image_url.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -33,6 +33,10 @@ class _AdminScreenState extends State<AdminScreen>
     Color(0xFF10B981),
     Color(0xFFF59E0B),
   ];
+
+  /// Pending (unsaved) opening-hour changes while editing.
+  String? _pendingStart;
+  String? _pendingEnd;
 
   @override
   void initState() {
@@ -91,51 +95,93 @@ class _AdminScreenState extends State<AdminScreen>
     );
   }
 
+  bool _isValidMoroccanPhone(String phone) {
+    final cleaned = phone.replaceAll(RegExp(r'[\s\-()]'), '');
+    return RegExp(r'^(\+212\d{9}|0\d{9})$').hasMatch(cleaned);
+  }
+
+  String _normalizeMoroccanPhone(String phone) {
+    return phone.replaceAll(RegExp(r'[\s\-()]'), '').trim();
+  }
+
   Future<void> _showAddStaffSheet() async {
     final firstCtrl = TextEditingController();
     final lastCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
+    final roleCtrl = TextEditingController();
+    String? phoneError;
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: Text('Nouveau collaborateur', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: firstCtrl, decoration: const InputDecoration(labelText: 'Prénom')),
-            TextField(controller: lastCtrl, decoration: const InputDecoration(labelText: 'Nom')),
-            TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'Email (optionnel)')),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setS) => AlertDialog(
+          backgroundColor: Colors.white,
+          title: Text('Nouvel employé', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: firstCtrl, decoration: const InputDecoration(labelText: 'Prénom *')),
+                const SizedBox(height: 8),
+                TextField(controller: lastCtrl, decoration: const InputDecoration(labelText: 'Nom *')),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    labelText: 'Téléphone *',
+                    hintText: '06 XX XX XX XX',
+                    errorText: phoneError,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'Email (optionnel)'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: roleCtrl,
+                  decoration: const InputDecoration(labelText: 'Rôle (ex: Coiffeur)'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annuler', style: GoogleFonts.outfit(color: AppColors.textGray))),
+            ElevatedButton(
+              onPressed: () async {
+                if (firstCtrl.text.trim().isEmpty || lastCtrl.text.trim().isEmpty) return;
+                final phone = phoneCtrl.text.trim();
+                if (!_isValidMoroccanPhone(phone)) {
+                  setS(() => phoneError = 'Téléphone invalide — utilisez 06XXXXXXXX ou +2126XXXXXXXX');
+                  return;
+                }
+                try {
+                  await _vm.createEmployee(
+                    firstName: firstCtrl.text.trim(),
+                    lastName: lastCtrl.text.trim(),
+                    phone: _normalizeMoroccanPhone(phone),
+                    email: emailCtrl.text.trim(),
+                    role: roleCtrl.text.trim(),
+                  );
+                  if (!mounted) return;
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Employé ajouté', style: GoogleFonts.outfit()), backgroundColor: AppColors.primary),
+                  );
+                } on ApiException catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(e.message, style: GoogleFonts.outfit())),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+              child: Text('Ajouter', style: GoogleFonts.outfit(color: Colors.white)),
+            ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annuler', style: GoogleFonts.outfit(color: AppColors.textGray))),
-          ElevatedButton(
-            onPressed: () async {
-              if (firstCtrl.text.isEmpty || lastCtrl.text.isEmpty) return;
-              try {
-                final created = await employeeService.create({
-                  'firstName': firstCtrl.text.trim(),
-                  'lastName': lastCtrl.text.trim(),
-                  if (emailCtrl.text.trim().isNotEmpty) 'email': emailCtrl.text.trim(),
-                  'isActive': true,
-                });
-                if (!mounted) return;
-                setState(() => _vm.staff.insert(0, created));
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Collaborateur ajouté', style: GoogleFonts.outfit()), backgroundColor: AppColors.primary),
-                );
-              } on ApiException catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(e.message, style: GoogleFonts.outfit())),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-            child: Text('Ajouter', style: GoogleFonts.outfit(color: Colors.white)),
-          ),
-        ],
       ),
     );
   }
@@ -255,16 +301,81 @@ class _AdminScreenState extends State<AdminScreen>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildSectionCard(
-          title: 'Paramètres de l\'agenda',
-          icon: Icons.calendar_today_rounded,
-          children: [
-            _buildToggleSetting('Rappels SMS automatiques', true),
-            _buildToggleSetting('Confirmations par email', true),
-            _buildToggleSetting('Annulation en ligne', false),
-            _buildToggleSetting('Double réservation', false),
+        if (_vm.paramsLoading && _pendingStart == null && _pendingEnd == null)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+          )
+        else ...[
+          _buildSectionCard(
+            title: "Horaires d'ouverture",
+            icon: Icons.schedule_rounded,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildTimeField(
+                      'Ouverture',
+                      _pendingStart ?? _vm.agendaStart,
+                      Icons.wb_sunny_outlined,
+                      () => _pickTime(start: true),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildTimeField(
+                      'Fermeture',
+                      _pendingEnd ?? _vm.agendaEnd,
+                      Icons.nightlight_outlined,
+                      () => _pickTime(start: false),
+                    ),
+                  ),
+                ],
+              ),
+              if (_pendingStart != null || _pendingEnd != null) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton(
+                    onPressed: _vm.paramsLoading ? null : _saveHours,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text('Enregistrer les horaires',
+                        style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildSectionCard(
+            title: 'Réservations en ligne',
+            icon: Icons.language_rounded,
+            children: [
+              _buildPersistedToggle(
+                'Réservations en ligne ouvertes',
+                _vm.onlineBookingOpen,
+                (v) => _saveToggle(onlineBooking: v),
+              ),
+              const Divider(color: AppColors.divider, height: 1),
+              _buildPersistedToggle(
+                'Confirmation automatique des RDV en ligne',
+                _vm.autoConfirm,
+                (v) => _saveToggle(autoConfirmEnabled: v),
+              ),
+            ],
+          ),
+          if (_vm.paramsError != null) ...[
+            const SizedBox(height: 16),
+            Text(
+              _vm.paramsError!,
+              style: GoogleFonts.outfit(color: AppColors.cancelled, fontSize: 12),
+            ),
           ],
-        ),
+        ],
       ],
     );
   }
@@ -346,10 +457,10 @@ class _AdminScreenState extends State<AdminScreen>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _buildActionButton('Ajouter un collaborateur', Icons.person_add_rounded, onTap: _showAddStaffSheet),
+        _buildActionButton('Ajouter un employé', Icons.person_add_rounded, onTap: _showAddStaffSheet),
         const SizedBox(height: 16),
         if (_vm.staff.isEmpty)
-          Text('Aucun collaborateur', style: GoogleFonts.outfit(color: AppColors.textGray)),
+          Text('Aucun employé', style: GoogleFonts.outfit(color: AppColors.textGray)),
         ..._vm.staff.asMap().entries.map((entry) {
           final i = entry.key;
           final s = entry.value;
@@ -363,6 +474,9 @@ class _AdminScreenState extends State<AdminScreen>
               .toUpperCase();
           final color = _staffColors[i % _staffColors.length];
           final active = s['isActive'] != false;
+          final role = ((s['agendaSettings'] as Map?)?['role'])?.toString() ?? '';
+          final phone = s['phone']?.toString() ?? '';
+          final staffAvatar = avatarProvider(s['avatar']?.toString() ?? '');
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
@@ -381,9 +495,9 @@ class _AdminScreenState extends State<AdminScreen>
                     shape: BoxShape.circle,
                   ),
                   child: ClipOval(
-                    child: (s['avatar']?.toString() ?? '').trim().isNotEmpty
-                        ? Image.network(
-                            s['avatar'].toString(),
+                    child: staffAvatar != null
+                        ? Image(
+                            image: staffAvatar,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) => Center(
                               child: Text(
@@ -413,13 +527,19 @@ class _AdminScreenState extends State<AdminScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(name.isEmpty ? 'Collaborateur' : name,
+                      Text(name.isEmpty ? 'Employé' : name,
                           style: GoogleFonts.outfit(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
                               color: AppColors.textDark)),
-                      Text(s['email']?.toString() ?? '',
-                          style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textGray)),
+                      if (role.isNotEmpty || phone.isNotEmpty)
+                        Text(
+                          [role, phone].where((e) => e.isNotEmpty).join(' · '),
+                          style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textGray),
+                        ),
+                      if ((s['email']?.toString() ?? '').isNotEmpty)
+                        Text(s['email'].toString(),
+                            style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textLight)),
                     ],
                   ),
                 ),
@@ -589,11 +709,11 @@ class _AdminScreenState extends State<AdminScreen>
           title: 'Informations générales',
           icon: Icons.info_outline_rounded,
           children: [
-            _buildEditableRow('Nom du salon', name),
-            _buildEditableRow('Téléphone', phone),
-            _buildEditableRow('Email', email),
-            _buildEditableRow('Adresse', address),
-            _buildEditableRow('Site web', website),
+            _buildEditableRow('Nom du salon', name, field: 'name'),
+            _buildEditableRow('Téléphone', phone, field: 'phone'),
+            _buildEditableRow('Email', email, field: 'email'),
+            _buildEditableRow('Adresse', address, field: 'address'),
+            _buildEditableRow('Site web', website, field: 'website'),
           ],
         ),
         const SizedBox(height: 16),
@@ -638,12 +758,12 @@ class _AdminScreenState extends State<AdminScreen>
         Row(
           children: [
             Expanded(
-              child: _buildStatBox(totalRdv, 'RDV période',
+              child: _buildStatBox(totalRdv, 'RDV (mois)',
                   Icons.calendar_month_rounded, AppColors.primary),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _buildStatBox(occupancyLabel, 'Taux occupation',
+              child: _buildStatBox(occupancyLabel, 'Réservations en ligne',
                   Icons.donut_large_rounded, AppColors.confirmed),
             ),
           ],
@@ -723,49 +843,197 @@ class _AdminScreenState extends State<AdminScreen>
     );
   }
 
-  Widget _buildToggleSetting(String label, bool value) {
-    return StatefulBuilder(
-      builder: (ctx, setS) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label,
+  /// Toggle backed by a real tenant setting — persists on change.
+  Widget _buildPersistedToggle(
+    String label,
+    bool value,
+    Future<void> Function(bool) onChanged,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Text(label,
                 style: GoogleFonts.outfit(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: AppColors.textDark)),
+          ),
+          if (_vm.paramsLoading)
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+            )
+          else
             Switch(
               value: value,
-              onChanged: (v) => setS(() => value = v),
+              onChanged: (v) => onChanged(v),
               activeColor: AppColors.primary,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimeField(String label, String value, IconData icon, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceGray,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: AppColors.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: GoogleFonts.outfit(fontSize: 10, color: AppColors.textGray)),
+                  Text(value,
+                      style: GoogleFonts.outfit(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textDark)),
+                ],
+              ),
+            ),
+            const Icon(Icons.edit_rounded, size: 15, color: AppColors.textLight),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildEditableRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(label,
-                style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textGray)),
+  Future<void> _pickTime({required bool start}) async {
+    final current = start
+        ? (_pendingStart ?? _vm.agendaStart)
+        : (_pendingEnd ?? _vm.agendaEnd);
+    final parts = current.split(':');
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: int.tryParse(parts.first) ?? 8,
+        minute: parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0,
+      ),
+      helpText: start ? "Heure d'ouverture" : 'Heure de fermeture',
+    );
+    if (picked == null) return;
+    final value =
+        '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    setState(() {
+      if (start) {
+        _pendingStart = value;
+      } else {
+        _pendingEnd = value;
+      }
+    });
+  }
+
+  Future<void> _saveHours() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final err = await _vm.saveAgendaParams(start: _pendingStart, end: _pendingEnd);
+    if (!mounted) return;
+    if (err == null) {
+      setState(() {
+        _pendingStart = null;
+        _pendingEnd = null;
+      });
+      messenger.showSnackBar(
+        SnackBar(content: Text('Horaires enregistrés', style: GoogleFonts.outfit()), backgroundColor: AppColors.primary),
+      );
+    } else {
+      messenger.showSnackBar(SnackBar(content: Text(err, style: GoogleFonts.outfit())));
+    }
+  }
+
+  Future<void> _saveToggle({bool? onlineBooking, bool? autoConfirmEnabled}) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final err = await _vm.saveAgendaParams(
+      onlineBooking: onlineBooking,
+      autoConfirmEnabled: autoConfirmEnabled,
+    );
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(err == null ? 'Paramètre enregistré' : err, style: GoogleFonts.outfit()),
+        backgroundColor: err == null ? AppColors.primary : null,
+      ),
+    );
+  }
+
+  Future<void> _editTenantField(String field, String label, String current) async {
+    final ctrl = TextEditingController(text: current == '—' ? '' : current);
+    final messenger = ScaffoldMessenger.of(context);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: Text('Modifier $label', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: field == 'phone' ? TextInputType.phone : TextInputType.text,
+          decoration: InputDecoration(labelText: label),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Annuler', style: GoogleFonts.outfit(color: AppColors.textGray)),
           ),
-          Expanded(
-            flex: 3,
-            child: Text(value,
-                style: GoogleFonts.outfit(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textDark)),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            child: Text('Enregistrer', style: GoogleFonts.outfit(color: Colors.white)),
           ),
         ],
+      ),
+    );
+    if (saved != true || !mounted) return;
+    final err = await _vm.updateTenantInfo({field: ctrl.text.trim()});
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(err == null ? 'Salon mis à jour' : err, style: GoogleFonts.outfit()),
+        backgroundColor: err == null ? AppColors.primary : null,
+      ),
+    );
+  }
+
+  Widget _buildEditableRow(String label, String value, {required String field}) {
+    return InkWell(
+      onTap: () => _editTenantField(field, label, value),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: Text(label,
+                  style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textGray)),
+            ),
+            Expanded(
+              flex: 3,
+              child: Text(value,
+                  style: GoogleFonts.outfit(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textDark)),
+            ),
+            const Icon(Icons.edit_rounded, size: 14, color: AppColors.textLight),
+          ],
+        ),
       ),
     );
   }

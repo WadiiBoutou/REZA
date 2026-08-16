@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../../../lib/prisma';
+import { normalizeAvatarValue } from '../../../utils/avatar';
 import {
   createPublicFamilyMemberSchema,
   updatePublicFamilyMemberSchema,
@@ -114,7 +115,9 @@ export class FamilyMembersService {
           email: familyMemberData.email || null,
           phone: familyMemberData.phone || null,
           relationship: familyMemberData.relationship,
-          avatar: familyMemberData.avatar || null,
+          // Base64 data: avatars (legacy web flow) are uploaded through the
+          // standard Cloudinary upload path and stored as a real URL.
+          avatar: (await normalizeAvatarValue(familyMemberData.avatar)) || null,
           gender: familyMemberData.gender || null,
         },
       });
@@ -177,7 +180,8 @@ export class FamilyMembersService {
       };
 
       if (data.avatar !== undefined) {
-        familyMemberUpdateData.avatar = data.avatar || null;
+        familyMemberUpdateData.avatar =
+          (await normalizeAvatarValue(data.avatar)) || null;
       }
 
       if (data.gender !== undefined) {

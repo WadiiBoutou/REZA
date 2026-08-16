@@ -1524,9 +1524,11 @@ class ApiClient {
     return this.request<any>(`/stats/occupation/prestations?${query.toString()}`);
   }
 
-  // Accepted payment methods (simple text names for dropdowns)
-  async getAcceptedPaymentMethods() {
-    return this.request<{ methods: string[] }>('/tenant/settings/accepted-payment-methods');
+  // Accepted payment methods (simple text names for dropdowns).
+  // Pass a salon id to scope the list to that specific salon (multi-salon).
+  async getAcceptedPaymentMethods(tenantId?: string) {
+    const query = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
+    return this.request<{ methods: string[] }>(`/tenant/settings/accepted-payment-methods${query}`);
   }
 
   async addAcceptedPaymentMethod(name: string) {

@@ -429,6 +429,27 @@ class ApiClient {
     });
   }
 
+  /**
+   * Upload an avatar file to the standard Cloudinary-backed endpoint
+   * (POST /public/auth/upload-avatar). Returns the stored URL to save on the
+   * family member / client record — same flow the mobile app uses.
+   */
+  async uploadAvatar(file: File): Promise<{ avatar: string }> {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const response = await fetch(`${this.baseUrl}/public/auth/upload-avatar`, {
+      method: 'POST',
+      body: formData,
+    });
+    const data: any = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        data.message || data.error || "Erreur lors de l'upload de l'image"
+      );
+    }
+    return data;
+  }
+
   // Client authentication
   async clientLogin(email: string, password: string) {
     return this.request<{ client: any; message: string }>('/public/auth/client-login', {

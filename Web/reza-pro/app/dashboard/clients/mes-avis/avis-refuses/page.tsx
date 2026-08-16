@@ -5,6 +5,7 @@ import { Search, X, Star, AlertCircle, RotateCcw, Trash2, MessageSquare, Eye, Bu
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { api } from '@/lib/api';
+import { getImageUrl } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 
@@ -277,7 +278,7 @@ export default function AvisRefusesPage() {
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className="w-10 h-10 rounded-full overflow-hidden bg-red-100 flex items-center justify-center shrink-0">
                         {review.clientAvatar ? (
-                          <img src={review.clientAvatar} alt={review.clientName} className="w-full h-full object-cover" />
+                          <img src={getImageUrl(review.clientAvatar)} alt={review.clientName} className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-red-700 font-medium text-sm">{review.clientName.charAt(0).toUpperCase()}</span>
                         )}
@@ -382,7 +383,7 @@ export default function AvisRefusesPage() {
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full overflow-hidden bg-red-100 flex items-center justify-center flex-shrink-0">
                         {review.clientAvatar ? (
-                          <img src={review.clientAvatar} alt={review.clientName} className="w-full h-full object-cover" />
+                          <img src={getImageUrl(review.clientAvatar)} alt={review.clientName} className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-red-700 font-medium text-xs">{review.clientName.charAt(0).toUpperCase()}</span>
                         )}

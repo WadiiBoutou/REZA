@@ -9,6 +9,7 @@ import '../viewmodels/home_viewmodel.dart';
 import '../viewmodels/proches_viewmodel.dart';
 import '../widgets/geo_prompt_banner.dart';
 import '../widgets/reza_bottom_nav.dart';
+import '../widgets/rz_logo.dart';
 import 'search_results_screen.dart';
 import 'venue_detail_screen.dart';
 import 'bookings_screen.dart';
@@ -331,16 +332,7 @@ class _HomeScreenState extends State<_HomeScreenBody> {
                       horizontal: 20,
                       vertical: 12,
                     ),
-                    child: Center(
-                      child: Text(
-                        'REZA',
-                        style: GoogleFonts.inter(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 4,
-                        ),
-                      ),
-                    ),
+                    child: const Center(child: RzLogo(size: 32)),
                   ),
                 ),
               ),

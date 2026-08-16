@@ -110,52 +110,8 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Serve static files from public directory with CORS headers
-// Path resolution: __dirname is 'dist' in production (compiled from src)
-// Files are saved to public/uploads at the root of the project
-const publicUploadsPath = path.resolve(__dirname, '..', 'public', 'uploads');
-
-// Ensure the uploads directory exists
-if (!fs.existsSync(publicUploadsPath)) {
-  fs.mkdirSync(publicUploadsPath, { recursive: true });
-  log.log(`📁 Created uploads directory: ${publicUploadsPath}`);
-}
-
-const salonUploadsPath = path.join(publicUploadsPath, 'salons');
-if (!fs.existsSync(salonUploadsPath)) {
-  fs.mkdirSync(salonUploadsPath, { recursive: true });
-  log.log(`📁 Created salon uploads directory: ${salonUploadsPath}`);
-}
-
-log.log(`📂 Serving static files from: ${publicUploadsPath}`);
-
-app.use('/uploads', (req, res, next) => {
-  // Set CORS headers to allow cross-origin access to images
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  
-  next();
-}, express.static(publicUploadsPath, {
-  // Enable etag for caching
-  etag: true,
-  // Enable last-modified for caching
-  lastModified: true,
-  // Set max age for cache control
-  maxAge: '1d',
-  // Set content type for images
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg') || filePath.endsWith('.png') || filePath.endsWith('.gif') || filePath.endsWith('.webp')) {
-      res.setHeader('Content-Type', `image/${filePath.split('.').pop()}`);
-    }
-  }
-}));
+// All image uploads go through Cloudinary (see utils/cloudinary.ts) — there is
+// no local /uploads storage or static serving anymore.
 
 // Health check
 app.get('/health', (req, res) => {

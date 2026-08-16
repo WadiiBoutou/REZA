@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../constants.dart';
 import '../models/group_person.dart';
+import '../models/venue_mapper.dart';
 import '../viewmodels/auth_viewmodel.dart';
 import '../services/account_service.dart';
 import '../services/api_client.dart';
@@ -2241,13 +2242,16 @@ class _PersonAvatar extends StatelessWidget {
         avatar = fallback();
       }
     } else {
-      debugPrint('[avatar]   → network image: $src');
+      // Relative paths (/uploads/...) from the backend must be prefixed with
+      // the API origin or Image.network has no host to fetch from.
+      final resolved = resolveImageUrl(src);
+      debugPrint('[avatar]   → network image: $resolved');
       avatar = ClipOval(
         child: SizedBox(
           width: 38,
           height: 38,
           child: Image.network(
-            src,
+            resolved,
             fit: BoxFit.cover,
             errorBuilder: (_, err, __) {
               debugPrint('[avatar]   → network ERROR: $err');

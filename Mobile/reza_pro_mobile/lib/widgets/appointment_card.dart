@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart';
 import '../models/appointment.dart';
+import '../utils/image_url.dart';
 
 class AppointmentCard extends StatelessWidget {
   final Appointment appointment;
@@ -72,6 +73,7 @@ class AppointmentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final clientAvatar = avatarProvider(appointment.clientAvatar ?? '');
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       decoration: BoxDecoration(
@@ -157,9 +159,9 @@ class AppointmentCard extends StatelessWidget {
                               shape: BoxShape.circle,
                             ),
                             child: ClipOval(
-                              child: (appointment.clientAvatar ?? '').trim().isNotEmpty
-                                  ? Image.network(
-                                      appointment.clientAvatar!,
+                              child: clientAvatar != null
+                                  ? Image(
+                                      image: clientAvatar,
                                       fit: BoxFit.cover,
                                       errorBuilder: (context, error, stackTrace) => Center(
                                         child: Text(
@@ -252,7 +254,8 @@ class AppointmentCard extends StatelessWidget {
                           ),
                           _iconText(
                             Icons.person_outline_rounded,
-                            appointment.employee.split(' ').first,
+                            appointment.employee,
+                            maxTextWidth: 130,
                           ),
                           if (appointment.phone != null)
                             _iconText(Icons.phone_outlined, appointment.phone!),
@@ -269,20 +272,35 @@ class AppointmentCard extends StatelessWidget {
     );
   }
 
-  Widget _iconText(IconData icon, String text) {
+  Widget _iconText(IconData icon, String text, {double? maxTextWidth}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 13, color: AppColors.textLight),
         const SizedBox(width: 4),
-        Text(
-          text,
-          style: GoogleFonts.outfit(
-            fontSize: 11,
-            color: AppColors.textGray,
-            fontWeight: FontWeight.w500,
+        if (maxTextWidth != null)
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxTextWidth),
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.outfit(
+                fontSize: 11,
+                color: AppColors.textGray,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          )
+        else
+          Text(
+            text,
+            style: GoogleFonts.outfit(
+              fontSize: 11,
+              color: AppColors.textGray,
+              fontWeight: FontWeight.w500,
+            ),
           ),
-        ),
       ],
     );
   }
@@ -368,7 +386,8 @@ class _AppointmentDetailsSheet extends StatelessWidget {
                                 children: [
                                   Expanded(
                                     child: Text(
-                                      '• ${service.name} • ${service.duration} min • ${service.price.toStringAsFixed(0)} MAD',
+                                      '• ${service.name} • ${service.duration} min • ${service.price.toStringAsFixed(0)} MAD'
+                                      '${service.employeeName != null && service.employeeName!.isNotEmpty ? ' — ${service.employeeName}' : ''}',
                                       style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textDark),
                                     ),
                                   ),
@@ -390,7 +409,7 @@ class _AppointmentDetailsSheet extends StatelessWidget {
           else
             _detailRow(Icons.spa_rounded, 'Prestation', appointment.service),
           _detailRow(Icons.access_time_rounded, 'Heure', '${appointment.time} (${appointment.duration} min)'),
-          _detailRow(Icons.badge_rounded, 'Collaborateur', appointment.employee),
+          _detailRow(Icons.badge_rounded, 'Employé', appointment.employee),
           if (appointment.phone != null)
             _detailRow(Icons.phone_rounded, 'Téléphone', appointment.phone!),
           if (appointment.email != null)

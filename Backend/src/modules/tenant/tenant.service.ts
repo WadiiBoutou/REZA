@@ -3,6 +3,13 @@ import { transformImageUrl } from '../../utils/imageUrl';
 import { CreateTenantInput } from './tenant.schema';
 import * as log from '../../utils/logger';
 
+/**
+ * Standard payment methods a salon accepts by default. Used as the fallback
+ * whenever a salon hasn't configured its own list, so dropdowns (caisse,
+ * finaliser le rendez-vous) stay functional and consistent out of the box.
+ */
+const DEFAULT_ACCEPTED_PAYMENT_METHODS = ['Espèces', 'Carte', 'Virement', 'Chèque'];
+
 export class TenantService {
   async getTenant(tenantId: string) {
     const tenant = await prisma.tenant.findUnique({
@@ -328,12 +335,12 @@ export class TenantService {
 
     if (!settings) {
       settings = await prisma.tenantSettings.create({
-        data: { tenantId, emailNotifications: { acceptedPaymentMethods: ['Espèces'] } as any }
+        data: { tenantId, emailNotifications: { acceptedPaymentMethods: DEFAULT_ACCEPTED_PAYMENT_METHODS } as any }
       });
     }
 
     const emailNotif = (settings.emailNotifications as any) || {};
-    const methods: string[] = emailNotif.acceptedPaymentMethods || ['Espèces'];
+    const methods: string[] = emailNotif.acceptedPaymentMethods || DEFAULT_ACCEPTED_PAYMENT_METHODS;
     return { methods };
   }
 
@@ -343,7 +350,7 @@ export class TenantService {
       settings = await prisma.tenantSettings.create({ data: { tenantId } });
     }
     const emailNotif = (settings.emailNotifications as any) || {};
-    const methods: string[] = emailNotif.acceptedPaymentMethods || ['Espèces'];
+    const methods: string[] = emailNotif.acceptedPaymentMethods || DEFAULT_ACCEPTED_PAYMENT_METHODS;
     if (methods.includes(name)) {
       throw { status: 409, error: 'Duplicate', message: 'Cette méthode de paiement existe déjà.' };
     }
@@ -360,7 +367,7 @@ export class TenantService {
     let settings = await prisma.tenantSettings.findUnique({ where: { tenantId } });
     if (!settings) throw { status: 404, error: 'Settings not found' };
     const emailNotif = (settings.emailNotifications as any) || {};
-    const methods: string[] = emailNotif.acceptedPaymentMethods || ['Espèces'];
+    const methods: string[] = emailNotif.acceptedPaymentMethods || DEFAULT_ACCEPTED_PAYMENT_METHODS;
     if (methods.length <= 1) {
       throw { status: 400, error: 'Last method', message: 'Impossible de supprimer la dernière méthode de paiement.' };
     }

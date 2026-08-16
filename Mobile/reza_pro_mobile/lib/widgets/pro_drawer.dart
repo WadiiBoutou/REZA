@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../viewmodels/auth_viewmodel.dart';
+import 'rz_logo.dart';
 import 'salon_filter_control.dart';
 
 /// Shared left drawer: salon filter + logout.
@@ -31,16 +32,24 @@ class ProDrawer extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'REZA Pro',
-                    style: GoogleFonts.outfit(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textDark,
-                    ),
+                  Row(
+                    children: [
+                      const RzLogo(size: 44),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          'REZA Pro',
+                          style: GoogleFonts.outfit(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   if (auth.user != null) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 10),
                     Text(
                       auth.user!.name,
                       style: GoogleFonts.outfit(

@@ -8,6 +8,7 @@ import { resolveEmployeeUserId } from '../../utils/resolveEmployeeUserId';
 import { schedulingService } from './scheduling.service';
 import { formatDateForNotification } from '../../utils/dateTime';
 import { salonClientsFilter, tenantIdFilter } from '../../utils/salonScope';
+import { buildProcheAvatarMap } from '../../utils/familyMemberAvatars';
 import * as log from '../../utils/logger';
 import {
   getServicePrice,
@@ -180,8 +181,21 @@ export class AppointmentService {
       prisma.appointment.count({ where }),
     ]);
 
+    // Proche avatars live on the familyMember record, not on the salon Client
+    // row created when the proche books — overlay them so the agenda (pro
+    // mobile + admin web) shows the same photo the owning client sees.
+    const procheAvatarByClientId = await buildProcheAvatarMap(
+      appointments.map((a) => a.client).filter((c): c is NonNullable<typeof c> => !!c)
+    );
+    const appointmentsWithAvatars = appointments.map((a) => {
+      if (a.client && !a.client.avatar && procheAvatarByClientId.has(a.client.id)) {
+        return { ...a, client: { ...a.client, avatar: procheAvatarByClientId.get(a.client.id) } };
+      }
+      return a;
+    });
+
     return {
-      appointments: appointments.map(serializeAppointmentWithServices),
+      appointments: appointmentsWithAvatars.map(serializeAppointmentWithServices),
       total,
       page,
       limit,
@@ -309,7 +323,31 @@ export class AppointmentService {
     return serializeAppointmentWithServices(appointment);
   }
 
-  async updateAppointment(tenantIds: string | string[], id: string, data: any) {
+  /**
+   * Cancel every appointment of a booking group and mark the group itself as
+   * CANCELLED, so a group cancellation never leaves orphaned appointments.
+   * Completed or already-cancelled appointments are left untouched.
+   */
+  private async cancelBookingGroup(groupId: string, cancelledBy: string, reason: string) {
+    await prisma.appointment.updateMany({
+      where: {
+        bookingGroupId: groupId,
+        status: { notIn: ['CANCELLED', 'COMPLETED'] },
+      },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        cancelledBy,
+        cancellationReason: reason,
+      },
+    });
+    await prisma.bookingGroup.update({
+      where: { id: groupId },
+      data: { status: 'CANCELLED' },
+    });
+  }
+
+  async updateAppointment(tenantIds: string | string[], id: string, data: any, userId?: string) {
     const existing = await prisma.appointment.findFirst({
       where: { id, tenantId: tenantIdFilter(tenantIds) },
     });
@@ -476,6 +514,24 @@ export class AppointmentService {
           employeeId: serviceEmployeeMap.get(service.id) ?? null,
         })),
       };
+    }
+
+    // Manual cancellation by an admin/staff cancels the whole booking group,
+    // not just this appointment — the other participants must not be orphaned.
+    if (nextStatus === 'CANCELLED' && existing.bookingGroupId) {
+      await this.cancelBookingGroup(
+        existing.bookingGroupId,
+        userId || existing.createdById,
+        'Cancelled by admin'
+      );
+    }
+
+    // Record who cancelled and when (also for single appointments) so cancelled
+    // appointments are traceable and show up in the corbeille (filtered by cancelledAt).
+    if (nextStatus === 'CANCELLED') {
+      updateData.cancelledAt = new Date();
+      updateData.cancelledBy = userId || existing.createdById;
+      updateData.cancellationReason = data.cancellationReason || 'Cancelled by admin';
     }
 
     const appointment = await prisma.appointment.update({
@@ -704,12 +760,19 @@ export class AppointmentService {
       return;
     }
 
+    // Manual cancellation by an admin/staff cancels the whole booking group,
+    // not just this appointment — the other participants must not be orphaned.
+    if (appointment.bookingGroupId) {
+      await this.cancelBookingGroup(appointment.bookingGroupId, userId, 'Cancelled by admin');
+    }
+
     await prisma.appointment.update({
       where: { id },
       data: {
         status: 'CANCELLED',
         cancelledAt: new Date(),
         cancelledBy: userId,
+        cancellationReason: 'Cancelled by admin',
       },
     });
   }

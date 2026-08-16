@@ -131,7 +131,8 @@ export class AppointmentController {
       const appointment = await appointmentService.updateAppointment(
         req.salonIds || [req.tenantId!],
         req.params.id,
-        data
+        data,
+        req.userId
       );
       res.json({ appointment });
     } catch (error: any) {

@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../constants/app_colors.dart';
 import '../models/client.dart';
+import '../utils/image_url.dart';
 
 class ClientCard extends StatelessWidget {
   final Client client;
@@ -23,6 +24,7 @@ class ClientCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final avatar = avatarProvider(client.avatar ?? '');
     final daysSinceLast = client.lastVisit != null
         ? DateTime.now().difference(client.lastVisit!).inDays
         : null;
@@ -59,9 +61,9 @@ class ClientCard extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                   child: ClipOval(
-                    child: (client.avatar ?? '').trim().isNotEmpty
-                        ? Image.network(
-                            client.avatar!,
+                    child: avatar != null
+                        ? Image(
+                            image: avatar,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) => Center(
                               child: Text(
@@ -233,6 +235,7 @@ class _ClientDetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final avatar = avatarProvider(client.avatar ?? '');
     final daysSinceLast = client.lastVisit != null
         ? DateTime.now().difference(client.lastVisit!).inDays
         : null;
@@ -284,9 +287,9 @@ class _ClientDetailsSheet extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                   child: ClipOval(
-                    child: (client.avatar ?? '').trim().isNotEmpty
-                        ? Image.network(
-                            client.avatar!,
+                    child: avatar != null
+                        ? Image(
+                            image: avatar,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) => Center(
                               child: Text(

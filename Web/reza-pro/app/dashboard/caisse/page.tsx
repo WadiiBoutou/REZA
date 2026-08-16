@@ -408,12 +408,28 @@ function CaissePageContent({
   const defaultTenantId = () =>
     !isSalonFilterMulti && effectiveSalonIds.length === 1 ? effectiveSalonIds[0] : '';
 
+  // Payment methods are salon-scoped: (re)load the list for the given salon so
+  // the dropdowns stay in sync with the "Méthodes de paiement acceptées" settings.
+  const loadPaymentMethods = async (tenantId?: string) => {
+    try {
+      const pmRes = await api.getAcceptedPaymentMethods(tenantId);
+      if (pmRes.methods && pmRes.methods.length > 0) {
+        setAcceptedPaymentMethods(pmRes.methods);
+      }
+    } catch {
+      /* keep the current list on failure */
+    }
+  };
+
   const openSaleModal = () => {
     setModalMode('sale');
     setSaleForm({ ...emptySaleForm(), tenantId: defaultTenantId() });
     setMovementForm({ ...emptyMovementForm(), tenantId: defaultTenantId() });
     setAmountOverridden(false);
     setShowModal(true);
+    // Refresh the payment methods for the salon being billed (multi-salon owners
+    // may have different lists per salon).
+    loadPaymentMethods(defaultTenantId() || undefined);
   };
 
   const openGroupBillingModal = async () => {
@@ -624,13 +640,10 @@ function CaissePageContent({
         toast.success('Aucune transaction trouvée', { id: 'loading-transactions' });
       }
 
-      // Fetch accepted payment methods
-      try {
-        const pmRes = await api.getAcceptedPaymentMethods();
-        if (pmRes.methods && pmRes.methods.length > 0) {
-          setAcceptedPaymentMethods(pmRes.methods);
-        }
-      } catch { /* use defaults */ }
+      // Fetch accepted payment methods (scoped to the selected salon)
+      await loadPaymentMethods(
+        !isSalonFilterMulti && effectiveSalonIds.length === 1 ? effectiveSalonIds[0] : undefined
+      );
 
       // Fetch clients, catalog services, and employees (for sale modal)
       const [clientsResponse, servicesResponse, employeesResponse] = await Promise.all([
@@ -959,25 +972,18 @@ function CaissePageContent({
           </div>
           <div className="flex items-center gap-3">
             <button
+              onClick={handlePrint}
+              title="Imprimer le rapport"
+              className="w-10 h-10 flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-full transition-colors"
+            >
+              <Printer size={16} />
+            </button>
+            <button
               onClick={exportToCSV}
               className="px-5 py-2 bg-[#002366] text-white text-sm font-medium rounded-full hover:bg-gray-800 transition-colors flex items-center gap-2"
             >
               <Download size={16} />
               Exporter
-            </button>
-            <button
-              onClick={openGroupBillingModal}
-              className="px-5 py-2 bg-purple-600 text-white text-sm font-medium rounded-full hover:bg-purple-700 transition-colors flex items-center gap-2"
-            >
-              <Users size={16} />
-              Facturer un groupe
-            </button>
-            <button
-              onClick={openSaleModal}
-              className="px-5 py-2 bg-emerald-600 text-white text-sm font-medium rounded-full hover:bg-emerald-700 transition-colors flex items-center gap-2"
-            >
-              <Plus size={16} />
-              Ajouter une transaction
             </button>
           </div>
         </div>
@@ -1013,17 +1019,6 @@ function CaissePageContent({
           </div>
           <p className="text-2xl font-light text-gray-900">{totalWithdrawals} MAD</p>
         </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="mb-4 animate-fadeIn flex justify-end">
-        <button
-          onClick={handlePrint}
-          className="px-4 py-3 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-full text-xs font-medium transition-colors flex items-center gap-2"
-          title="Imprimer le rapport"
-        >
-          <Printer size={14} />
-        </button>
       </div>
 
       {/* Analytics Grid */}
@@ -1097,18 +1092,34 @@ function CaissePageContent({
 
       {/* Transactions Table */}
       <div className="bg-white rounded-lg border border-gray-100 overflow-hidden animate-fadeIn">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4 flex-wrap">
           <h3 className="text-sm font-medium text-gray-900">Toutes les transactions</h3>
-          {/* Search bar moved here — above the table, below the cards */}
-          <div className="relative w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
-            <input
-              type="text"
-              placeholder="Rechercher…"
-              value={searchTerm}
-              onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              className="w-full pl-9 pr-4 py-2 rounded-full bg-gray-50 border border-gray-200 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#002366]/30 transition-all"
-            />
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={openGroupBillingModal}
+              className="px-4 py-2 bg-purple-600 text-white text-xs font-medium rounded-full hover:bg-purple-700 transition-colors flex items-center gap-2"
+            >
+              <Users size={14} />
+              Facturer un groupe
+            </button>
+            <button
+              onClick={openSaleModal}
+              className="px-4 py-2 bg-emerald-600 text-white text-xs font-medium rounded-full hover:bg-emerald-700 transition-colors flex items-center gap-2"
+            >
+              <Plus size={14} />
+              Nouvelle transaction
+            </button>
+            {/* Search bar — above the table, below the cards */}
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+              <input
+                type="text"
+                placeholder="Rechercher…"
+                value={searchTerm}
+                onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                className="w-full pl-9 pr-4 py-2 rounded-full bg-gray-50 border border-gray-200 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#002366]/30 transition-all"
+              />
+            </div>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -1338,6 +1349,8 @@ function CaissePageContent({
                         } else {
                           setMovementForm({ ...movementForm, tenantId: v });
                         }
+                        // Payment methods can differ per salon — refresh on change
+                        loadPaymentMethods(v);
                       }}
                     >
                       <SelectTrigger className="w-full px-4 py-2.5 rounded-full bg-gray-50 border border-gray-200 text-sm mt-2">
@@ -1882,14 +1895,6 @@ function CaissePageContent({
                   className="w-full px-4 py-2.5 rounded-full text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors"
                 >
                   {groupSubmitting ? 'Traitement…' : 'Facturer séparément (chaque participant)'}
-                </button>
-                <button
-                  type="button"
-                  disabled={groupSubmitting}
-                  onClick={() => setGroupModalOpen(false)}
-                  className="w-full px-4 py-2.5 rounded-full text-sm font-medium text-gray-500 hover:text-gray-800 disabled:opacity-50 transition-colors"
-                >
-                  Annuler
                 </button>
               </div>
             )}

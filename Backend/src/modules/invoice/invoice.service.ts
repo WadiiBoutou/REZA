@@ -942,7 +942,7 @@ export class InvoiceService {
   async getPendingGroups(tenantId: string) {
     // Find groups that have participants with appointments
     const groups = await prisma.bookingGroup.findMany({
-      where: { tenantId },
+      where: { tenantId, status: { not: 'CANCELLED' } },
       include: {
         participants: {
           select: {

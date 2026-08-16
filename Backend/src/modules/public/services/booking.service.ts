@@ -1478,6 +1478,8 @@ export class BookingService {
         client: true,
         service: { select: { name: true } },
         tenant: { select: { name: true } },
+        bookingParticipant: { select: { isBooker: true } },
+        bookingGroup: { select: { id: true, bookerClientId: true } },
       }
     });
 
@@ -1512,16 +1514,50 @@ export class BookingService {
       });
     }
 
-    // Cancel the appointment
-    const cancelledAppointment = await prisma.appointment.update({
-      where: { id },
-      data: {
-        status: 'CANCELLED',
-        cancelledAt: new Date(),
-        cancelledBy: appointment.clientId, // Store clientId to indicate client cancelled
-        cancellationReason: 'Cancelled by client'
-      }
-    });
+    // The main client (booker) cancelling one appointment of a group cancels the
+    // whole group — otherwise the other participants' appointments would be left
+    // orphaned with no way to cancel them.
+    const isGroupBookerCancel =
+      !!appointment.bookingGroupId &&
+      (appointment.bookingParticipant?.isBooker === true ||
+        appointment.bookingGroup?.bookerClientId === appointment.clientId);
+
+    const cancelledAt = new Date();
+    let cancelledAppointment;
+
+    if (isGroupBookerCancel) {
+      // Cancel every appointment of the group so none is left orphaned
+      await prisma.appointment.updateMany({
+        where: {
+          bookingGroupId: appointment.bookingGroupId!,
+          status: { notIn: ['CANCELLED', 'COMPLETED'] },
+        },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt,
+          cancelledBy: appointment.clientId, // Store clientId to indicate client cancelled
+          cancellationReason: 'Cancelled by client',
+        },
+      });
+
+      await prisma.bookingGroup.update({
+        where: { id: appointment.bookingGroupId! },
+        data: { status: 'CANCELLED' },
+      });
+
+      cancelledAppointment = await prisma.appointment.findUnique({ where: { id } });
+    } else {
+      // Cancel the appointment
+      cancelledAppointment = await prisma.appointment.update({
+        where: { id },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt,
+          cancelledBy: appointment.clientId, // Store clientId to indicate client cancelled
+          cancellationReason: 'Cancelled by client'
+        }
+      });
+    }
 
     // Email the salon's configured RDV notification addresses
     try {
@@ -1536,10 +1572,12 @@ export class BookingService {
         const serviceName = (appointment.service as any)?.name || 'Rendez-vous';
         await sendMail({
           to: appointmentEmails,
-          subject: `Rendez-vous annulé — ${appointment.tenant?.name || ''}`,
+          subject: isGroupBookerCancel
+            ? `Réservation de groupe annulée — ${appointment.tenant?.name || ''}`
+            : `Rendez-vous annulé — ${appointment.tenant?.name || ''}`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
-              <h2 style="color: #B00020;">Rendez-vous annulé par le client</h2>
+              <h2 style="color: #B00020;">${isGroupBookerCancel ? 'Réservation de groupe annulée par le client' : 'Rendez-vous annulé par le client'}</h2>
               <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
                 <tr><td style="padding: 6px 0; color: #666;">Client</td><td style="padding: 6px 0; font-weight: bold;">${clientName}</td></tr>
                 <tr><td style="padding: 6px 0; color: #666;">Service</td><td style="padding: 6px 0; font-weight: bold;">${serviceName}</td></tr>

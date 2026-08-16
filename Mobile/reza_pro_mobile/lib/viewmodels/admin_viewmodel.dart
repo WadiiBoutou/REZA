@@ -12,6 +12,14 @@ class AdminViewModel extends ChangeNotifier {
   bool loading = true;
   String? error;
 
+  /// Agenda parameters backed by real tenant settings.
+  bool paramsLoading = false;
+  String? paramsError;
+  String agendaStart = '08:00';
+  String agendaEnd = '23:55';
+  bool autoConfirm = false;
+  bool onlineBookingOpen = true;
+
   Future<void> loadAll() async {
     loading = true;
     error = null;
@@ -29,6 +37,7 @@ class AdminViewModel extends ChangeNotifier {
       stats = Map<String, dynamic>.from(results[3] as Map);
       loading = false;
       notifyListeners();
+      await loadAgendaParams();
     } on ApiException catch (e) {
       error = e.message;
       loading = false;
@@ -37,6 +46,55 @@ class AdminViewModel extends ChangeNotifier {
       error = 'Impossible de charger l\'admin';
       loading = false;
       notifyListeners();
+    }
+  }
+
+  /// Load the real agenda settings (hours, online booking, auto-confirm).
+  Future<void> loadAgendaParams() async {
+    paramsLoading = true;
+    paramsError = null;
+    notifyListeners();
+    try {
+      final hours = await tenantService.getBusinessHours();
+      final ac = await tenantService.getAutoConfirm();
+      agendaStart = hours['agendaStart']?.toString() ?? '08:00';
+      agendaEnd = hours['agendaEnd']?.toString() ?? '23:55';
+      onlineBookingOpen = (hours['onlineBooking'] ?? 'open').toString() == 'open';
+      autoConfirm = ac['enabled'] == true;
+      paramsLoading = false;
+      notifyListeners();
+    } catch (_) {
+      paramsError = 'Impossible de charger les paramètres';
+      paramsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Persist agenda settings. Returns an error message on failure, else null.
+  Future<String?> saveAgendaParams({
+    String? start,
+    String? end,
+    bool? onlineBooking,
+    bool? autoConfirmEnabled,
+  }) async {
+    paramsLoading = true;
+    paramsError = null;
+    notifyListeners();
+    try {
+      await tenantService.updateBusinessHours({
+        'agendaStart': start ?? agendaStart,
+        'agendaEnd': end ?? agendaEnd,
+        'onlineBooking': onlineBooking ?? (onlineBookingOpen ? 'open' : 'closed'),
+      });
+      if (autoConfirmEnabled != null) {
+        await tenantService.setAutoConfirm(autoConfirmEnabled);
+      }
+      await loadAgendaParams();
+      return null;
+    } catch (e) {
+      paramsLoading = false;
+      notifyListeners();
+      return e is ApiException ? e.message : 'Erreur lors de la sauvegarde';
     }
   }
 
@@ -57,14 +115,31 @@ class AdminViewModel extends ChangeNotifier {
   Future<void> createEmployee({
     required String firstName,
     required String lastName,
+    required String phone,
     String? email,
+    String? role,
   }) async {
     await employeeService.create({
       'firstName': firstName,
       'lastName': lastName,
+      'phone': phone,
       if (email != null && email.isNotEmpty) 'email': email,
+      if (role != null && role.isNotEmpty) 'agendaSettings': {'role': role},
       'isActive': true,
     });
     await loadAll();
+  }
+
+  /// Update salon general info (name, phone, email, address, website…).
+  /// Returns an error message on failure, else null.
+  Future<String?> updateTenantInfo(Map<String, dynamic> data) async {
+    try {
+      final updated = await tenantService.updateTenant(data);
+      tenant = {...tenant, ...updated, ...data};
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return e is ApiException ? e.message : 'Erreur lors de la mise à jour';
+    }
   }
 }

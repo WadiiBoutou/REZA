@@ -1,23 +1,13 @@
-import express, { Request } from 'express';
+import express from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import { authMiddleware, requireRole } from '../../middleware/authenticateRequest';
-import { verifyToken } from '../../utils/jwt';
-import { prisma } from '../../lib/prisma';
 import { tenantController } from './tenant.controller';
-import * as log from '../../utils/logger';
 
 const router = express.Router();
 
 // Images are uploaded to Cloudinary (secure URL stored in DB). Multer only
 // buffers the file in memory — nothing is written to local disk.
 const memoryStorage = multer.memoryStorage();
-
-// Legacy local path used only by GET /header-image-file for pre-Cloudinary
-// files that may still exist on disk. New uploads never write here.
-const uploadsDir = path.resolve(__dirname, '..', '..', '..', 'public', 'uploads');
-const headerImagesDir = path.join(uploadsDir, 'header-images');
 
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   if (file.mimetype.startsWith('image/')) {
@@ -37,167 +27,6 @@ const uploadHeaderImage = multer({
   storage: memoryStorage,
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 }
-});
-
-/**
- * GET /api/tenant/header-image-file (public)
- * Serve the actual header image file
- */
-router.get('/header-image-file', async (req, res, next) => {
-  try {
-    let tenantId: string | undefined;
-
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const token = authHeader.substring(7);
-        const decoded = verifyToken(token);
-        if (decoded && decoded.tenantId) {
-          tenantId = decoded.tenantId;
-        }
-      } catch (tokenError) {}
-    }
-
-    if (!tenantId && req.headers['x-tenant-id']) {
-      tenantId = req.headers['x-tenant-id'] as string;
-    }
-
-    if (!tenantId && req.query.tenantId) {
-      tenantId = req.query.tenantId as string;
-    }
-
-    if (!tenantId) {
-      const host = req.get('host') || '';
-      const subdomain = host.split('.')[0];
-      if (subdomain && subdomain !== 'www' && subdomain !== 'api' && subdomain !== 'localhost') {
-        try {
-          const tenant = await prisma.tenant.findUnique({
-            where: { subdomain },
-            select: { id: true }
-          });
-          if (tenant) {
-            tenantId = tenant.id;
-          }
-        } catch (error) {}
-      }
-    }
-
-    if (!tenantId) {
-      return res.status(401).json({
-        error: 'Tenant identification required',
-        message: 'Unable to determine tenant'
-      });
-    }
-
-    if (tenantId === 'default') {
-      log.error('[Header Image File] SECURITY WARNING: Attempted access with tenantId="default"');
-      return res.status(403).json({
-        error: 'Invalid tenant',
-        message: 'Your account needs to be updated. Please log out and log back in, or contact support.'
-      });
-    }
-
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { id: true, isActive: true }
-    });
-
-    if (!tenant) {
-      return res.status(404).json({ error: 'Tenant not found' });
-    }
-
-    if (!tenant.isActive) {
-      return res.status(403).json({ error: 'Tenant inactive' });
-    }
-
-    const settings = await prisma.tenantSettings.findUnique({
-      where: { tenantId }
-    });
-
-    let headerImage: string | null = null;
-
-    if (settings) {
-      const emailNotifications = settings.emailNotifications as any;
-
-      if (emailNotifications && typeof emailNotifications === 'object') {
-        if (emailNotifications.dashboardSettings?.headerImage) {
-          headerImage = emailNotifications.dashboardSettings.headerImage;
-
-          if (headerImage && typeof headerImage === 'string' && headerImage.includes('/cover-images/')) {
-            headerImage = headerImage.replace('/cover-images/', '/header-images/');
-          }
-        } else if (emailNotifications.headerImage) {
-          headerImage = emailNotifications.headerImage;
-
-          if (headerImage && typeof headerImage === 'string' && headerImage.includes('/cover-images/')) {
-            headerImage = headerImage.replace('/cover-images/', '/header-images/');
-          }
-        }
-      }
-    }
-
-    if (!headerImage) {
-      return res.status(404).json({ error: 'Header image not found' });
-    }
-
-    // Cloudinary-stored images are absolute URLs — redirect the client there
-    // instead of reading the (now unused) local uploads directory.
-    if (headerImage.startsWith('http://') || headerImage.startsWith('https://')) {
-      return res.redirect(302, headerImage);
-    }
-
-    const filename = path.basename(headerImage);
-    const imagePath = path.join(headerImagesDir, filename);
-
-    if (!fs.existsSync(imagePath)) {
-      if (fs.existsSync(headerImagesDir)) {
-        const files = fs.readdirSync(headerImagesDir);
-        const matchingFile = files.find(f => f.includes(filename.split('-')[0]));
-
-        if (matchingFile) {
-          const alternativePath = path.join(headerImagesDir, matchingFile);
-          if (fs.existsSync(alternativePath)) {
-            const ext = path.extname(alternativePath).toLowerCase().slice(1);
-            const contentTypeMap: { [key: string]: string } = {
-              'jpg': 'image/jpeg',
-              'jpeg': 'image/jpeg',
-              'png': 'image/png',
-              'gif': 'image/gif',
-              'webp': 'image/webp'
-            };
-            const contentType = contentTypeMap[ext] || 'image/jpeg';
-            res.setHeader('Content-Type', contentType);
-            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            return res.sendFile(alternativePath);
-          }
-        }
-      }
-
-      return res.status(404).json({
-        error: 'Image file not found',
-        message: `The header image file "${filename}" was not found in the uploads directory.`
-      });
-    }
-
-    const ext = path.extname(imagePath).toLowerCase().slice(1);
-    const contentTypeMap: { [key: string]: string } = {
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'webp': 'image/webp'
-    };
-    const contentType = contentTypeMap[ext] || 'image/jpeg';
-
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.sendFile(imagePath);
-  } catch (error: any) {
-    log.error('[Header Image File] Error:', error);
-    next(error);
-  }
 });
 
 // All routes below require authentication

@@ -8,6 +8,7 @@ import '../viewmodels/auth_viewmodel.dart';
 import '../services/account_service.dart';
 import '../services/api_client.dart';
 import '../widgets/avatar_picker.dart';
+import '../widgets/rz_logo.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, this.returnResultOnSuccess = false});
@@ -358,17 +359,7 @@ class _LoginScreenState extends State<LoginScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
-        Center(
-          child: Text(
-            'REZA',
-            style: GoogleFonts.inter(
-              fontSize: 40,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textDark,
-              letterSpacing: -1,
-            ),
-          ),
-        ),
+        const Center(child: RzLogo(size: 64)),
         const SizedBox(height: 36),
         Text(
           _step == 0
@@ -824,16 +815,7 @@ class _LoginScreenState extends State<LoginScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
-        Center(
-          child: Text(
-            'REZA',
-            style: GoogleFonts.inter(
-              fontSize: 40,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textDark,
-            ),
-          ),
-        ),
+        const Center(child: RzLogo(size: 64)),
         const SizedBox(height: 36),
         Text(
           'Mot de passe oublié ?',
@@ -901,16 +883,7 @@ class _LoginScreenState extends State<LoginScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
-        Center(
-          child: Text(
-            'REZA',
-            style: GoogleFonts.inter(
-              fontSize: 40,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textDark,
-            ),
-          ),
-        ),
+        const Center(child: RzLogo(size: 64)),
         const SizedBox(height: 36),
         Text(
           'Code de vérification',

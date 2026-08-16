@@ -4,6 +4,8 @@ class AppointmentServiceLine {
   final String name;
   final int duration;
   final double price;
+  /// Employee assigned to this service line (may be null).
+  final String? employeeName;
 
   AppointmentServiceLine({
     this.id,
@@ -11,6 +13,7 @@ class AppointmentServiceLine {
     required this.name,
     required this.duration,
     required this.price,
+    this.employeeName,
   });
 }
 
@@ -196,12 +199,16 @@ class Appointment {
         : '—';
     final serviceLines = (json['services'] as List?)?.map((item) {
       final map = item as Map<String, dynamic>;
+      final svcEmployee = map['employee'] as Map<String, dynamic>?;
       return AppointmentServiceLine(
         id: map['id']?.toString(),
         serviceId: map['serviceId']?.toString(),
         name: map['name']?.toString() ?? map['serviceName']?.toString() ?? 'Service',
         duration: (map['duration'] as num?)?.toInt() ?? 0,
         price: (map['price'] as num?)?.toDouble() ?? 0,
+        employeeName: svcEmployee != null
+            ? '${svcEmployee['firstName'] ?? ''} ${svcEmployee['lastName'] ?? ''}'.trim()
+            : null,
       );
     }).toList() ?? const <AppointmentServiceLine>[];
 
@@ -210,6 +217,21 @@ class Appointment {
     final primaryPrice = serviceLines.isNotEmpty ? serviceLines.first.price : null;
 
     final bookingGroup = json['bookingGroup'] as Map<String, dynamic>?;
+
+    // Employee name: multi-service appointments store the real assignment on
+    // each service line (AppointmentServiceItem.employeeId) and leave the
+    // top-level `employee` null. Derive the display name from the service
+    // lines first, falling back to the legacy top-level employee relation.
+    final serviceEmployeeNames = serviceLines
+        .map((s) => s.employeeName)
+        .where((n) => n != null && n.isNotEmpty)
+        .map((n) => n!)
+        .toSet();
+    final employeeLabel = serviceEmployeeNames.isNotEmpty
+        ? (serviceEmployeeNames.length == 1
+            ? serviceEmployeeNames.first
+            : 'Plusieurs employés')
+        : employeeName;
 
     return Appointment(
       id: json['id']?.toString() ?? '',
@@ -228,7 +250,7 @@ class Appointment {
       totalPrice: (json['totalPrice'] as num?)?.toDouble() ??
           (primaryPrice ?? 0),
       employeeId: employee?['id']?.toString(),
-      employee: employeeName.isEmpty ? '—' : employeeName,
+      employee: employeeLabel.trim().isEmpty ? '—' : employeeLabel,
       time: time,
       duration: (json['duration'] as num?)?.toInt() ?? 60,
       status: uiStatus(json['status']?.toString()),

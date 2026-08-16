@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../viewmodels/auth_viewmodel.dart';
 import '../services/api_client.dart';
+import '../widgets/rz_logo.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -147,15 +148,7 @@ class _LoginScreenState extends State<LoginScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(Icons.spa_rounded, color: Colors.white, size: 36),
-            ),
+            const RzLogo(size: 72),
             const SizedBox(height: 24),
             Text(
               'Reza Pro',
@@ -244,23 +237,7 @@ class _LoginScreenState extends State<LoginScreen>
                 // Logo
                 Row(
                   children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.spa_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
+                    const RzLogo(size: 40),
                     const SizedBox(width: 12),
                     Text(
                       'Reza Pro',

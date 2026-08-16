@@ -1,5 +1,6 @@
 import { prisma } from '../../lib/prisma';
 import { salonClientsFilter, tenantIdFilter } from '../../utils/salonScope';
+import { buildProcheAvatarMap } from '../../utils/familyMemberAvatars';
 
 export class ClientService {
   /**
@@ -136,6 +137,11 @@ export class ClientService {
         : [];
     const ownerById = new Map(owners.map((o) => [o.id, o]));
 
+    // Proche avatars live on the familyMember record, not on the salon Client
+    // row created when the proche books — overlay them so the admin list (and
+    // pro mobile client list) shows the same photo the owner sees.
+    const procheAvatarByClientId = await buildProcheAvatarMap(clients);
+
     const clientsWithStatus = clientsWithOwnerId.map((c) => {
       const { addedByClientId, ...rest } = c;
       const invite = inviteByClientId.get(c.id);
@@ -149,6 +155,7 @@ export class ClientService {
       }
       return {
         ...rest,
+        avatar: rest.avatar ?? procheAvatarByClientId.get(c.id) ?? null,
         status: blockedIds.has(c.id) ? 'INACTIVE' : 'ACTIVE',
         addedAs: addedByClientId ? 'PROCHE' : invite ? 'INVITE' : null,
         addedByClient,
@@ -290,7 +297,12 @@ export class ClientService {
 
     if (!client) return null;
     const blockedIds = await this.blockedClientIds(tenantIds);
-    return { ...client, status: blockedIds.has(client.id) ? 'INACTIVE' : 'ACTIVE' };
+    const procheAvatarByClientId = await buildProcheAvatarMap([client]);
+    return {
+      ...client,
+      avatar: client.avatar ?? procheAvatarByClientId.get(client.id) ?? null,
+      status: blockedIds.has(client.id) ? 'INACTIVE' : 'ACTIVE',
+    };
   }
 
   async createClient(tenantId: string, data: any) {

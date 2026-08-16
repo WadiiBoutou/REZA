@@ -7,6 +7,7 @@ import 'mock_data.dart';
 import 'viewmodels/auth_viewmodel.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/login_screen.dart';
+import 'widgets/rz_logo.dart';
 
 void main() {
   initializeMockData();
@@ -70,15 +71,7 @@ class _AuthGate extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Icon(Icons.spa_rounded, color: Colors.white, size: 36),
-                  ),
+                  const RzLogo(size: 72),
                   const SizedBox(height: 24),
                   Text(
                     'Reza Pro',

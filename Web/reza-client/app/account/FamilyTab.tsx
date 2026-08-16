@@ -2,7 +2,8 @@ import { Plus, Edit2, Trash2, Phone, Mail, Camera, X } from 'lucide-react';
 import React, { useState } from 'react';
 import DeleteModal from './dialogue/deletemodal';
 import SaveModal from './dialogue/savemodal';
-import { isValidMoroccanPhone, getMoroccanPhoneError, normalizeMoroccanPhone } from '../../lib/utils';
+import { isValidMoroccanPhone, getMoroccanPhoneError, normalizeMoroccanPhone, getImageUrl } from '../../lib/utils';
+import { api } from '../../lib/api';
 
 interface FamilyMember {
   id: string;
@@ -52,6 +53,7 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [pendingSaveId, setPendingSaveId] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   // Sync local state if prop changes
   React.useEffect(() => {
@@ -86,16 +88,34 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
     setPreviewImage(null);
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        setPreviewImage(result);
-        setFormData({ ...formData, profileImage: result });
-      };
-      reader.readAsDataURL(file);
+    e.target.value = '';
+    if (!file) return;
+
+    // Instant local preview while the file uploads
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Upload through the standard Cloudinary-backed endpoint (same as mobile) —
+    // store the returned URL, never the raw base64, so the avatar renders
+    // everywhere and the DB isn't bloated with multi-MB data URIs.
+    try {
+      setUploadingAvatar(true);
+      const { avatar } = await api.uploadAvatar(file);
+      setFormData((prev) => ({ ...prev, profileImage: avatar }));
+    } catch (err: any) {
+      console.error('Error uploading avatar:', err);
+      setPreviewImage(null);
+      setFormErrors((prev) => ({
+        ...prev,
+        _general: err.message || "Erreur lors de l'upload de l'image. Veuillez réessayer."
+      }));
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
@@ -192,6 +212,7 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
   };
 
   const handleSave = (memberId: string | null) => {
+    if (uploadingAvatar) return; // wait for the avatar upload to finish
     // Validate form before showing save modal
     if (!validateForm()) {
       // Scroll to first error if validation fails
@@ -396,9 +417,9 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
                 </button>
                 <button
                   onClick={() => handleSave(null)}
-                  disabled={!formData.name?.trim() || !formData.relationship?.trim() || Object.keys(formErrors).filter(key => formErrors[key]).length > 0}
+                  disabled={uploadingAvatar || !formData.name?.trim() || !formData.relationship?.trim() || Object.keys(formErrors).filter(key => formErrors[key]).length > 0}
                   className="w-8 h-8 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center transition-all rounded-full"
-                  title={!formData.name?.trim() || !formData.relationship?.trim() ? 'Veuillez remplir le nom et la relation' : Object.keys(formErrors).filter(key => formErrors[key]).length > 0 ? 'Veuillez corriger les erreurs' : 'Enregistrer'}
+                  title={uploadingAvatar ? 'Envoi de la photo…' : !formData.name?.trim() || !formData.relationship?.trim() ? 'Veuillez remplir le nom et la relation' : Object.keys(formErrors).filter(key => formErrors[key]).length > 0 ? 'Veuillez corriger les erreurs' : 'Enregistrer'}
                 >
                   <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -488,7 +509,7 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
                   <div className="relative">
                     {(isEditing && previewImage) || (!isEditing && displayData.avatar) ? (
                       <img 
-                        src={isEditing ? (previewImage || '') : (displayData.avatar || '')} 
+                        src={isEditing ? (previewImage || '') : getImageUrl(displayData.avatar)} 
                         alt="Profile" 
                         className="w-12 h-12 object-cover rounded-full"
                         onError={(e) => {
@@ -593,9 +614,9 @@ const FamilyTab: React.FC<FamilyTabProps> = ({
                           e.stopPropagation();
                           handleSave(member.id);
                         }}
-                        disabled={!formData.name?.trim() || !formData.relationship?.trim() || Object.keys(formErrors).filter(key => formErrors[key]).length > 0}
+                        disabled={uploadingAvatar || !formData.name?.trim() || !formData.relationship?.trim() || Object.keys(formErrors).filter(key => formErrors[key]).length > 0}
                         className="w-8 h-8 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center transition-all rounded-full"
-                        title={!formData.name?.trim() || !formData.relationship?.trim() ? 'Veuillez remplir le nom et la relation' : Object.keys(formErrors).filter(key => formErrors[key]).length > 0 ? 'Veuillez corriger les erreurs' : 'Enregistrer'}
+                        title={uploadingAvatar ? 'Envoi de la photo…' : !formData.name?.trim() || !formData.relationship?.trim() ? 'Veuillez remplir le nom et la relation' : Object.keys(formErrors).filter(key => formErrors[key]).length > 0 ? 'Veuillez corriger les erreurs' : 'Enregistrer'}
                       >
                         <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

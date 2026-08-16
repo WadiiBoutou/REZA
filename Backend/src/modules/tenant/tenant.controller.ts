@@ -224,7 +224,22 @@ export class TenantController {
 
   async getAcceptedPaymentMethods(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await tenantService.getAcceptedPaymentMethods(req.tenantId!);
+      // A multi-salon owner may scope the list to one specific salon (the caisse
+      // re-fetches it whenever the user picks a salon). Validate that the salon
+      // is within the caller's scope before using it.
+      const tenantIdParam = req.query.tenantId as string | undefined;
+      let tenantId = req.tenantId!;
+      if (tenantIdParam) {
+        const scope = req.salonIds || [tenantId];
+        if (!scope.includes(tenantIdParam)) {
+          return res.status(403).json({
+            error: 'Forbidden salon',
+            message: 'Ce salon ne fait pas partie de votre compte.',
+          });
+        }
+        tenantId = tenantIdParam;
+      }
+      const result = await tenantService.getAcceptedPaymentMethods(tenantId);
       res.json(result);
     } catch (error: any) {
       if (error.status) return res.status(error.status).json({ error: error.error });
