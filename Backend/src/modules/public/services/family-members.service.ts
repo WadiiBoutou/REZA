@@ -20,6 +20,7 @@ async function findClientsByEmail(email: string) {
   return prisma.client.findMany({
     where: { email: { equals: normalized, mode: 'insensitive' } },
     orderBy: { createdAt: 'asc' },
+    omit: { password: false }, // resolveAccountClient picks the password-bearing account
   });
 }
 
@@ -79,7 +80,10 @@ export class FamilyMembersService {
       const data = createPublicFamilyMemberSchema.parse(body);
       const { clientEmail, ...familyMemberData } = data;
 
-      let client = await resolveAccountClient(clientEmail);
+      // Resolve the password-bearing account row; the create-fallback below
+      // returns a record without the (globally omitted) password field, so the
+      // variable is typed on the shared id that both paths provide.
+      let client: { id: string } | null = await resolveAccountClient(clientEmail);
 
       if (!client) {
         // Create a GLOBAL client — family members are client-owned, never

@@ -73,7 +73,7 @@ export class ClientService {
     const normalizeKey = (firstName?: string | null, lastName?: string | null) =>
       `${(firstName || '').trim().toLowerCase()}|${(lastName || '').trim().toLowerCase()}`;
 
-    const familyMembers = (await (prisma as any).familyMember.findMany({
+    const familyMembers = (await prisma.familyMember.findMany({
       select: { clientId: true, firstName: true, lastName: true }
     })) as Array<{ clientId: string; firstName: string | null; lastName: string | null }>;
 

@@ -50,6 +50,214 @@ const appointmentListInclude = {
   bookingGroup: { select: { id: true, _count: { select: { participants: true } } } },
 };
 
+// ─── P1: agenda flattened fetch ───────────────────────────────────────────────
+// The Prisma driver-adapter client fires one SQL query per `include` relation
+// (even to-one), so the full `appointmentListInclude` chain costs ~10 round trips
+// per agenda request. These helpers rebuild the same nested shape from 3 flat
+// SQL queries (appointments+relations, service items, count) so a busy day is
+// 3 round trips instead of ~10. Behaviour is identical to the include chain.
+
+const AGENDA_SCALARS = [
+  'id', 'tenantId', 'clientId', 'serviceId', 'employeeId', 'createdById',
+  'startTime', 'endTime', 'duration', 'status', 'source', 'notes',
+  'cancelledAt', 'cancelledBy', 'cancellationReason', 'bookingGroupId',
+  'createdAt', 'updatedAt',
+] as const;
+
+const AGENDA_RELATIONS: Record<string, readonly string[]> = {
+  client: ['id', 'firstName', 'lastName', 'email', 'phone', 'avatar'],
+  service: ['id', 'name', 'color', 'duration', 'price', 'priceFrom', 'onQuote'],
+  employee: ['id', 'firstName', 'lastName'],
+  createdBy: ['id', 'firstName', 'lastName'],
+  bookingParticipant: ['displayName', 'clientId'],
+  bookingGroup: ['id'],
+};
+
+function agendaScalarSelect(table: string): string {
+  return AGENDA_SCALARS.map((c) => `a."${c}"`).join(', ');
+}
+
+function agendaRelationSelect(): string {
+  const parts: string[] = [];
+  for (const [rel, fields] of Object.entries(AGENDA_RELATIONS)) {
+    const t =
+      rel === 'bookingParticipant' ? 'bp' : rel === 'bookingGroup' ? 'bg' : rel === 'client' ? 'c' : rel === 'service' ? 's' : rel === 'employee' ? 'em' : 'cb';
+    for (const f of fields) parts.push(`${t}."${f}" AS "${rel}.${f}"`);
+  }
+  parts.push(`(SELECT COUNT(*)::int FROM "booking_participants" bpc WHERE bpc."bookingGroupId" = a."bookingGroupId") AS "bookingGroup._count.participants"`);
+  return parts.join(', ');
+}
+
+/** Translate the Prisma `where` object built in getAppointments to SQL. */
+function agendaWhereSql(where: any): { sql: string; params: unknown[] } {
+  const conds: string[] = [];
+  const params: unknown[] = [];
+  const p = () => `$${params.length + 1}`;
+
+  const tenant = where.tenantId;
+  if (typeof tenant === 'string') {
+    conds.push(`a."tenantId" = ${p()}`); params.push(tenant);
+  } else if (tenant && Array.isArray(tenant.in)) {
+    conds.push(`a."tenantId" = ANY(${p()}::text[])`); params.push(tenant.in);
+  }
+
+  if (where.startTime) {
+    if (where.startTime.gte) { conds.push(`a."startTime" >= ${p()}`); params.push(where.startTime.gte); }
+    if (where.startTime.lte) { conds.push(`a."startTime" <= ${p()}`); params.push(where.startTime.lte); }
+  }
+  if (where.cancelledAt) {
+    if (where.cancelledAt.gte) { conds.push(`a."cancelledAt" >= ${p()}`); params.push(where.cancelledAt.gte); }
+    if (where.cancelledAt.lte) { conds.push(`a."cancelledAt" <= ${p()}`); params.push(where.cancelledAt.lte); }
+  }
+  if (where.clientId) { conds.push(`a."clientId" = ${p()}`); params.push(where.clientId); }
+  if (where.status) { conds.push(`a."status" = ${p()}`); params.push(where.status); }
+
+  // Each OR-group becomes `(cond1 OR cond2 ...)`. The builder in getAppointments
+  // produces either `where.OR` (single group) or `where.AND` (two groups AND-ed).
+  const orGroups: Array<Array<Record<string, any>>> = [];
+  if (Array.isArray(where.OR)) orGroups.push(where.OR);
+  if (Array.isArray(where.AND)) {
+    for (const andClause of where.AND) {
+      if (Array.isArray(andClause.OR)) orGroups.push(andClause.OR);
+    }
+  }
+  for (const group of orGroups) {
+    const parts: string[] = [];
+    for (const clause of group) {
+      if (clause.employeeId) { parts.push(`a."employeeId" = ${p()}`); params.push(clause.employeeId); }
+      if (clause.serviceId) { parts.push(`a."serviceId" = ${p()}`); params.push(clause.serviceId); }
+      const some = clause.services?.some;
+      if (some) {
+        if (some.employeeId) {
+          parts.push(`EXISTS (SELECT 1 FROM "appointment_service_items" asi WHERE asi."appointmentId" = a.id AND asi."employeeId" = ${p()})`);
+          params.push(some.employeeId);
+        }
+        if (some.serviceId) {
+          parts.push(`EXISTS (SELECT 1 FROM "appointment_service_items" asi WHERE asi."appointmentId" = a.id AND asi."serviceId" = ${p()})`);
+          params.push(some.serviceId);
+        }
+      }
+    }
+    if (parts.length) conds.push(`(${parts.join(' OR ')})`);
+  }
+
+  return { sql: conds.join(' AND '), params };
+}
+
+/** Rebuild Prisma-shaped nested objects from dotted-alias SQL rows. */
+function hydrateAgendaRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [rel, fields] of Object.entries(AGENDA_RELATIONS)) {
+    const obj: Record<string, unknown> = {};
+    let anyNonNull = false;
+    for (const f of fields) {
+      const v = row[`${rel}.${f}`];
+      obj[f] = v;
+      if (v !== null && v !== undefined) anyNonNull = true;
+    }
+    out[rel] = anyNonNull ? obj : null;
+    if (rel === 'bookingGroup' && anyNonNull) {
+      (obj as any)._count = { participants: (row['bookingGroup._count.participants'] as number) ?? 0 };
+    }
+  }
+  for (const c of AGENDA_SCALARS) out[c] = row[c];
+  return out;
+}
+
+/** Fetch one page of appointments + relations in 3 round trips (P1). */
+async function fetchAgendaPage(
+  where: any,
+  skip: number,
+  take: number
+): Promise<{ rows: any[]; total: number }> {
+  const { sql: whereSql, params } = agendaWhereSql(where);
+  const whereClause = whereSql ? ` WHERE ${whereSql}` : '';
+
+  const [apptRows, total] = await Promise.all([
+    prisma.$queryRawUnsafe(
+      `SELECT ${agendaScalarSelect('a')}, ${agendaRelationSelect()}
+       FROM "appointments" a
+       LEFT JOIN "clients" c ON c.id = a."clientId"
+       LEFT JOIN "services" s ON s.id = a."serviceId"
+       LEFT JOIN "users" cb ON cb.id = a."createdById"
+       LEFT JOIN "users" em ON em.id = a."employeeId"
+       LEFT JOIN "booking_participants" bp ON bp."appointmentId" = a.id
+       LEFT JOIN "booking_groups" bg ON bg.id = a."bookingGroupId"
+       ${whereClause}
+       ORDER BY a."startTime" ASC
+       LIMIT ${take} OFFSET ${skip}`,
+      ...params,
+    ),
+    prisma.appointment.count({ where }),
+  ]);
+
+  // Service items need the page's appointment ids (fetched above).
+  const pageIds = (apptRows as Array<{ id: string }>).map((r) => r.id);
+  const items =
+    pageIds.length > 0
+      ? ((await prisma.$queryRawUnsafe(
+          `SELECT asi.id, asi."appointmentId", asi."serviceId", asi."employeeId", asi."serviceName",
+                  asi.duration, asi.price, asi."sortOrder", asi."createdAt", asi."updatedAt",
+                  svc.id AS "service.id", svc.name AS "service.name", svc.color AS "service.color",
+                  svc.duration AS "service.duration", svc.price AS "service.price",
+                  svc."priceFrom" AS "service.priceFrom", svc."onQuote" AS "service.onQuote",
+                  em.id AS "employee.id", em."firstName" AS "employee.firstName", em."lastName" AS "employee.lastName"
+           FROM "appointment_service_items" asi
+           LEFT JOIN "services" svc ON svc.id = asi."serviceId"
+           LEFT JOIN "users" em ON em.id = asi."employeeId"
+           WHERE asi."appointmentId" = ANY($1::text[])
+           ORDER BY asi."sortOrder" ASC`,
+          pageIds
+        )) as Array<Record<string, unknown>>)
+      : [];
+
+  const itemsByAppointment = new Map<string, Array<Record<string, unknown>>>();
+  for (const item of items) {
+    const aid = item.appointmentId as string;
+    const arr = itemsByAppointment.get(aid) ?? [];
+    arr.push(item);
+    itemsByAppointment.set(aid, arr);
+  }
+
+  const rows = (apptRows as Array<Record<string, unknown>>).map((row) => {
+    const hydrated = hydrateAgendaRow(row);
+    (hydrated as any).services = (itemsByAppointment.get(hydrated.id as string) ?? []).map((it) => {
+      const nested: any = {
+        id: it.id,
+        appointmentId: it.appointmentId,
+        serviceId: it.serviceId,
+        employeeId: it.employeeId,
+        serviceName: it.serviceName,
+        duration: it.duration,
+        price: it.price,
+        sortOrder: it.sortOrder,
+        createdAt: it.createdAt,
+        updatedAt: it.updatedAt,
+      };
+      const svcId = it['service.id'];
+      if (svcId != null) {
+        nested.service = {
+          id: svcId, name: it['service.name'], color: it['service.color'],
+          duration: it['service.duration'], price: it['service.price'],
+          priceFrom: it['service.priceFrom'], onQuote: it['service.onQuote'],
+        };
+      } else {
+        nested.service = null;
+      }
+      const empId = it['employee.id'];
+      if (empId != null) {
+        nested.employee = { id: empId, firstName: it['employee.firstName'], lastName: it['employee.lastName'] };
+      } else {
+        nested.employee = null;
+      }
+      return nested;
+    });
+    return hydrated;
+  });
+
+  return { rows, total: total as number };
+}
+
 function throwValidationError(details: {
   status?: number;
   error?: string;
@@ -170,16 +378,8 @@ export class AppointmentService {
     }
     if (filters.status) where.status = filters.status;
 
-    const [appointments, total] = await Promise.all([
-      prisma.appointment.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { startTime: 'asc' },
-        include: appointmentListInclude,
-      }),
-      prisma.appointment.count({ where }),
-    ]);
+    // P1: 3 flat round trips instead of the ~10-query include chain.
+    const { rows: appointments, total } = await fetchAgendaPage(where, skip, take);
 
     // Proche avatars live on the familyMember record, not on the salon Client
     // row created when the proche books — overlay them so the agenda (pro

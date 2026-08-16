@@ -33,6 +33,7 @@ import superAdminRoutes from './modules/superadmin/superadmin.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { authMiddleware } from './middleware/authenticateRequest';
 import { tenantMiddleware } from './middleware/tenantMiddleware';
+import { authLimiter, publicApiLimiter } from './middleware/rateLimit';
 
 const staffMiddleware = [authMiddleware, tenantMiddleware];
 
@@ -46,6 +47,10 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Rate limiting reads the client IP; behind Render/Vercel the real IP is in
+// X-Forwarded-For (first hop), so express-rate-limit needs trust proxy set.
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(helmet({
@@ -120,9 +125,10 @@ app.get('/health', (req, res) => {
 
 // Routes
 // Public routes (no authentication required)
-app.use('/api/public', publicRoutes);
-app.use('/api/public/availability', availabilityRoutes);
-app.use('/api/auth', authRoutes);
+app.use('/api/public', publicApiLimiter, publicRoutes);
+app.use('/api/public/availability', publicApiLimiter, availabilityRoutes);
+// Staff login brute-force protection
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/tenant', tenantRoutes);
 app.use('/api/salons', salonRoutes);
 app.use('/api/subscription', subscriptionRoutes);

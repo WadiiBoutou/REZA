@@ -113,7 +113,7 @@ export class TenantController {
     try {
       const tenantId = resolveWriteTenantId(
         req,
-        (req.body as any).tenantId || (req.body as any).salonId
+        (req.body as { tenantId?: string }).tenantId || (req.body as { salonId?: string }).salonId
       );
       const result = await tenantService.updateBusinessHours(tenantId, req.body);
       res.json(result);

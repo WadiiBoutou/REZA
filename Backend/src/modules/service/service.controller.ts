@@ -60,7 +60,7 @@ export class ServiceController {
   async createService(req: Request, res: Response, next: NextFunction) {
     try {
       const data = createServiceSchema.parse(req.body);
-      const tenantId = resolveWriteTenantId(req, (req.body as any).tenantId);
+      const tenantId = resolveWriteTenantId(req, (req.body as { tenantId?: string }).tenantId);
       const service = await serviceService.createService(tenantId, data);
       res.status(201).json({ service });
     } catch (error: any) {

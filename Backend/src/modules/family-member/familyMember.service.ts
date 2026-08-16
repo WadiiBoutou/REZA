@@ -14,7 +14,7 @@ export class FamilyMemberService {
       return [];
     }
 
-    const familyMembers = await (prisma as any).familyMember.findMany({
+    const familyMembers = await prisma.familyMember.findMany({
       where: {
         clientId: client.id
       },
@@ -47,7 +47,7 @@ export class FamilyMemberService {
       });
     }
 
-    const familyMember = await (prisma as any).familyMember.create({
+    const familyMember = await prisma.familyMember.create({
       data: {
         clientId: client.id,
         firstName: data.firstName,
@@ -74,7 +74,7 @@ export class FamilyMemberService {
       throw new Error('CLIENT_NOT_FOUND');
     }
 
-    const existingMember = await (prisma as any).familyMember.findFirst({
+    const existingMember = await prisma.familyMember.findFirst({
       where: {
         id,
         clientId: client.id
@@ -85,7 +85,7 @@ export class FamilyMemberService {
       throw new Error('MEMBER_NOT_FOUND');
     }
 
-    const familyMember = await (prisma as any).familyMember.update({
+    const familyMember = await prisma.familyMember.update({
       where: { id },
       data: {
         firstName: data.firstName,
@@ -114,7 +114,7 @@ export class FamilyMemberService {
       throw new Error('CLIENT_NOT_FOUND');
     }
 
-    const existingMember = await (prisma as any).familyMember.findFirst({
+    const existingMember = await prisma.familyMember.findFirst({
       where: {
         id,
         clientId: client.id
@@ -125,7 +125,7 @@ export class FamilyMemberService {
       throw new Error('MEMBER_NOT_FOUND');
     }
 
-    await (prisma as any).familyMember.delete({
+    await prisma.familyMember.delete({
       where: { id }
     });
   }

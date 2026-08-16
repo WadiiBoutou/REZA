@@ -40,7 +40,7 @@ export class CashTransactionController {
   async createTransaction(req: Request, res: Response, next: NextFunction) {
     try {
       const data = createCashTransactionSchema.parse(req.body);
-      const tenantId = resolveWriteTenantId(req, (req.body as any).tenantId);
+      const tenantId = resolveWriteTenantId(req, (req.body as { tenantId?: string }).tenantId);
       const result = await cashTransactionService.createTransaction(tenantId, req.userId!, data);
       res.status(201).json(result);
     } catch (error: any) {

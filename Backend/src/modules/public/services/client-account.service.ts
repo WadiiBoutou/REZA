@@ -174,9 +174,10 @@ export class ClientAccountService {
     const client = await prisma.client.findFirst({
       where: { email: decodeURIComponent(email) },
       orderBy: { createdAt: 'desc' },
+      omit: { password: false },
     });
 
-    if (!client || !(client as any).password) {
+    if (!client || !client.password) {
       fail(404, {
         error: 'Client not found',
         message: 'Le client n\'a pas été trouvé.'
@@ -266,7 +267,8 @@ export class ClientAccountService {
       },
       orderBy: {
         createdAt: 'desc'
-      }
+      },
+      omit: { resetPasswordToken: false, resetPasswordExpires: false },
     });
 
     if (!client) {
@@ -280,77 +282,27 @@ export class ClientAccountService {
     log.log('[Change Password] Client found:', client.id);
 
     // Verify the emailed code (stored hashed — never compare plaintext).
-    if ((client as any).resetPasswordToken !== hashCode(code.trim())) {
+    if (client.resetPasswordToken !== hashCode(code.trim())) {
       fail(400, {
         error: 'Invalid code',
         message: 'Le code de vérification est invalide. Vérifiez votre email et réessayez.'
       });
     }
-    if (!(client as any).resetPasswordExpires || new Date((client as any).resetPasswordExpires).getTime() < Date.now()) {
+    if (!client.resetPasswordExpires || new Date(client.resetPasswordExpires).getTime() < Date.now()) {
       fail(400, {
         error: 'Code expired',
         message: 'Le code de vérification a expiré. Veuillez en demander un nouveau.'
       });
     }
 
-    // Hash the new password
-    log.log('[Change Password] Hashing new password...');
+    // Hash and persist the new password. The Prisma client is regenerated from
+    // the current schema on every deploy (build:render runs db:generate), so
+    // `password` is always a known field — no raw-SQL fallback needed.
     const hashedPassword = await hashPassword(newPassword);
-    log.log('[Change Password] Password hashed successfully');
-
-    // Update client password using raw query to ensure it works even if Prisma client is not updated
-    log.log('[Change Password] Updating password in database...');
-    let updateSuccess = false;
-    
-    try {
-      // Try using Prisma update first
-      await prisma.client.update({
-        where: { id: client.id },
-        data: {
-          password: hashedPassword
-        } as any
-      });
-      log.log('[Change Password] Password updated via Prisma');
-      updateSuccess = true;
-    } catch (prismaError: any) {
-      // If Prisma fails (field not recognized), use raw SQL
-      if (prismaError.message && prismaError.message.includes('Unknown arg `password`')) {
-        log.log('[Change Password] Prisma client not updated, using raw SQL...');
-        await prisma.$executeRaw`
-          UPDATE "clients" 
-          SET "password" = ${hashedPassword}
-          WHERE "id" = ${client.id}
-        `;
-        log.log('[Change Password] Password updated via raw SQL');
-        updateSuccess = true;
-      } else {
-        log.error('[Change Password] Prisma error:', prismaError);
-        throw prismaError;
-      }
-    }
-
-    if (!updateSuccess) {
-      fail(500, {
-        error: 'Update failed',
-        message: 'Impossible de mettre à jour le mot de passe. Veuillez réessayer.'
-      });
-    }
-
-    // Verify the password was saved using raw query
-    log.log('[Change Password] Verifying password was saved...');
-    const verifyResult = await prisma.$queryRaw<Array<{ password: string | null }>>`
-      SELECT "password" FROM "clients" WHERE "id" = ${client.id}
-    `;
-
-    if (verifyResult && verifyResult[0] && verifyResult[0].password) {
-      log.log('[Change Password] Password verified in database - saved successfully');
-    } else {
-      log.error('[Change Password] WARNING: Password was not saved correctly!');
-      fail(500, {
-        error: 'Database error',
-        message: 'Le mot de passe n\'a pas pu être sauvegardé. Veuillez réessayer.'
-      });
-    }
+    await prisma.client.update({
+      where: { id: client.id },
+      data: { password: hashedPassword },
+    });
 
     return {
       message: 'Mot de passe modifié avec succès'

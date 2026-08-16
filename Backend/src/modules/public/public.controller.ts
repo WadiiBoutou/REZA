@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { HttpError } from '../../lib/errors';
 import { isRedirectError } from './utils/http';
 import { discoveryService } from './services/discovery.service';
@@ -366,7 +367,13 @@ export class PublicController {
 
   async checkEmail(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await clientAuthService.checkEmailExists(String(req.query.email || ''));
+      const parsed = z
+        .object({ email: z.string().trim().min(1).max(320).email() })
+        .safeParse(req.query);
+      if (!parsed.success) {
+        throw new HttpError(400, { error: 'INVALID_EMAIL', message: 'Email invalide' });
+      }
+      const result = await clientAuthService.checkEmailExists(parsed.data.email);
       res.json(result);
     } catch (error) {
       next(error);

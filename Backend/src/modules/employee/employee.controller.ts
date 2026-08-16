@@ -35,7 +35,7 @@ export class EmployeeController {
   async createEmployee(req: Request, res: Response, next: NextFunction) {
     try {
       const data = createEmployeeSchema.parse(req.body);
-      const tenantId = resolveWriteTenantId(req, (req.body as any).tenantId);
+      const tenantId = resolveWriteTenantId(req, (req.body as { tenantId?: string }).tenantId);
       const employee = await employeeService.createEmployee(tenantId, data);
       res.status(201).json({ employee });
     } catch (error: any) {

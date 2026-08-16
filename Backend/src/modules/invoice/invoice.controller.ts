@@ -37,7 +37,7 @@ export class InvoiceController {
   async createInvoice(req: Request, res: Response, next: NextFunction) {
     try {
       const data = createInvoiceSchema.parse(req.body);
-      const tenantId = resolveWriteTenantId(req, (req.body as any).tenantId);
+      const tenantId = resolveWriteTenantId(req, (req.body as { tenantId?: string }).tenantId);
       const salonIds = req.salonIds || [tenantId];
       const invoice = await invoiceService.createInvoice(tenantId, data, salonIds);
       res.status(201).json({ invoice });

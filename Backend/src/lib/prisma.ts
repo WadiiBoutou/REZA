@@ -14,4 +14,18 @@ const pool = new Pool({
 
 const adapter = new PrismaPg(pool);
 
-export const prisma = new PrismaClient({ adapter });
+// S1: never return credential/verification fields on Client records by default.
+// Internal flows that genuinely need them (login, password change, token verify)
+// opt back in per-query with `omit: { password: false }` etc.
+export const prisma = new PrismaClient({
+  adapter,
+  omit: {
+    client: {
+      password: true,
+      resetPasswordToken: true,
+      resetPasswordExpires: true,
+      verifyEmailToken: true,
+      verifyEmailExpires: true
+    }
+  }
+});

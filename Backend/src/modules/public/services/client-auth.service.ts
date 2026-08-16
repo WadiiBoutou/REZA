@@ -354,7 +354,8 @@ export class ClientAuthService {
       where: {
         email: normalizedEmail
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      omit: { password: false, verifyEmailToken: false },
     });
 
     if (existingClient) {
@@ -477,7 +478,8 @@ export class ClientAuthService {
             isActive: true
           }
         }
-      }
+      },
+      omit: { password: false, verifyEmailToken: false },
     });
 
     const client = candidates.find((c) => c.password);

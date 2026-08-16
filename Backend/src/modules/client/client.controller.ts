@@ -49,7 +49,7 @@ export class ClientController {
   async createClient(req: Request, res: Response, next: NextFunction) {
     try {
       const data = createClientSchema.parse(req.body);
-      const tenantId = resolveWriteTenantId(req, (req.body as any).tenantId);
+      const tenantId = resolveWriteTenantId(req, (req.body as { tenantId?: string }).tenantId);
       const client = await clientService.createClient(tenantId, data);
       res.status(201).json({ client });
     } catch (error: any) {

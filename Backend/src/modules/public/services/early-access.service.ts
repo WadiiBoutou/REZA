@@ -54,7 +54,7 @@ export class EarlyAccessService {
     }
 
     // Check if email already exists in early access signups
-    const existingSignup = await (prisma as any).earlyAccessSignup.findFirst({
+    const existingSignup = await prisma.earlyAccessSignup.findFirst({
       where: {
         email: email
       }
@@ -142,7 +142,7 @@ export class EarlyAccessService {
       });
 
       // Also create early access signup record for tracking
-      await (prisma as any).earlyAccessSignup.create({
+      await prisma.earlyAccessSignup.create({
         data: {
           fullName: fullName,
           email: email,
@@ -166,7 +166,7 @@ export class EarlyAccessService {
     } else {
       // For CLIENT users: Just create early access signup record
       // (Clients may have a different login flow or will be created later)
-      const signup = await (prisma as any).earlyAccessSignup.create({
+      const signup = await prisma.earlyAccessSignup.create({
         data: {
           fullName: fullName,
           email: email,

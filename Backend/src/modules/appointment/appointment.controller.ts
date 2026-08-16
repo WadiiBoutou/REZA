@@ -100,7 +100,7 @@ export class AppointmentController {
   async createAppointment(req: Request, res: Response, next: NextFunction) {
     try {
       const data = createAppointmentSchema.parse(req.body);
-      const tenantId = resolveWriteTenantId(req, (req.body as any).tenantId);
+      const tenantId = resolveWriteTenantId(req, (req.body as { tenantId?: string }).tenantId);
 
       const appointment = await appointmentService.createAppointment(tenantId, req.userId!, data, false);
       res.status(201).json({ appointment });

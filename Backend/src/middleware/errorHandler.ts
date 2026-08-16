@@ -55,13 +55,12 @@ export const errorHandler = (
     });
   }
 
-  // Custom application errors
+  // Custom application errors: never leak raw err.message to the client.
+  // Full details are already logged above (type, message, path, method).
   const statusCode = (err as AppError).statusCode || 500;
-  const message = err.message || 'An unexpected error occurred';
-
   res.status(statusCode).json({
-    error: err.name || 'Error',
-    message,
+    error: 'Internal error',
+    message: 'Une erreur interne est survenue. Veuillez réessayer.',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 };
