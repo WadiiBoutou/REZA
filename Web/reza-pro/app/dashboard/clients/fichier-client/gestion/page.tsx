@@ -131,7 +131,7 @@ export default function ClientsGestionPage() {
   const [saving, setSaving] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Inactive'>('all');
-  const [showGuestsOnly, setShowGuestsOnly] = useState(false);
+  const [showInvites, setShowInvites] = useState(true); // ON = invités are included in the list
   const [editingAppointment, setEditingAppointment] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
@@ -498,9 +498,10 @@ export default function ClientsGestionPage() {
 
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
 
-    const matchesGuest = !showGuestsOnly || client.addedAs === 'INVITE';
+    // ON → show everything (invités included); OFF → hide invités
+    const matchesInvite = showInvites || client.addedAs !== 'INVITE';
 
-    return matchesSearch && matchesStatus && matchesGuest;
+    return matchesSearch && matchesStatus && matchesInvite;
   });
 
   if (loading && clients.length === 0) {
@@ -622,18 +623,18 @@ export default function ClientsGestionPage() {
             </button>
             <div className="h-6 w-px bg-gray-200 mx-1"></div>
             <button
-              onClick={() => setShowGuestsOnly((v) => !v)}
+              onClick={() => setShowInvites((v) => !v)}
               role="switch"
-              aria-checked={showGuestsOnly}
-              title="Afficher uniquement les clients invités"
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all border ${showGuestsOnly
+              aria-checked={showInvites}
+              title={showInvites ? 'Masquer les clients invités' : 'Afficher les clients invités'}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all border ${showInvites
                   ? 'bg-sky-50 text-sky-700 border-sky-200'
                   : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
                 }`}
             >
-              <span className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${showGuestsOnly ? 'bg-sky-500' : 'bg-gray-300'
+              <span className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${showInvites ? 'bg-sky-500' : 'bg-gray-300'
                 }`}>
-                <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${showGuestsOnly ? 'translate-x-3.5' : 'translate-x-0.5'
+                <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${showInvites ? 'translate-x-3.5' : 'translate-x-0.5'
                   }`} />
               </span>
               Invités
