@@ -4,7 +4,7 @@ import { createNotification } from '../../../utils/notify';
 import { createPublicReviewSchema } from '../schemas/public.schema';
 import { transformImageUrl } from '../../../utils/imageUrl';
 import { resolveEmployeeUserId } from '../../../utils/resolveEmployeeUserId';
-import { fail } from '../utils/http';
+import { HttpError } from '../../../lib/errors';
 import * as log from '../../../utils/logger';
 
 export class ClientReviewsService {
@@ -26,7 +26,7 @@ export class ClientReviewsService {
     });
 
     if (!tenant) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Tenant not found',
         message: 'The requested salon or establishment was not found.'
       });
@@ -94,7 +94,7 @@ export class ClientReviewsService {
       });
 
       if (!appointment) {
-        fail(404, {
+        throw new HttpError(404, {
           error: 'Appointment not found',
           message: 'The appointment does not exist or does not belong to this client.'
         });
@@ -200,7 +200,7 @@ export class ClientReviewsService {
       log.error('Error creating notification for review:', notificationError);
     }
 
-    fail(201, {
+    throw new HttpError(201, {
       review: {
         id: review.id,
         rating: review.rating,
@@ -219,7 +219,7 @@ export class ClientReviewsService {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Validation error',
         message: error.errors[0].message
       });
@@ -233,7 +233,7 @@ export class ClientReviewsService {
     const { limit = '50' } = query;
 
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email is required'
       });
     }
@@ -355,7 +355,7 @@ export class ClientReviewsService {
     const { email, rating, comment, detailedRatings } = body;
 
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email is required',
         message: 'Please provide your email to update the review.'
       });
@@ -370,7 +370,7 @@ export class ClientReviewsService {
     });
 
     if (!review) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Review not found',
         message: 'The review was not found.'
       });
@@ -378,7 +378,7 @@ export class ClientReviewsService {
 
     // Verify the review belongs to a client with this email
     if (review.client.email !== email) {
-      fail(403, {
+      throw new HttpError(403, {
         error: 'Unauthorized',
         message: 'You can only update your own reviews.'
       });
@@ -454,7 +454,7 @@ export class ClientReviewsService {
     };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Validation error',
         message: error.errors[0].message
       });
@@ -468,7 +468,7 @@ export class ClientReviewsService {
     const { email } = query;
 
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email is required',
         message: 'Please provide your email to delete the review.'
       });
@@ -483,7 +483,7 @@ export class ClientReviewsService {
     });
 
     if (!review) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Review not found',
         message: 'The review was not found.'
       });
@@ -491,7 +491,7 @@ export class ClientReviewsService {
 
     // Verify the review belongs to a client with this email
     if (review.client.email !== decodeURIComponent(email as string)) {
-      fail(403, {
+      throw new HttpError(403, {
         error: 'Unauthorized',
         message: 'You can only delete your own reviews.'
       });

@@ -5,7 +5,7 @@ import {
   createPublicFamilyMemberSchema,
   updatePublicFamilyMemberSchema,
 } from '../schemas/public.schema';
-import { fail } from '../utils/http';
+import { HttpError } from '../../../lib/errors';
 
 /**
  * Same email can have many Client rows (one per salon booking).
@@ -35,7 +35,7 @@ export class FamilyMembersService {
   async getFamilyMembers(email: string) {
     try {
       if (!email) {
-        fail(400, {
+        throw new HttpError(400, {
           error: 'Email required',
           message: 'Please provide an email parameter.',
         });
@@ -103,7 +103,7 @@ export class FamilyMembersService {
         } catch {
           client = await resolveAccountClient(clientEmail);
           if (!client) {
-            fail(500, {
+            throw new HttpError(500, {
               error: 'Failed to create client',
               message: 'Unable to create your account. Please try again or contact support.',
             });
@@ -126,10 +126,10 @@ export class FamilyMembersService {
         },
       });
 
-      fail(201, { familyMember });
+      throw new HttpError(201, { familyMember });
     } catch (error) {
       if (error instanceof z.ZodError) {
-        fail(400, {
+        throw new HttpError(400, {
           error: 'Validation error',
           message: error.errors[0].message,
         });
@@ -144,7 +144,7 @@ export class FamilyMembersService {
       const { clientEmail } = data;
 
       if (!clientEmail) {
-        fail(400, {
+        throw new HttpError(400, {
           error: 'Client email required',
           message: 'Please provide clientEmail in the request body.',
         });
@@ -152,7 +152,7 @@ export class FamilyMembersService {
 
       const clients = await findClientsByEmail(clientEmail);
       if (clients.length === 0) {
-        fail(404, {
+        throw new HttpError(404, {
           error: 'Client not found',
           message: 'The client was not found.',
         });
@@ -166,7 +166,7 @@ export class FamilyMembersService {
       });
 
       if (!existingMember) {
-        fail(404, {
+        throw new HttpError(404, {
           error: 'Family member not found',
           message: 'The family member was not found or does not belong to this client.',
         });
@@ -200,7 +200,7 @@ export class FamilyMembersService {
       return { familyMember };
     } catch (error) {
       if (error instanceof z.ZodError) {
-        fail(400, {
+        throw new HttpError(400, {
           error: 'Validation error',
           message: error.errors[0].message,
         });
@@ -214,7 +214,7 @@ export class FamilyMembersService {
       const { clientEmail } = query;
 
       if (!clientEmail) {
-        fail(400, {
+        throw new HttpError(400, {
           error: 'Client email required',
           message: 'Please provide clientEmail as a query parameter.',
         });
@@ -222,7 +222,7 @@ export class FamilyMembersService {
 
       const clients = await findClientsByEmail(clientEmail as string);
       if (clients.length === 0) {
-        fail(404, {
+        throw new HttpError(404, {
           error: 'Client not found',
           message: 'The client was not found.',
         });
@@ -236,7 +236,7 @@ export class FamilyMembersService {
       });
 
       if (!existingMember) {
-        fail(404, {
+        throw new HttpError(404, {
           error: 'Family member not found',
           message: 'The family member was not found or does not belong to this client.',
         });

@@ -1,5 +1,6 @@
 import { prisma } from '../../../lib/prisma';
-import { fail } from '../utils/http';
+import { HttpError } from '../../../lib/errors';
+import { groupNotificationsByDate } from '../../../utils/notifications';
 
 export class ClientNotificationsService {
   async getClientNotifications(email: string, query: Record<string, unknown>) {
@@ -7,7 +8,7 @@ export class ClientNotificationsService {
     const { unreadOnly, limit = '50' } = query;
 
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email is required'
       });
     }
@@ -88,32 +89,7 @@ export class ClientNotificationsService {
     const unreadCount = unreadNotifications.length;
 
     // Group notifications by date
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const thisWeek = new Date(today);
-    thisWeek.setDate(thisWeek.getDate() - 7);
-
-    const groupedByDate: any = {
-      today: [],
-      yesterday: [],
-      thisWeek: [],
-      older: []
-    };
-
-    filteredNotifications.forEach((notification: any) => {
-      const notificationDate = new Date(notification.createdAt);
-      if (notificationDate >= today) {
-        groupedByDate.today.push(notification);
-      } else if (notificationDate >= yesterday) {
-        groupedByDate.yesterday.push(notification);
-      } else if (notificationDate >= thisWeek) {
-        groupedByDate.thisWeek.push(notification);
-      } else {
-        groupedByDate.older.push(notification);
-      }
-    });
+    const groupedByDate = groupNotificationsByDate(filteredNotifications);
 
     return {
       notifications: filteredNotifications,
@@ -138,7 +114,7 @@ export class ClientNotificationsService {
     });
 
     if (!notification) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Notification not found'
       });
     }

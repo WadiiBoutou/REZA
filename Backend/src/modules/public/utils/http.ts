@@ -1,9 +1,3 @@
-import { HttpError } from '../../../lib/errors';
-
-export function fail(status: number, payload: Record<string, unknown>): never {
-  throw new HttpError(status, payload);
-}
-
 export type RedirectError = Error & { isRedirect: true; url: string };
 
 export function isRedirectError(error: unknown): error is RedirectError {

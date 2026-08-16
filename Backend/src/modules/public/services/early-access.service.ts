@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../../../lib/prisma';
 import { hashPassword } from '../../../utils/password';
 import { slugifyName } from '../../../utils/slugify';
-import { fail } from '../utils/http';
+import { HttpError } from '../../../lib/errors';
 import { optionalPhoneSchema } from '../../../utils/phone';
 
 export class EarlyAccessService {
@@ -47,7 +47,7 @@ export class EarlyAccessService {
       firstName = nameParts[0] || '';
       lastName = nameParts.slice(1).join(' ') || '';
     } else {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Validation error',
         message: 'Le prénom et le nom sont requis.'
       });
@@ -61,7 +61,7 @@ export class EarlyAccessService {
     });
 
     if (existingSignup) {
-      fail(409, {
+      throw new HttpError(409, {
         error: 'Email already registered',
         message: 'Cette adresse email est déjà enregistrée pour l\'accès anticipé.'
       });
@@ -77,7 +77,7 @@ export class EarlyAccessService {
       });
 
       if (existingUser) {
-        fail(409, {
+        throw new HttpError(409, {
           error: 'Email already registered',
           message: 'Un compte existe déjà avec cette adresse email.'
         });
@@ -85,7 +85,7 @@ export class EarlyAccessService {
 
       // Check if establishment name is provided
       if (!data.establishment || !data.establishment.trim()) {
-        fail(400, {
+        throw new HttpError(400, {
           error: 'Establishment required',
           message: 'Le nom de l\'établissement est requis pour les professionnels.'
         });
@@ -153,7 +153,7 @@ export class EarlyAccessService {
         }
       });
 
-      fail(201, {
+      throw new HttpError(201, {
         success: true,
         message: 'Votre compte a été créé avec succès ! Vous pouvez maintenant vous connecter.',
         data: {
@@ -177,7 +177,7 @@ export class EarlyAccessService {
         }
       });
 
-      fail(201, {
+      throw new HttpError(201, {
         success: true,
         message: 'Merci pour votre inscription ! Vous recevrez bientôt un accès prioritaire.',
         data: {
@@ -188,7 +188,7 @@ export class EarlyAccessService {
     }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Validation error',
         message: error.errors[0].message,
         details: error.errors

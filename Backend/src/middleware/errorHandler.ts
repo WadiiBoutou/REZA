@@ -24,18 +24,6 @@ export const errorHandler = (
     return res.status(err.status).json(err.payload);
   }
 
-  // Legacy public module errors (isAppError in message)
-  if (err instanceof Error && err.message.includes('isAppError')) {
-    try {
-      const parsed = JSON.parse(err.message);
-      if (parsed.isAppError) {
-        return res.status(parsed.status).json(parsed.payload);
-      }
-    } catch {
-      // fall through
-    }
-  }
-
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === 'P2002') {
       return res.status(409).json({

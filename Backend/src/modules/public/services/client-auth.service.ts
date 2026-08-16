@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { prisma } from '../../../lib/prisma';
 import { comparePassword, hashPassword } from '../../../utils/password';
 import { sendMail } from '../../../utils/mailer';
-import { fail } from '../utils/http';
+import { HttpError } from '../../../lib/errors';
 import { isValidPhone, phoneError } from '../../../utils/phone';
 
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes — recommended for password resets
@@ -30,7 +30,7 @@ export class ClientAuthService {
   async forgotClientPassword(body: any, req?: any) {
     const email = String(body.email || '').trim().toLowerCase();
     if (!email) {
-      fail(400, { error: 'Email required', message: "Veuillez entrer votre adresse email." });
+      throw new HttpError(400, { error: 'Email required', message: "Veuillez entrer votre adresse email." });
     }
 
     const client = await prisma.client.findFirst({
@@ -87,7 +87,7 @@ export class ClientAuthService {
   async forgotClientPasswordCode(body: any) {
     const email = String(body.email || '').trim().toLowerCase();
     if (!email) {
-      fail(400, { error: 'Email required', message: "Veuillez entrer votre adresse email." });
+      throw new HttpError(400, { error: 'Email required', message: "Veuillez entrer votre adresse email." });
     }
 
     const client = await prisma.client.findFirst({
@@ -142,7 +142,7 @@ export class ClientAuthService {
   async verifyClientEmail(body: any) {
     const token = String(body.token || '').trim();
     if (!token) {
-      fail(400, { error: 'Token required', message: 'Lien de vérification invalide.' });
+      throw new HttpError(400, { error: 'Token required', message: 'Lien de vérification invalide.' });
     }
 
     const tokenHash = hashToken(token);
@@ -159,10 +159,10 @@ export class ClientAuthService {
     });
 
     if (!client) {
-      fail(400, { error: 'Invalid token', message: 'Ce lien de vérification est invalide. Veuillez réessayer.' });
+      throw new HttpError(400, { error: 'Invalid token', message: 'Ce lien de vérification est invalide. Veuillez réessayer.' });
     }
     if (!client.verifyEmailExpires || client.verifyEmailExpires.getTime() < Date.now()) {
-      fail(400, { error: 'Token expired', message: 'Ce lien de vérification a expiré. Veuillez demander un nouveau lien.' });
+      throw new HttpError(400, { error: 'Token expired', message: 'Ce lien de vérification a expiré. Veuillez demander un nouveau lien.' });
     }
 
     await prisma.client.update({
@@ -191,7 +191,7 @@ export class ClientAuthService {
   async resendClientVerification(body: any) {
     const email = String(body.email || '').trim().toLowerCase();
     if (!email) {
-      fail(400, { error: 'Email required', message: 'Veuillez entrer votre adresse email.' });
+      throw new HttpError(400, { error: 'Email required', message: 'Veuillez entrer votre adresse email.' });
     }
 
     const client = await prisma.client.findFirst({
@@ -255,10 +255,10 @@ export class ClientAuthService {
     const token = String(body.token || '').trim();
     const password = String(body.password || '');
     if (!token) {
-      fail(400, { error: 'Token required', message: 'Lien de réinitialisation invalide.' });
+      throw new HttpError(400, { error: 'Token required', message: 'Lien de réinitialisation invalide.' });
     }
     if (password.length < 6) {
-      fail(400, { error: 'Invalid password', message: 'Le mot de passe doit contenir au moins 6 caractères.' });
+      throw new HttpError(400, { error: 'Invalid password', message: 'Le mot de passe doit contenir au moins 6 caractères.' });
     }
 
     const tokenHash = hashToken(token);
@@ -268,10 +268,10 @@ export class ClientAuthService {
     });
 
     if (!client) {
-      fail(400, { error: 'Invalid token', message: 'Ce lien de réinitialisation est invalide. Veuillez refaire une demande.' });
+      throw new HttpError(400, { error: 'Invalid token', message: 'Ce lien de réinitialisation est invalide. Veuillez refaire une demande.' });
     }
     if (!client.resetPasswordExpires || client.resetPasswordExpires.getTime() < Date.now()) {
-      fail(400, { error: 'Token expired', message: 'Ce lien de réinitialisation a expiré. Veuillez refaire une demande.' });
+      throw new HttpError(400, { error: 'Token expired', message: 'Ce lien de réinitialisation a expiré. Veuillez refaire une demande.' });
     }
 
     const hashedPassword = await hashPassword(password);
@@ -322,21 +322,21 @@ export class ClientAuthService {
     const parsedGender = typeof gender === 'string' && (gender === 'male' || gender === 'female') ? gender : null;
 
     if (!email || !firstName || !lastName || !phone || !String(phone).trim()) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Missing required fields',
         message: 'Email, prénom, nom et téléphone sont requis.'
       });
     }
 
     if (!isValidPhone(phone)) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Invalid phone',
         message: phoneError()
       });
     }
 
     if (!password || String(password).trim().length < 6) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Invalid password',
         message: 'Le mot de passe doit contenir au moins 6 caractères.'
       });
@@ -361,7 +361,7 @@ export class ClientAuthService {
     if (existingClient) {
       // A real, already-confirmed account must not be silently re-registered.
       if (existingClient.password && !existingClient.verifyEmailToken) {
-        fail(409, {
+        throw new HttpError(409, {
           error: 'Account exists',
           message: 'Un compte existe déjà avec cette adresse email. Connectez-vous.'
         });
@@ -451,14 +451,14 @@ export class ClientAuthService {
     const { email, password } = body;
 
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email required',
         message: 'Please provide your email address.'
       });
     }
 
     if (!password) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Password required',
         message: INVALID_CREDENTIALS_MSG
       });
@@ -485,7 +485,7 @@ export class ClientAuthService {
     const client = candidates.find((c) => c.password);
 
     if (!client) {
-      fail(401, {
+      throw new HttpError(401, {
         error: 'Invalid credentials',
         message: INVALID_CREDENTIALS_MSG
       });
@@ -493,7 +493,7 @@ export class ClientAuthService {
 
     const passwordValid = await comparePassword(password, client.password!);
     if (!passwordValid) {
-      fail(401, {
+      throw new HttpError(401, {
         error: 'Invalid credentials',
         message: INVALID_CREDENTIALS_MSG
       });
@@ -505,7 +505,7 @@ export class ClientAuthService {
 
     // Unverified accounts cannot log in until the confirmation link is clicked.
     if (client.verifyEmailToken) {
-      fail(403, {
+      throw new HttpError(403, {
         error: 'Email not verified',
         message:
           'Veuillez confirmer votre adresse email. Vérifiez votre boîte de réception — un lien de confirmation vous a été envoyé.',

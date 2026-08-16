@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma';
+import { groupNotificationsByDate } from '../../utils/notifications';
 
 export class NotificationService {
   async getNotifications(tenantId: string, userId: string, unreadOnly?: boolean, limit?: number) {
@@ -37,32 +38,7 @@ export class NotificationService {
     });
 
     // Group by date
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const thisWeek = new Date(today);
-    thisWeek.setDate(thisWeek.getDate() - 7);
-
-    const groupedByDate: any = {
-      today: [],
-      yesterday: [],
-      thisWeek: [],
-      older: []
-    };
-
-    notifications.forEach(notification => {
-      const notificationDate = new Date(notification.createdAt);
-      if (notificationDate >= today) {
-        groupedByDate.today.push(notification);
-      } else if (notificationDate >= yesterday) {
-        groupedByDate.yesterday.push(notification);
-      } else if (notificationDate >= thisWeek) {
-        groupedByDate.thisWeek.push(notification);
-      } else {
-        groupedByDate.older.push(notification);
-      }
-    });
+    const groupedByDate = groupNotificationsByDate(notifications);
 
     return {
       notifications,

@@ -9,6 +9,7 @@ import { schedulingService } from './scheduling.service';
 import { formatDateForNotification } from '../../utils/dateTime';
 import { salonClientsFilter, tenantIdFilter } from '../../utils/salonScope';
 import { buildProcheAvatarMap } from '../../utils/familyMemberAvatars';
+import { rangesOverlap } from '../../utils/feasibility';
 import * as log from '../../utils/logger';
 import {
   getServicePrice,
@@ -883,7 +884,7 @@ export class AppointmentService {
           if (!occ) continue;
           for (const w of wins) {
             for (const o of occ) {
-              if (w.start < o.end && w.end > o.start) {
+              if (rangesOverlap(w.start, w.end, o.start, o.end)) {
                 conflicts.push('Ce collaborateur a déjà un rendez-vous sur ce créneau.');
               }
             }

@@ -2,15 +2,21 @@ import { prisma } from '../../lib/prisma';
 import { resolveEmployeeUserId } from '../../utils/resolveEmployeeUserId';
 import { getBusinessHoursForDate } from '../../utils/schedulingValidation';
 import * as log from '../../utils/logger';
-import type { AppointmentStatus } from '../../../prisma/generated/prisma/client';
-
-type WorkingHoursDay = {
-  day: string;
-  isWorking: boolean;
-  startTime: string;
-  endTime: string;
-  breaks?: { start: string; end: string }[];
-};
+import {
+  ACTIVE_STATUSES,
+  isSameDay,
+  minutesSinceMidnight,
+  formatMinutes,
+  overlapsBreak,
+  getBreakMinutes,
+  rangesOverlap,
+  buildOccupiedRanges,
+  resolveEmployeeToUserMap,
+  getWorkingHoursForDay,
+  isOccupied,
+  isEmployeeEligibleForInterval,
+  type WorkingHoursDay,
+} from '../../utils/feasibility';
 
 type EmployeeAvailability = {
   employeeId: string;
@@ -58,23 +64,6 @@ type PlanInput = {
   assignments?: { serviceId: string; employeeId: string | null }[];
 };
 
-const DAY_NAMES_FR_EN: Record<number, string[]> = {
-  0: ['dimanche', 'sunday'],
-  1: ['lundi', 'monday'],
-  2: ['mardi', 'tuesday'],
-  3: ['mercredi', 'wednesday'],
-  4: ['jeudi', 'thursday'],
-  5: ['vendredi', 'friday'],
-  6: ['samedi', 'saturday'],
-};
-
-function isSameDay(dayInDb: string | undefined | null, dayIndex: number): boolean {
-  if (!dayInDb) return false;
-  const normalized = dayInDb.trim().toLowerCase();
-  return (DAY_NAMES_FR_EN[dayIndex] || []).includes(normalized);
-}
-
-const ACTIVE_STATUSES: AppointmentStatus[] = ['PENDING', 'CONFIRMED', 'IN_PROGRESS'];
 const REASON_DAY_OFF = 'Jour de repos';
 const REASON_OUTSIDE_HOURS = 'En dehors des horaires';
 const REASON_BREAK = 'En pause';
@@ -82,48 +71,23 @@ const REASON_BOOKED = 'Déjà occupé';
 const REASON_INACTIF = 'INACTIF';
 const REASON_VACATION = 'VACATION';
 
-function minutesSinceMidnight(time: string): number {
-  const [h, m] = time.split(':').map(Number);
-  return h * 60 + m;
+function formatBreakReason(range: string): string {
+  return `${REASON_BREAK} (${range})`;
 }
 
-function formatMinutes(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
-// Check if a time range overlaps any break for a given day's working hours
-function overlapsBreak(workingHours: WorkingHoursDay[] | null, dayIndex: number, rangeStart: number, rangeEnd: number): string | null {
+// Return the break range string (e.g. "13:00-14:00") when [rangeStart, rangeEnd]
+// overlaps a break, else null. Uses the shared overlap semantics.
+function findBreakRange(workingHours: WorkingHoursDay[] | null, dayIndex: number, rangeStart: number, rangeEnd: number): string | null {
   const dayData = workingHours?.find((d) => isSameDay(d.day, dayIndex));
   if (!dayData?.breaks || !Array.isArray(dayData.breaks)) return null;
   for (const b of dayData.breaks) {
     const bs = minutesSinceMidnight(b.start);
     const be = minutesSinceMidnight(b.end);
-    if (rangeStart < be && rangeEnd > bs) {
+    if (rangesOverlap(rangeStart, rangeEnd, bs, be)) {
       return `${b.start}-${b.end}`;
     }
   }
   return null;
-}
-
-function formatBreakReason(range: string): string {
-  return `${REASON_BREAK} (${range})`;
-}
-
-// Get total break minutes within working hours for workload calculation
-function getBreakMinutes(workingHours: WorkingHoursDay[] | null, dayIndex: number, wh: { start: number; end: number }): number {
-  const dayData = workingHours?.find((d) => isSameDay(d.day, dayIndex));
-  if (!dayData?.breaks || !Array.isArray(dayData.breaks)) return 0;
-  let total = 0;
-  for (const b of dayData.breaks) {
-    const bs = minutesSinceMidnight(b.start);
-    const be = minutesSinceMidnight(b.end);
-    if (bs >= wh.start && be <= wh.end) {
-      total += be - bs;
-    }
-  }
-  return total;
 }
 
 export class SchedulingService {
@@ -169,25 +133,11 @@ export class SchedulingService {
     }
 
     // Batch-resolve employee IDs to user IDs for overlap checks (all users in tenant)
-    const employeeToUserMap = new Map<string, string | null>();
-    {
-      const tenantUsers = await prisma.user.findMany({
-        where: { tenantId },
-        select: { id: true, email: true, firstName: true, lastName: true },
-      });
-      const emailToUserId = new Map(tenantUsers.filter(u => u.email).map(u => [u.email!.toLowerCase(), u.id]));
-      const nameToUserId = new Map(tenantUsers.map(u => [`${u.firstName.toLowerCase()} ${u.lastName.toLowerCase()}`, u.id]));
-      for (const emp of employees) {
-        let uid: string | null = null;
-        if (emp.email) {
-          uid = emailToUserId.get(emp.email.toLowerCase()) ?? null;
-        }
-        if (!uid) {
-          uid = nameToUserId.get(`${emp.firstName.toLowerCase()} ${emp.lastName.toLowerCase()}`) ?? null;
-        }
-        if (uid) employeeToUserMap.set(emp.id, uid);
-      }
-    }
+    const tenantUsers = await prisma.user.findMany({
+      where: { tenantId },
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+    const employeeToUserMap = resolveEmployeeToUserMap(employees as any, tenantUsers);
 
     // Load existing appointments for the date (all active ones)
     const dayStart = new Date(dayDate);
@@ -214,47 +164,10 @@ export class SchedulingService {
     });
 
     // Build occupied time ranges per ID (supporting both User ID and Employee ID)
-    const occupiedRanges = new Map<string, { start: number; end: number }[]>();
-    for (const apt of existingAppointments) {
-      const s = apt.startTime.getHours() * 60 + apt.startTime.getMinutes();
-      const e = apt.endTime.getHours() * 60 + apt.endTime.getMinutes();
-
-      if (apt.employeeId) {
-        if (!occupiedRanges.has(apt.employeeId)) occupiedRanges.set(apt.employeeId, []);
-        occupiedRanges.get(apt.employeeId)!.push({ start: s, end: e });
-      }
-
-      if (apt.services) {
-        for (const item of apt.services) {
-          if (item.employeeId) {
-            if (!occupiedRanges.has(item.employeeId)) occupiedRanges.set(item.employeeId, []);
-            occupiedRanges.get(item.employeeId)!.push({ start: s, end: e });
-          }
-        }
-      }
-    }
-
-    function isOccupied(empId: string, userId: string | null, rangeStart: number, rangeEnd: number): boolean {
-      const idsToCheck = [empId];
-      if (userId && userId !== empId) idsToCheck.push(userId);
-      for (const id of idsToCheck) {
-        const ranges = occupiedRanges.get(id);
-        if (ranges && ranges.some((r) => r.start < rangeEnd && r.end > rangeStart)) {
-          return true;
-        }
-      }
-      return false;
-    }
+    const occupiedRanges = buildOccupiedRanges(existingAppointments as any);
 
     function getWorkingHours(emp: typeof employees[0]): { start: number; end: number } | null {
-      const wh = emp.workingHours as WorkingHoursDay[] | null;
-      if (!wh || !Array.isArray(wh)) return null;
-      const day = wh.find((d) => isSameDay(d.day, dayIndex));
-      if (!day || !day.isWorking) return null;
-      return {
-        start: minutesSinceMidnight(day.startTime),
-        end: minutesSinceMidnight(day.endTime),
-      };
+      return getWorkingHoursForDay(emp.workingHours, dayIndex);
     }
 
     function getBreakMinutesForEmp(emp: typeof employees[0], wh: { start: number; end: number }): number {
@@ -262,7 +175,7 @@ export class SchedulingService {
     }
 
     function overlapsBreakForEmp(emp: typeof employees[0], rangeStart: number, rangeEnd: number): string | null {
-      return overlapsBreak(emp.workingHours as WorkingHoursDay[] | null, dayIndex, rangeStart, rangeEnd);
+      return findBreakRange(emp.workingHours as WorkingHoursDay[] | null, dayIndex, rangeStart, rangeEnd);
     }
 
     function calcWorkload(emp: typeof employees[0], userId: string): number {
@@ -354,7 +267,7 @@ export class SchedulingService {
         }
 
         const userId = employeeToUserMap.get(emp.id);
-        const conflict = isOccupied(emp.id, userId || null, cursor, serviceEnd);
+        const conflict = isOccupied(occupiedRanges, emp.id, userId || null, cursor, serviceEnd);
 
         if (conflict) {
           serviceEmployees.push({
@@ -677,21 +590,11 @@ export class SchedulingService {
     }
 
     // Resolve Employee -> User for overlap checks
-    const employeeToUserMap = new Map<string, string | null>();
-    {
-      const tenantUsers = await prisma.user.findMany({
-        where: { tenantId },
-        select: { id: true, email: true, firstName: true, lastName: true },
-      });
-      const emailToUserId = new Map(tenantUsers.filter(u => u.email).map(u => [u.email!.toLowerCase(), u.id]));
-      const nameToUserId = new Map(tenantUsers.map(u => [`${u.firstName.toLowerCase()} ${u.lastName.toLowerCase()}`, u.id]));
-      for (const emp of employees) {
-        let uid: string | null = null;
-        if (emp.email) uid = emailToUserId.get(emp.email.toLowerCase()) ?? null;
-        if (!uid) uid = nameToUserId.get(`${emp.firstName.toLowerCase()} ${emp.lastName.toLowerCase()}`) ?? null;
-        if (uid) employeeToUserMap.set(emp.id, uid);
-      }
-    }
+    const tenantUsers = await prisma.user.findMany({
+      where: { tenantId },
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+    const employeeToUserMap = resolveEmployeeToUserMap(employees as any, tenantUsers);
 
     // Load existing appointments for the day
     const dayStart = new Date(dayDate);
@@ -713,38 +616,10 @@ export class SchedulingService {
       },
     });
 
-    const occupiedRanges = new Map<string, { start: number; end: number }[]>();
-    for (const apt of existingAppointments) {
-      const s = apt.startTime.getHours() * 60 + apt.startTime.getMinutes();
-      const e = apt.endTime.getHours() * 60 + apt.endTime.getMinutes();
-      if (apt.employeeId) {
-        if (!occupiedRanges.has(apt.employeeId)) occupiedRanges.set(apt.employeeId, []);
-        occupiedRanges.get(apt.employeeId)!.push({ start: s, end: e });
-      }
-      for (const item of apt.services || []) {
-        if (item.employeeId) {
-          if (!occupiedRanges.has(item.employeeId)) occupiedRanges.set(item.employeeId, []);
-          occupiedRanges.get(item.employeeId)!.push({ start: s, end: e });
-        }
-      }
-    }
-
-    function isOccupied(empId: string, userId: string | null, rangeStart: number, rangeEnd: number): boolean {
-      const idsToCheck = [empId];
-      if (userId) idsToCheck.push(userId);
-      for (const id of idsToCheck) {
-        const ranges = occupiedRanges.get(id);
-        if (ranges && ranges.some((r) => r.start < rangeEnd && r.end > rangeStart)) return true;
-      }
-      return false;
-    }
+    const occupiedRanges = buildOccupiedRanges(existingAppointments as any);
 
     function getWorkingHours(emp: typeof employees[0]): { start: number; end: number } | null {
-      const wh = emp.workingHours as WorkingHoursDay[] | null;
-      if (!wh || !Array.isArray(wh)) return null;
-      const day = wh.find((d) => isSameDay(d.day, dayIndex));
-      if (!day || !day.isWorking) return null;
-      return { start: minutesSinceMidnight(day.startTime), end: minutesSinceMidnight(day.endTime) };
+      return getWorkingHoursForDay(emp.workingHours, dayIndex);
     }
 
     // Try sequential assignment: for each service, find an available employee
@@ -769,7 +644,7 @@ export class SchedulingService {
         if (breakReason) continue;
 
         const userId = employeeToUserMap.get(emp.id) ?? null;
-        if (isOccupied(emp.id, userId, cursor, serviceEnd)) continue;
+        if (isOccupied(occupiedRanges, emp.id, userId, cursor, serviceEnd)) continue;
 
         found = true;
         cursor = serviceEnd;
@@ -823,21 +698,11 @@ export class SchedulingService {
       skillMap.set(emp.id, new Set(emp.employeeServices.map((es) => es.serviceId)));
     }
 
-    const employeeToUserMap = new Map<string, string | null>();
-    {
-      const tenantUsers = await prisma.user.findMany({
-        where: { tenantId },
-        select: { id: true, email: true, firstName: true, lastName: true },
-      });
-      const emailToUserId = new Map(tenantUsers.filter(u => u.email).map(u => [u.email!.toLowerCase(), u.id]));
-      const nameToUserId = new Map(tenantUsers.map(u => [`${u.firstName.toLowerCase()} ${u.lastName.toLowerCase()}`, u.id]));
-      for (const emp of employees) {
-        let uid: string | null = null;
-        if (emp.email) uid = emailToUserId.get(emp.email.toLowerCase()) ?? null;
-        if (!uid) uid = nameToUserId.get(`${emp.firstName.toLowerCase()} ${emp.lastName.toLowerCase()}`) ?? null;
-        if (uid) employeeToUserMap.set(emp.id, uid);
-      }
-    }
+    const tenantUsers = await prisma.user.findMany({
+      where: { tenantId },
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+    const employeeToUserMap = resolveEmployeeToUserMap(employees as any, tenantUsers);
 
     const dayStart = new Date(dayDate);
     dayStart.setHours(0, 0, 0, 0);
@@ -853,33 +718,7 @@ export class SchedulingService {
       select: { id: true, employeeId: true, startTime: true, endTime: true, services: { select: { employeeId: true } } },
     });
 
-    const occupiedRanges = new Map<string, { start: number; end: number }[]>();
-    for (const apt of existingAppointments) {
-      const s = apt.startTime.getHours() * 60 + apt.startTime.getMinutes();
-      const e = apt.endTime.getHours() * 60 + apt.endTime.getMinutes();
-      if (apt.employeeId) {
-        if (!occupiedRanges.has(apt.employeeId)) occupiedRanges.set(apt.employeeId, []);
-        occupiedRanges.get(apt.employeeId)!.push({ start: s, end: e });
-      }
-      if (apt.services) {
-        for (const item of apt.services) {
-          if (item.employeeId) {
-            if (!occupiedRanges.has(item.employeeId)) occupiedRanges.set(item.employeeId, []);
-            occupiedRanges.get(item.employeeId)!.push({ start: s, end: e });
-          }
-        }
-      }
-    }
-
-    function isOccupied(empId: string, userId: string | null, rangeStart: number, rangeEnd: number): boolean {
-      const idsToCheck = [empId];
-      if (userId) idsToCheck.push(userId);
-      for (const id of idsToCheck) {
-        const ranges = occupiedRanges.get(id);
-        if (ranges && ranges.some((r) => r.start < rangeEnd && r.end > rangeStart)) return true;
-      }
-      return false;
-    }
+    const occupiedRanges = buildOccupiedRanges(existingAppointments as any);
 
     function calcOccupied(userId: string): number {
       return (occupiedRanges.get(userId) || []).reduce((sum, r) => sum + (r.end - r.start), 0);
@@ -910,7 +749,7 @@ export class SchedulingService {
       if (breakReason) continue;
 
       const userId = employeeToUserMap.get(emp.id) ?? null;
-      if (isOccupied(emp.id, userId, startMinutes, endMinutes)) continue;
+      if (isOccupied(occupiedRanges, emp.id, userId, startMinutes, endMinutes)) continue;
 
       const totalMinutes = (whEnd - whStart) - getBreakMinutes(emp.workingHours as WorkingHoursDay[] | null, dayIndex, { start: whStart, end: whEnd });
       const workload = userId && totalMinutes > 0 ? calcOccupied(userId) / totalMinutes : 0;
@@ -971,25 +810,11 @@ export class SchedulingService {
     const empMap = new Map(employees.map((e) => [e.id, e]));
 
     // Batch-resolve employee IDs to user IDs for overlap checks (all tenant users)
-    const validateUserMap = new Map<string, string | null>();
-    {
-      const tenantUsers = await prisma.user.findMany({
-        where: { tenantId },
-        select: { id: true, email: true, firstName: true, lastName: true },
-      });
-      const emailToUserId = new Map(tenantUsers.filter(u => u.email).map(u => [u.email!.toLowerCase(), u.id]));
-      const nameToUserId = new Map(tenantUsers.map(u => [`${u.firstName.toLowerCase()} ${u.lastName.toLowerCase()}`, u.id]));
-      for (const emp of employees) {
-        let uid: string | null = null;
-        if (emp.email) {
-          uid = emailToUserId.get(emp.email.toLowerCase()) ?? null;
-        }
-        if (!uid) {
-          uid = nameToUserId.get(`${emp.firstName.toLowerCase()} ${emp.lastName.toLowerCase()}`) ?? null;
-        }
-        if (uid) validateUserMap.set(emp.id, uid);
-      }
-    }
+    const tenantUsers = await prisma.user.findMany({
+      where: { tenantId },
+      select: { id: true, email: true, firstName: true, lastName: true },
+    });
+    const validateUserMap = resolveEmployeeToUserMap(employees as any, tenantUsers);
 
     let cursor = startMinutes;
 
@@ -1044,7 +869,7 @@ export class SchedulingService {
           }
         }
 
-        const breakReason = overlapsBreak(emp.workingHours as WorkingHoursDay[] | null, dayIndex, cursor, serviceEnd);
+        const breakReason = findBreakRange(emp.workingHours as WorkingHoursDay[] | null, dayIndex, cursor, serviceEnd);
         if (breakReason) {
           if (!isAdmin) {
             const [bStart, bEnd] = breakReason.split('-');

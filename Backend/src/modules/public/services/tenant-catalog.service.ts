@@ -1,5 +1,5 @@
 import { prisma } from '../../../lib/prisma';
-import { fail } from '../utils/http';
+import { HttpError } from '../../../lib/errors';
 import { transformImageUrl } from '../../../utils/imageUrl';
 
 export class TenantCatalogService {
@@ -21,7 +21,7 @@ export class TenantCatalogService {
     });
 
     if (!tenant) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Tenant not found'
       });
     }
@@ -95,7 +95,7 @@ export class TenantCatalogService {
     });
 
     if (!tenant) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Tenant not found'
       });
     }
@@ -199,7 +199,7 @@ export class TenantCatalogService {
     });
 
     if (!tenant) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Tenant not found'
       });
     }
@@ -209,7 +209,7 @@ export class TenantCatalogService {
       select: { id: true, firstName: true, lastName: true, email: true }
     });
     if (!employee) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Employee not found'
       });
     }
@@ -425,7 +425,7 @@ export class TenantCatalogService {
     });
 
     if (!tenant) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Tenant not found'
       });
     }

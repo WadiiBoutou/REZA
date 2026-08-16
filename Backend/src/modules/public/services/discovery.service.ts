@@ -1,7 +1,7 @@
 import { prisma } from '../../../lib/prisma';
 import { calculateBusinessStatus } from '../utils/businessStatus';
 import { transformImageUrl } from '../../../utils/imageUrl';
-import { fail } from '../utils/http';
+import { HttpError } from '../../../lib/errors';
 import { SALON_CATEGORIES } from '../utils/serviceCategories';
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -38,7 +38,7 @@ export class DiscoveryService {
     });
 
     if (!tenant) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Tenant not found',
         message: 'The requested salon or establishment was not found.'
       });

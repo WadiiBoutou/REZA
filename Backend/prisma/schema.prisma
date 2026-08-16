@@ -325,6 +325,7 @@ model Client {
 
   @@index([tenantId, email])
   @@index([tenantId, phone])
+  @@index([tenantId, createdAt])
   @@map("clients")
 }
 
@@ -541,6 +542,7 @@ model Appointment {
   @@index([tenantId, startTime])
   @@index([tenantId, clientId])
   @@index([tenantId, employeeId])
+  @@index([status])
   @@map("appointments")
 }
 
@@ -623,6 +625,7 @@ model Invoice {
 
   @@index([tenantId])
   @@index([tenantId, clientId])
+  @@index([tenantId, createdAt])
   @@index([accountId])
   @@map("invoices")
 }

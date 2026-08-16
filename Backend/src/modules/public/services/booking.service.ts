@@ -6,10 +6,18 @@ import { validateAppointmentRules, getBusinessHoursForDate } from '../../../util
 import { resolveEmployeeUserId } from '../../../utils/resolveEmployeeUserId';
 import { schedulingService } from '../../appointment/scheduling.service';
 import { getServicePrice } from '../../../utils/appointmentServiceItems';
-import { fail } from '../utils/http';
 import { HttpError } from '../../../lib/errors';
 import { createPublicBookingSchema } from '../schemas/public.schema';
 import * as log from '../../../utils/logger';
+import {
+  isSameDay as sharedIsSameDay,
+  minutesSinceMidnight,
+  overlapsBreak as sharedOverlapsBreak,
+  isOccupied as sharedIsOccupied,
+  loadFeasibilityContext as sharedLoadFeasibilityContext,
+  solveIntervalAssignment,
+  ACTIVE_STATUSES,
+} from '../../../utils/feasibility';
 import type { Service } from '../../../../prisma/generated/prisma/client';
 import fs from 'fs';
 import path from 'path';
@@ -73,7 +81,7 @@ export class BookingService {
       if (!parsed.success) {
         const zodMsg = parsed.error.errors.map((e) => `${e.path.join('.') || '<root>'}: ${e.message}`).join(' ; ');
         log.error(`[createBooking] ÉCHEC validation Zod: ${zodMsg || (parsed.error.errors[0]?.message ?? 'Invalid booking payload')}`);
-        fail(400, {
+        throw new HttpError(400, {
           error: 'Validation error',
           message: zodMsg || parsed.error.errors[0]?.message || 'Invalid booking payload',
         });
@@ -107,7 +115,7 @@ export class BookingService {
       });
 
       if (!tenant) {
-        fail(404, {
+        throw new HttpError(404, {
           error: 'Tenant not found',
           message: 'The requested salon or establishment was not found.',
         });
@@ -120,7 +128,7 @@ export class BookingService {
       });
 
       if (settings && settings.onlineReservationEnabled === false) {
-        fail(403, {
+        throw new HttpError(403, {
           error: 'Online reservations disabled',
           message: 'This establishment does not accept online reservations.',
         });
@@ -171,7 +179,7 @@ export class BookingService {
         },
       });
       if (block) {
-        fail(403, {
+        throw new HttpError(403, {
           error: 'Client blocked',
           message:
             "Ce salon ne vous permet pas actuellement de prendre rendez-vous en ligne. Contactez l'établissement pour plus d'informations.",
@@ -189,7 +197,7 @@ export class BookingService {
           },
         });
         if (services.length !== ids.length) {
-          fail(400, {
+          throw new HttpError(400, {
             error: 'Invalid services',
             message: 'One or more services are not available for booking.',
           });
@@ -485,7 +493,7 @@ export class BookingService {
                 traceBooking(`  ✗ CONFLICT participant="${p.displayName}" svc="${svc.name}" interval=[${intervalStart.toISOString()} → ${intervalEnd.toISOString()}] overlapped by localAssignment emp=${conflictRange.id} range=[${new Date(conflictRange.r.start).toISOString()} → ${new Date(conflictRange.r.end).toISOString()}] (${conflictRange.r.start}..${conflictRange.r.end}) check: ${conflictRange.r.start} < ${intervalEnd.getTime()} && ${conflictRange.r.end} > ${intervalStart.getTime()}`);
                 const empName = employeeNameMap.get(se.employeeId) || se.employeeId;
                 const prefix = p.isBooker ? '' : `Pour ${p.displayName} : `;
-                fail(409, {
+                throw new HttpError(409, {
                   error: 'Employee conflict',
                   message: `${prefix}${empName} n'est pas disponible pour ${svc.name} à ${pTime} — déjà réservé sur cet intervalle.`,
                 });
@@ -511,7 +519,7 @@ export class BookingService {
               });
               if (!assigned.employeeId) {
                 const prefix = p.isBooker ? '' : `Pour ${p.displayName} : `;
-                fail(409, {
+                throw new HttpError(409, {
                   error: 'No available employee',
                   message: `${prefix}Aucun professionnel disponible pour ${svc.name} à ${pTime}.`,
                 });
@@ -520,7 +528,7 @@ export class BookingService {
               // Check if the auto-assigned employee conflicts with another participant
               if (localOverlap(assigned.employeeId, assigned.userEmployeeId, intervalStart.getTime(), intervalEnd.getTime())) {
                 const prefix = p.isBooker ? '' : `Pour ${p.displayName} : `;
-                fail(409, {
+                throw new HttpError(409, {
                   error: 'Employee conflict',
                   message: `${prefix}Le professionnel assigné à ${svc.name} à ${pTime} est déjà occupé sur cet intervalle dans cette réservation.`,
                 });
@@ -559,7 +567,7 @@ export class BookingService {
               isPublicBooking: true,
             });
             if (!vr.isValid) {
-              fail(vr.status || 400, {
+              throw new HttpError(vr.status || 400, {
                 error: vr.error || 'Overlapping appointment',
                 message: p.isBooker
                   ? `(${svc.name}) ${vr.message}`
@@ -609,7 +617,7 @@ export class BookingService {
         log.log('[Feasibility] BOOKING-CREATION re-validation: ' +
           (fResult.feasible ? 'FEASIBLE — proceeding' : 'INFEASIBLE — rejecting'));
         if (!fResult.feasible) {
-          fail(409, {
+          throw new HttpError(409, {
             error: 'Slot no longer available',
             message: 'Ce créneau n\'est plus disponible. Veuillez choisir un autre horaire.',
             details: 'La vérification de disponibilité a échoué au moment de la réservation. Consultez les logs serveur pour plus de détails.',
@@ -618,7 +626,7 @@ export class BookingService {
       }
 
       if (resolved.length === 0) {
-        fail(400, {
+        throw new HttpError(400, {
           error: 'No participants',
           message:
             'Sélectionnez au moins une personne (vous ou un proche / invité) pour la réservation.',
@@ -651,7 +659,7 @@ export class BookingService {
       }
 
       if (!systemUser) {
-        fail(500, {
+        throw new HttpError(500, {
           error: 'System error',
           message: 'No admin user found for this tenant.',
         });
@@ -956,7 +964,7 @@ export class BookingService {
     }
 
     if (!date) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Date required',
         message: 'Date parameter is required (YYYY-MM-DD)'
       });
@@ -1023,7 +1031,7 @@ export class BookingService {
     });
 
     if (!tenant) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Tenant not found'
       });
     }
@@ -1298,7 +1306,7 @@ export class BookingService {
     const { from, to, serviceIds } = query;
 
     if (!from || !to) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Date range required',
         message: 'Both `from` and `to` (YYYY-MM-DD) query params are required',
       });
@@ -1313,7 +1321,7 @@ export class BookingService {
     });
 
     if (!tenant) {
-      fail(404, { error: 'Tenant not found' });
+      throw new HttpError(404, { error: 'Tenant not found' });
     }
 
     const businessHours = (tenant.settings?.businessHours as any) || {};
@@ -1465,7 +1473,7 @@ export class BookingService {
     const { email } = body;
 
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email is required',
         message: 'Please provide your email to cancel the appointment.'
       });
@@ -1484,7 +1492,7 @@ export class BookingService {
     });
 
     if (!appointment) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Appointment not found',
         message: 'The appointment was not found.'
       });
@@ -1492,7 +1500,7 @@ export class BookingService {
 
     // Verify the appointment belongs to a client with this email
     if (appointment.client.email?.toLowerCase() !== email.toLowerCase()) {
-      fail(403, {
+      throw new HttpError(403, {
         error: 'Unauthorized',
         message: 'You can only cancel your own appointments.'
       });
@@ -1501,14 +1509,14 @@ export class BookingService {
     // Check if appointment can be cancelled (not already completed or cancelled)
     // TODO: Enforce cancellationDelay from tenant settings — currently stored but not validated here
     if (appointment.status === 'COMPLETED') {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Cannot cancel completed appointment',
         message: 'This appointment has already been completed and cannot be cancelled.'
       });
     }
 
     if (appointment.status === 'CANCELLED') {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Appointment already cancelled',
         message: 'This appointment has already been cancelled.'
       });
@@ -1601,7 +1609,7 @@ export class BookingService {
     const { date, startTime, serviceIds, existingParticipants } = query;
 
       if (!date || !startTime) {
-        fail(400, {
+        throw new HttpError(400, {
           error: 'Date and startTime required',
           message: 'Both date (YYYY-MM-DD) and startTime (HH:MM) parameters are required',
         });
@@ -1616,7 +1624,7 @@ export class BookingService {
       });
 
       if (!tenant) {
-        fail(404, { error: 'Tenant not found' });
+        throw new HttpError(404, { error: 'Tenant not found' });
       }
 
       const serviceIdsArray = Array.isArray(serviceIds)
@@ -1793,29 +1801,17 @@ export class BookingService {
   }
 
   private isSameDay(dayInDb: string | undefined | null, idx: number): boolean {
-    if (!dayInDb) return false;
-    return (this.DAY_NAMES[idx] || []).includes(dayInDb.trim().toLowerCase());
+    return sharedIsSameDay(dayInDb, idx);
   }
 
   private mins(time: string): number {
-    const [h, m] = time.split(':').map(Number);
-    return h * 60 + m;
+    return minutesSinceMidnight(time);
   }
 
   private overlapsBreak(
     wh: unknown, idx: number, rs: number, re: number,
   ): boolean {
-    const arr = wh as Array<{
-      day: string;
-      breaks?: Array<{ start: string; end: string }>;
-    }> | null;
-    const dayData = arr?.find((d) => this.isSameDay(d.day, idx));
-    if (!dayData?.breaks) return false;
-    return dayData.breaks.some((b) => {
-      const bs = this.mins(b.start);
-      const be = this.mins(b.end);
-      return rs < be && re > bs;
-    });
+    return sharedOverlapsBreak(wh as any, idx, rs, re);
   }
 
   // ─── Pre-loaded context for per-request caching (available-slots) ──────
@@ -1823,110 +1819,7 @@ export class BookingService {
   private async loadFeasibilityContext(
     tenantId: string, date: string, serviceIds?: string[], clientId?: string,
   ): Promise<FeasibilityContext & { tenantId: string }> {
-    const [year, month, dayNum] = date.split('-').map(Number);
-    const dayDate = new Date(year, month - 1, dayNum);
-    const dayIndex = dayDate.getDay();
-
-    const employees = await prisma.employee.findMany({
-      where: { tenantId, isActive: true },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        workingHours: true,
-        agendaSettings: true,
-        employeeServices: { select: { serviceId: true } },
-      },
-    });
-
-    const skillMap = new Map<string, Set<string>>();
-    for (const emp of employees) {
-      skillMap.set(emp.id, new Set(emp.employeeServices.map((es) => es.serviceId)));
-    }
-
-    const employeeToUserMap = new Map<string, string | null>();
-    {
-      const tenantUsers = await prisma.user.findMany({
-        where: { tenantId },
-        select: { id: true, email: true, firstName: true, lastName: true },
-      });
-      const emailToUserId = new Map(
-        tenantUsers.filter((u) => u.email).map((u) => [u.email!.toLowerCase(), u.id]),
-      );
-      const nameToUserId = new Map(
-        tenantUsers.map((u) => [
-          `${u.firstName.toLowerCase()} ${u.lastName.toLowerCase()}`,
-          u.id,
-        ]),
-      );
-      for (const emp of employees) {
-        let uid: string | null = null;
-        if (emp.email) uid = emailToUserId.get(emp.email.toLowerCase()) ?? null;
-        if (!uid)
-          uid = nameToUserId.get(`${emp.firstName.toLowerCase()} ${emp.lastName.toLowerCase()}`) ?? null;
-        if (uid) employeeToUserMap.set(emp.id, uid);
-      }
-    }
-
-    const dayStart = new Date(dayDate);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayDate);
-    dayEnd.setHours(23, 59, 59, 999);
-    const existingAppointments = await prisma.appointment.findMany({
-      where: {
-        tenantId,
-        status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] as any },
-        startTime: { gte: dayStart, lte: dayEnd },
-      },
-      select: {
-        employeeId: true,
-        startTime: true,
-        endTime: true,
-        services: { select: { employeeId: true } },
-      },
-    });
-
-    const occupiedRanges = new Map<string, { start: number; end: number }[]>();
-    for (const apt of existingAppointments) {
-      const s = apt.startTime.getHours() * 60 + apt.startTime.getMinutes();
-      const e = apt.endTime.getHours() * 60 + apt.endTime.getMinutes();
-      const addRange = (eid: string | null) => {
-        if (!eid) return;
-        if (!occupiedRanges.has(eid)) occupiedRanges.set(eid, []);
-        occupiedRanges.get(eid)!.push({ start: s, end: e });
-      };
-      addRange(apt.employeeId);
-      for (const item of apt.services || []) addRange(item.employeeId);
-    }
-
-    const allTenantServices = serviceIds && serviceIds.length > 0
-      ? await prisma.service.findMany({ where: { id: { in: serviceIds }, tenantId }, select: { id: true, duration: true } })
-      : await prisma.service.findMany({ where: { tenantId }, select: { id: true, duration: true } });
-    const serviceDurationMap = new Map(allTenantServices.map((s) => [s.id, s.duration]));
-
-    // Load client's own existing appointments for the day (client-conflict constraint).
-    // NOT scoped to this tenant: a client's schedule spans every salon — they can't
-    // be in two places at once even across different salons.
-    const clientOccupiedRanges: { start: number; end: number }[] = [];
-    if (clientId) {
-      const clientApts = await prisma.appointment.findMany({
-        where: {
-          clientId,
-          status: { in: ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] as any },
-          startTime: { gte: dayStart, lte: dayEnd },
-        },
-        select: { startTime: true, endTime: true },
-      });
-      for (const ca of clientApts) {
-        clientOccupiedRanges.push({
-          start: ca.startTime.getHours() * 60 + ca.startTime.getMinutes(),
-          end: ca.endTime.getHours() * 60 + ca.endTime.getMinutes(),
-        });
-      }
-    }
-
-    return { tenantId, employees, skillMap, employeeToUserMap, occupiedRanges, serviceDurationMap, dayIndex, clientOccupiedRanges };
+    return sharedLoadFeasibilityContext(tenantId, date, serviceIds, clientId);
   }
 
   /**
@@ -1982,13 +1875,7 @@ export class BookingService {
     const { employees, skillMap, employeeToUserMap, occupiedRanges, serviceDurationMap, dayIndex, clientOccupiedRanges } = ctx;
 
     function isOccupiedByExisting(empId: string, uid: string | null, rs: number, re: number): boolean {
-      const ids = [empId];
-      if (uid) ids.push(uid);
-      return ids.some(
-        (id) =>
-          occupiedRanges.has(id) &&
-          occupiedRanges.get(id)!.some((r) => r.start < re && r.end > rs),
-      );
+      return sharedIsOccupied(occupiedRanges, empId, uid, rs, re);
     }
 
     /** Check whether a time interval overlaps any of the client's existing appointments. */
@@ -2128,52 +2015,19 @@ export class BookingService {
       return { feasible: true };
     }
 
-    // ── Backtracking search for a valid assignment ───────────────
-    const sorted = [...intervals].sort((a, b) => a.eligible.length - b.eligible.length);
-    const assignment = new Map<number, string>();
-    let backtrackSteps = 0;
-
-    function intervalOverlapLocal(a: Interval, b: Interval): boolean {
-      return a.startMinutes < b.endMinutes && a.endMinutes > b.startMinutes;
-    }
-
-    let lastConflictReason = '';
-
-    function backtrack(pos: number): boolean {
-      backtrackSteps++;
-      if (pos >= sorted.length) return true;
-
-      const interval = sorted[pos];
-      const pLabel = pnm(interval.participantIdx, participants[interval.participantIdx].serviceIds);
-
-      for (const eid of interval.eligible) {
-        let conflict = false;
-        for (const [assignedIdx, assignedEmp] of assignment) {
-          if (assignedEmp !== eid) continue;
-          if (intervalOverlapLocal(sorted[assignedIdx], interval)) {
-            conflict = true;
-            break;
-          }
-        }
-        if (conflict) continue;
-
-        assignment.set(pos, eid);
-        if (backtrack(pos + 1)) return true;
-        assignment.delete(pos);
-      }
-
-      if (interval.eligible.length === 0) {
-        const reason = Array.from(new Set(interval.ineligibleReasons.map((r) => r.reason))).slice(0, 3).join(' ; ');
-        lastConflictReason = `${pLabel} svc=${snm(interval.serviceId)} — aucun éligible (${reason || 'inconnu'})`;
-      } else {
-        lastConflictReason = `${pLabel} svc=${snm(interval.serviceId)} — ${interval.eligible.map(enm).join(', ')} tous en conflit`;
-      }
-      return false;
-    }
-
-    const feasible = backtrack(0);
+    // ── Backtracking search for a valid assignment (shared solver) ──
+    const feasible = solveIntervalAssignment(
+      intervals.map((i) => ({ startMinutes: i.startMinutes, endMinutes: i.endMinutes, eligible: i.eligible })),
+    );
     if (!feasible) {
-      log.log('[Feasibility] RESULT: INFEASIBLE backtrackSteps=' + backtrackSteps + ' blocage: ' + lastConflictReason);
+      // Diagnose the first blocking interval for the log (same detail as before).
+      const sorted = [...intervals].sort((a, b) => a.eligible.length - b.eligible.length);
+      const blocking = sorted.find((i) => i.eligible.length === 0) || sorted[0];
+      const pLabel = pnm(blocking.participantIdx, participants[blocking.participantIdx].serviceIds);
+      const reason = blocking.eligible.length === 0
+        ? Array.from(new Set(blocking.ineligibleReasons.map((r) => r.reason))).slice(0, 3).join(' ; ')
+        : blocking.eligible.map(enm).join(', ') + ' tous en conflit';
+      log.log('[Feasibility] RESULT: INFEASIBLE blocage: ' + pLabel + ' svc=' + snm(blocking.serviceId) + ' — ' + reason);
     }
     return { feasible };
   }
@@ -2224,7 +2078,7 @@ export class BookingService {
       select: { id: true },
     });
     if (!tenant) {
-      fail(404, { error: 'Tenant not found' });
+      throw new HttpError(404, { error: 'Tenant not found' });
     }
 
     const { date, existingParticipants, newParticipant } = body;
@@ -2358,11 +2212,7 @@ export class BookingService {
     }
 
     function isOccupiedByExisting(empId: string, userId: string | null, rs: number, re: number): boolean {
-      const ids = [empId];
-      if (userId) ids.push(userId);
-      return ids.some(
-        (id) => occupiedRanges.has(id) && occupiedRanges.get(id)!.some((r) => r.start < re && r.end > rs),
-      );
+      return sharedIsOccupied(occupiedRanges, empId, userId, rs, re);
     }
 
     // Name helpers

@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { prisma } from '../../../lib/prisma';
 import { hashPassword, comparePassword } from '../../../utils/password';
 import { sendMail } from '../../../utils/mailer';
-import { fail } from '../utils/http';
+import { HttpError } from '../../../lib/errors';
 import * as log from '../../../utils/logger';
 import { isValidPhone, phoneError } from '../../../utils/phone';
 
@@ -15,7 +15,7 @@ export class ClientAccountService {
    */
   async getClientProfile(email: string) {
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email required',
         message: 'Veuillez fournir votre adresse email.'
       });
@@ -37,7 +37,7 @@ export class ClientAccountService {
     });
 
     if (!client) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Client not found',
         message: 'Le client n\'a pas été trouvé.'
       });
@@ -51,7 +51,7 @@ export class ClientAccountService {
     const { firstName, lastName, phone, address, avatar, gender, dateOfBirth } = body;
 
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email required',
         message: 'Please provide an email parameter.'
       });
@@ -68,7 +68,7 @@ export class ClientAccountService {
     });
 
     if (!client) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Client not found',
         message: 'The client was not found.'
       });
@@ -80,7 +80,7 @@ export class ClientAccountService {
     log.log('[Update Client Profile] Avatar value received:', avatar ? 'present' : 'null/undefined', typeof avatar);
 
     if (phone !== undefined && String(phone).trim() && !isValidPhone(phone)) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Invalid phone',
         message: phoneError()
       });
@@ -158,14 +158,14 @@ export class ClientAccountService {
     const { currentPassword } = body;
 
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email required',
         message: 'Veuillez fournir votre adresse email.'
       });
     }
 
     if (!currentPassword) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Password required',
         message: 'Le mot de passe actuel est requis.'
       });
@@ -178,7 +178,7 @@ export class ClientAccountService {
     });
 
     if (!client || !client.password) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Client not found',
         message: 'Le client n\'a pas été trouvé.'
       });
@@ -189,7 +189,7 @@ export class ClientAccountService {
       (client as any).password
     );
     if (!isValidPassword) {
-      fail(401, {
+      throw new HttpError(401, {
         error: 'Invalid password',
         message: 'Le mot de passe actuel est incorrect.'
       });
@@ -240,21 +240,21 @@ export class ClientAccountService {
     log.log('[Change Password] Request received for email:', email);
 
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email required',
         message: 'Please provide an email parameter.'
       });
     }
 
     if (!code || !newPassword) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Code and password required',
         message: 'Le code de vérification et le nouveau mot de passe sont requis.'
       });
     }
 
     if (newPassword.length < 8) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Invalid password',
         message: 'Le nouveau mot de passe doit contenir au moins 8 caractères.'
       });
@@ -273,7 +273,7 @@ export class ClientAccountService {
 
     if (!client) {
       log.log('[Change Password] Client not found for email:', email);
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Client not found',
         message: 'Le client n\'a pas été trouvé.'
       });
@@ -283,13 +283,13 @@ export class ClientAccountService {
 
     // Verify the emailed code (stored hashed — never compare plaintext).
     if (client.resetPasswordToken !== hashCode(code.trim())) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Invalid code',
         message: 'Le code de vérification est invalide. Vérifiez votre email et réessayez.'
       });
     }
     if (!client.resetPasswordExpires || new Date(client.resetPasswordExpires).getTime() < Date.now()) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Code expired',
         message: 'Le code de vérification a expiré. Veuillez en demander un nouveau.'
       });
@@ -311,7 +311,7 @@ export class ClientAccountService {
     log.error('[Change Password] Error:', error);
     // Check if it's a Prisma error about missing field
     if (error.message && error.message.includes('Unknown arg `password`')) {
-      fail(500, {
+      throw new HttpError(500, {
         error: 'Database schema error',
         message: 'Le champ password n\'existe pas dans la base de données. Veuillez exécuter la migration Prisma.'
       });

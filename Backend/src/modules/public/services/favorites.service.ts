@@ -1,12 +1,12 @@
 import { prisma } from '../../../lib/prisma';
-import { fail } from '../utils/http';
+import { HttpError } from '../../../lib/errors';
 
 export class FavoritesService {
   async getClientFavorites(email: string) {
     try {
 
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email required',
         message: 'Please provide an email parameter.'
       });
@@ -68,7 +68,7 @@ export class FavoritesService {
     const { clientEmail, tenantId } = body;
 
     if (!clientEmail || !tenantId) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Missing required fields',
         message: 'clientEmail and tenantId are required.'
       });
@@ -113,7 +113,7 @@ export class FavoritesService {
     });
 
     if (!tenant) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Tenant not found',
         message: 'The requested salon was not found.'
       });
@@ -158,7 +158,7 @@ export class FavoritesService {
       }
     });
 
-    fail(201, {
+    throw new HttpError(201, {
       favorite: {
         id: favorite.id,
         tenantId: favorite.tenantId,
@@ -183,7 +183,7 @@ export class FavoritesService {
     const { clientEmail } = query;
 
     if (!clientEmail) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Client email required',
         message: 'Please provide clientEmail as a query parameter.'
       });
@@ -200,7 +200,7 @@ export class FavoritesService {
     });
 
     if (!client) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Client not found',
         message: 'The client was not found.'
       });
@@ -215,7 +215,7 @@ export class FavoritesService {
     });
 
     if (!favorite) {
-      fail(404, {
+      throw new HttpError(404, {
         error: 'Favorite not found',
         message: 'The favorite was not found or does not belong to this client.'
       });

@@ -1,7 +1,7 @@
 import { prisma } from '../../../lib/prisma';
 import { formatDateTimeForAPI } from '../../../utils/dateTime';
 import { transformImageUrl } from '../../../utils/imageUrl';
-import { fail } from '../utils/http';
+import { HttpError } from '../../../lib/errors';
 import * as log from '../../../utils/logger';
 
 export class ClientAppointmentsService {
@@ -10,7 +10,7 @@ export class ClientAppointmentsService {
     const { status, limit = '100', sortBy = 'createdAt' } = query;
 
     if (!email) {
-      fail(400, {
+      throw new HttpError(400, {
         error: 'Email is required'
       });
     }
