@@ -913,7 +913,7 @@ function LoginPageContent() {
 
                 {/* Error/Success Message */}
                 {error && (
-                  <div className={`rounded-full px-4 py-3 text-sm ${
+                  <div className={`rounded-2xl px-4 py-3 text-sm ${
                     error.includes('vérifier votre email') || error.includes('Vérifiez votre boîte') || error.includes('Compte créé avec succès')
                       ? 'bg-green-50 border border-green-200 text-green-600'
                       : 'bg-red-50 border border-red-200 text-red-600'
