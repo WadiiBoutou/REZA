@@ -346,9 +346,15 @@ class ApiClient {
   async uploadAuthAvatar(file: File) {
     const formData = new FormData();
     formData.append('avatar', file);
-    const url = `${this.baseURL}/auth/upload-avatar`;
-    const headers: HeadersInit = {};
     const currentToken = this.token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+    // Signup flow (no token yet): use the public endpoint, which uploads to
+    // Cloudinary and returns the URL to send along in the register payload.
+    // Logged-in flow (profile edit): authenticated endpoint, which also
+    // persists the avatar on the user record.
+    const url = currentToken
+      ? `${this.baseURL}/auth/upload-avatar`
+      : `${this.baseURL}/public/auth/upload-avatar`;
+    const headers: HeadersInit = {};
     if (currentToken) headers['Authorization'] = `Bearer ${currentToken}`;
     const response = await fetch(url, { method: 'POST', headers, body: formData });
     if (!response.ok) {
