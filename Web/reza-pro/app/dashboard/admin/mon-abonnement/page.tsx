@@ -497,7 +497,7 @@ export default function MonAbonnementPage() {
               <p className="text-sm text-gray-400">Aucun paiement déclaré.</p>
             ) : (
               <div className="space-y-3">
-                {payments.map((p) => {
+                {payments.slice(0, 3).map((p) => {
                   const badge = PAYMENT_STATUS[p.status] || {
                     label: p.status,
                     className: 'bg-gray-100 text-gray-700',
