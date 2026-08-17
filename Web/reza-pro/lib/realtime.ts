@@ -51,8 +51,17 @@ export function getRealtimeSocket(): Socket | null {
     /* ignore */
   }
 
-  socket = io(getApiBaseUrl(), {
-    path: '/socket.io',
+  // socket.io-client's `path` option REPLACES the URI's pathname (it does not
+  // append to it). Passing getApiBaseUrl() ('.../api') as the uri with path
+  // '/socket.io' therefore connects to '<host>/socket.io' — but the backend
+  // serves Socket.IO at '<host>/api/socket.io' — so the socket silently 404s
+  // and no live notifications ever arrive. Build origin + full backend path.
+  const apiBase = getApiBaseUrl();
+  const baseUrl = new URL(apiBase, window.location.origin);
+  const socketPath = `${baseUrl.pathname.replace(/\/$/, '')}/socket.io`;
+
+  socket = io(baseUrl.origin, {
+    path: socketPath,
     transports: ['websocket', 'polling'],
     auth: { token },
     reconnection: true,
