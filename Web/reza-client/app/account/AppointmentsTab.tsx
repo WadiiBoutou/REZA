@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight, Clock, Calendar, User, MapPin, Phone, CreditCard, Tag, Star, ArrowLeft } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import EditAppointmentModal from './EditAppointmentModal';
-import DeleteModal from './dialogue/deletemodal';
+import DeleteModal from './modals/DeleteModal';
 import api from '../../lib/api';
 import { formatMoroccoDate, getImageUrl } from '../../lib/utils';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../components/UI/select';

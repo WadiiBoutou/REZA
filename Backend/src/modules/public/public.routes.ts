@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { publicController } from './public.controller';
 import { authLimiter, bookingLimiter } from '../../middleware/rateLimit';
+import { requireClientAuth } from '../../middleware/clientAuth';
 
 const router = express.Router();
 
@@ -80,36 +81,33 @@ router.get('/tenant/:tenantId/employee-availability', (req, res, next) =>
 router.get('/tenant/:tenantId/available-days', (req, res, next) =>
   publicController.getAvailableDays(req, res, next)
 );
-router.post('/tenant/:tenantId/validate-participant', (req, res, next) =>
-  publicController.validateParticipantAddition(req, res, next)
-);
-router.get('/client/:email/appointments', (req, res, next) =>
+router.get('/client/:email/appointments', requireClientAuth, (req, res, next) =>
   publicController.getClientAppointments(req, res, next)
 );
-router.put('/appointments/:id/cancel', (req, res, next) =>
+router.put('/appointments/:id/cancel', requireClientAuth, (req, res, next) =>
   publicController.cancelAppointment(req, res, next)
 );
-router.get('/client/:email/reviews', (req, res, next) =>
+router.get('/client/:email/reviews', requireClientAuth, (req, res, next) =>
   publicController.getClientReviews(req, res, next)
 );
-router.put('/reviews/:id', (req, res, next) => publicController.updateReview(req, res, next));
-router.delete('/reviews/:id', (req, res, next) => publicController.deleteReview(req, res, next));
-router.get('/client/:email/notifications', (req, res, next) =>
+router.put('/reviews/:id', requireClientAuth, (req, res, next) => publicController.updateReview(req, res, next));
+router.delete('/reviews/:id', requireClientAuth, (req, res, next) => publicController.deleteReview(req, res, next));
+router.get('/client/:email/notifications', requireClientAuth, (req, res, next) =>
   publicController.getClientNotifications(req, res, next)
 );
-router.patch('/notifications/:id/read', (req, res, next) =>
+router.patch('/notifications/:id/read', requireClientAuth, (req, res, next) =>
   publicController.markNotificationRead(req, res, next)
 );
-router.get('/client/:email/family-members', (req, res, next) =>
+router.get('/client/:email/family-members', requireClientAuth, (req, res, next) =>
   publicController.getFamilyMembers(req, res, next)
 );
-router.post('/family-members', (req, res, next) =>
+router.post('/family-members', requireClientAuth, (req, res, next) =>
   publicController.createFamilyMember(req, res, next)
 );
-router.put('/family-members/:id', (req, res, next) =>
+router.put('/family-members/:id', requireClientAuth, (req, res, next) =>
   publicController.updateFamilyMember(req, res, next)
 );
-router.delete('/family-members/:id', (req, res, next) =>
+router.delete('/family-members/:id', requireClientAuth, (req, res, next) =>
   publicController.deleteFamilyMember(req, res, next)
 );
 router.post('/auth/client-register', authLimiter, (req, res, next) =>
@@ -136,23 +134,23 @@ router.post('/auth/client-verify-email', authLimiter, (req, res, next) =>
 router.post('/auth/client-resend-verification', authLimiter, (req, res, next) =>
   publicController.resendClientVerification(req, res, next)
 );
-router.get('/client/:email/favorites', (req, res, next) =>
+router.get('/client/:email/favorites', requireClientAuth, (req, res, next) =>
   publicController.getClientFavorites(req, res, next)
 );
-router.post('/favorites', (req, res, next) => publicController.addFavorite(req, res, next));
-router.get('/client/:email', (req, res, next) =>
+router.post('/favorites', requireClientAuth, (req, res, next) => publicController.addFavorite(req, res, next));
+router.get('/client/:email', requireClientAuth, (req, res, next) =>
   publicController.getClientProfile(req, res, next)
 );
-router.put('/client/:email', (req, res, next) =>
+router.put('/client/:email', requireClientAuth, (req, res, next) =>
   publicController.updateClientProfile(req, res, next)
 );
-router.post('/client/:email/send-password-code', authLimiter, (req, res, next) =>
+router.post('/client/:email/send-password-code', authLimiter, requireClientAuth, (req, res, next) =>
   publicController.sendClientPasswordCode(req, res, next)
 );
-router.put('/client/:email/change-password', authLimiter, (req, res, next) =>
+router.put('/client/:email/change-password', authLimiter, requireClientAuth, (req, res, next) =>
   publicController.changeClientPassword(req, res, next)
 );
-router.delete('/favorites/:id', (req, res, next) =>
+router.delete('/favorites/:id', requireClientAuth, (req, res, next) =>
   publicController.removeFavorite(req, res, next)
 );
 router.post('/early-access', authLimiter, (req, res, next) =>

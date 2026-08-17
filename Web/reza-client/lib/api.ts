@@ -14,6 +14,26 @@ function friendlyHttpMessage(status: number, fallback: string): string {
   return fallback;
 }
 
+// Client session token (issued by /public/auth/client-login or email verification).
+// Stored by AuthContext; attached to every request as a Bearer token. Module-level
+// so the singleton api instance always sees the current session.
+let clientAuthToken: string | null = null;
+let onClientUnauthorized: (() => void) | null = null;
+
+/** Set (or clear) the client session token. Called by AuthContext on login/logout/boot. */
+export function setClientAuthToken(token: string | null) {
+  clientAuthToken = token;
+}
+
+/** Register a handler fired when an authenticated request returns 401 (expired/invalid session). */
+export function setOnClientUnauthorized(fn: (() => void) | null) {
+  onClientUnauthorized = fn;
+}
+
+export function getClientAuthToken(): string | null {
+  return clientAuthToken;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -26,14 +46,22 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+
+    const hadToken = !!clientAuthToken;
     const response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...(clientAuthToken ? { Authorization: `Bearer ${clientAuthToken}` } : {}),
         ...options.headers,
       },
     });
+
+    if (response.status === 401 && hadToken) {
+      // Session expired/invalid — clear the stored session so the user is
+      // prompted to re-login (mirrors the Pro app's 401 handling).
+      onClientUnauthorized?.();
+    }
 
     if (!response.ok) {
       // Read as text first, then try JSON — never leak parse errors to the user.
@@ -268,37 +296,6 @@ class ApiClient {
     }>(`/public/tenant/${tenantId}/employee-availability?${params.toString()}`);
   }
 
-  // Resolve cross-participant conflicts via backend backtracking
-  // Backend receives: date, changedParticipantIndex, selectedEmployeeId, participants[].currentEmployeeId
-  async resolveConflicts(
-    tenantId: string,
-    date: string,
-    changedParticipantIndex: number,
-    selectedEmployeeId: string | null,
-    participants: Array<{
-      index: number;
-      serviceIds: string[];
-      startTime: string;
-      duration: number;
-      currentEmployeeId: string | null;
-    }>,
-  ) {
-    return this.request<{
-      resolved: boolean;
-      conflict: boolean;
-      message?: string;
-      assignments?: Array<{
-        index: number;
-        employeeId: string;
-        locked: boolean;
-        autoAssigned: boolean;
-      }>;
-    }>(`/public/tenant/${tenantId}/resolve-conflicts`, {
-      method: 'POST',
-      body: JSON.stringify({ date, changedParticipantIndex, selectedEmployeeId, participants }),
-    });
-  }
-
   // Create a public review
   async createReview(data: {
     tenantId: string;
@@ -335,24 +332,6 @@ class ApiClient {
     return this.request<{ reviews: any[] }>(
       `/public/client/${encodeURIComponent(email)}/reviews?${params.toString()}`
     );
-  }
-
-  // Update a review
-  async updateReview(reviewId: string, data: {
-    email: string;
-    rating?: number;
-    comment?: string;
-    detailedRatings?: {
-      quality: number;
-      professionalism: number;
-      cleanliness: number;
-      value: number;
-    };
-  }) {
-    return this.request<{ review: any; message: string }>(`/public/reviews/${reviewId}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
   }
 
   // Delete a review
@@ -452,7 +431,7 @@ class ApiClient {
 
   // Client authentication
   async clientLogin(email: string, password: string) {
-    return this.request<{ client: any; message: string }>('/public/auth/client-login', {
+    return this.request<{ client: any; message: string; token?: string }>('/public/auth/client-login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });

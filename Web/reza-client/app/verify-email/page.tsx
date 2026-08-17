@@ -58,8 +58,9 @@ function VerifyEmailContent() {
         setEmail(data.client.email);
       }
       if (data.client) {
-        // The confirmation link proves email ownership — sign the user in now.
-        connectAfterVerification(data.client);
+        // The confirmation link proves email ownership — sign the user in now,
+        // carrying the session token the backend now issues.
+        connectAfterVerification(data.client, data.token);
         setConnected(true);
         setTimeout(() => {
           router.push('/account');

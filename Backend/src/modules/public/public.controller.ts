@@ -28,6 +28,35 @@ function handlePublicError(error: unknown, res: Response, next: NextFunction): b
   return false;
 }
 
+/**
+ * Resolve the effective client email from the AUTHENTICATED token (requireClientAuth
+ * attaches req.clientEmail). If the request also supplies an email in the URL/body/query
+ * (legacy callers), it must MATCH the token identity — otherwise reject, closing the
+ * "harvested email reused as a mutation credential" attack chain entirely.
+ */
+function clientEmailFrom(req: Request, supplied?: unknown): string {
+  const tokenEmail = (req as Request & { clientEmail?: string }).clientEmail;
+  if (!tokenEmail) {
+    throw new HttpError(401, {
+      error: 'Unauthorized',
+      message: 'Veuillez vous connecter pour accéder à vos données.',
+    });
+  }
+  if (supplied !== undefined && supplied !== null) {
+    const raw = String(supplied);
+    if (raw.trim() !== '') {
+      const norm = raw.trim().toLowerCase();
+      if (norm !== tokenEmail) {
+        throw new HttpError(403, {
+          error: 'Forbidden',
+          message: "Vous ne pouvez pas accéder aux données d'un autre compte.",
+        });
+      }
+    }
+  }
+  return tokenEmail;
+}
+
 export class PublicController {
   async getTenantByIdentifier(req: Request, res: Response, next: NextFunction) {
     try {
@@ -220,19 +249,10 @@ export class PublicController {
     }
   }
 
-  async validateParticipantAddition(req: Request, res: Response, next: NextFunction) {
-    try {
-      const result = await bookingService.validateParticipantAddition(req.params.tenantId, req.body);
-      res.json(result);
-    } catch (error) {
-      if (handlePublicError(error, res, next)) return;
-      next(error);
-    }
-  }
-
   async getClientAppointments(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await clientAppointmentsService.getClientAppointments(req.params.email, req.query);
+      const email = clientEmailFrom(req, req.params.email);
+      const result = await clientAppointmentsService.getClientAppointments(email, req.query);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -242,7 +262,8 @@ export class PublicController {
 
   async cancelAppointment(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await bookingService.cancelAppointment(req.params.id, req.body);
+      const email = clientEmailFrom(req, (req.body as any)?.email);
+      const result = await bookingService.cancelAppointment(req.params.id, { ...req.body, email });
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -252,7 +273,8 @@ export class PublicController {
 
   async getClientReviews(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await clientReviewsService.getClientReviews(req.params.email, req.query);
+      const email = clientEmailFrom(req, req.params.email);
+      const result = await clientReviewsService.getClientReviews(email, req.query);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -262,7 +284,8 @@ export class PublicController {
 
   async updateReview(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await clientReviewsService.updateReview(req.params.id, req.body);
+      const email = clientEmailFrom(req, (req.body as any)?.email);
+      const result = await clientReviewsService.updateReview(req.params.id, { ...req.body, email });
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -272,7 +295,8 @@ export class PublicController {
 
   async deleteReview(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await clientReviewsService.deleteReview(req.params.id, req.query);
+      const email = clientEmailFrom(req, (req.query as any)?.email);
+      const result = await clientReviewsService.deleteReview(req.params.id, { ...req.query, email });
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -282,7 +306,8 @@ export class PublicController {
 
   async getClientNotifications(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await clientNotificationsService.getClientNotifications(req.params.email, req.query);
+      const email = clientEmailFrom(req, req.params.email);
+      const result = await clientNotificationsService.getClientNotifications(email, req.query);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -292,7 +317,8 @@ export class PublicController {
 
   async markNotificationRead(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await clientNotificationsService.markNotificationRead(req.params.id);
+      const email = clientEmailFrom(req);
+      const result = await clientNotificationsService.markNotificationRead(req.params.id, email);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -302,7 +328,8 @@ export class PublicController {
 
   async getFamilyMembers(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await familyMembersService.getFamilyMembers(req.params.email);
+      const email = clientEmailFrom(req, req.params.email);
+      const result = await familyMembersService.getFamilyMembers(email);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -312,7 +339,8 @@ export class PublicController {
 
   async createFamilyMember(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await familyMembersService.createFamilyMember(req.body);
+      const email = clientEmailFrom(req, (req.body as any)?.clientEmail);
+      const result = await familyMembersService.createFamilyMember({ ...req.body, clientEmail: email });
       res.status(201).json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -322,7 +350,8 @@ export class PublicController {
 
   async updateFamilyMember(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await familyMembersService.updateFamilyMember(req.params.id, req.body);
+      const email = clientEmailFrom(req, (req.body as any)?.clientEmail);
+      const result = await familyMembersService.updateFamilyMember(req.params.id, { ...req.body, clientEmail: email });
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -332,7 +361,8 @@ export class PublicController {
 
   async deleteFamilyMember(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await familyMembersService.deleteFamilyMember(req.params.id, req.query);
+      const email = clientEmailFrom(req, (req.query as any)?.clientEmail);
+      const result = await familyMembersService.deleteFamilyMember(req.params.id, { ...req.query, clientEmail: email });
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -442,7 +472,8 @@ export class PublicController {
 
   async getClientFavorites(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await favoritesService.getClientFavorites(req.params.email);
+      const email = clientEmailFrom(req, req.params.email);
+      const result = await favoritesService.getClientFavorites(email);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -452,7 +483,8 @@ export class PublicController {
 
   async addFavorite(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await favoritesService.addFavorite(req.body);
+      const email = clientEmailFrom(req, (req.body as any)?.clientEmail);
+      const result = await favoritesService.addFavorite({ ...req.body, clientEmail: email });
       res.status(201).json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -462,7 +494,8 @@ export class PublicController {
 
   async updateClientProfile(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await clientAccountService.updateClientProfile(req.params.email, req.body);
+      const email = clientEmailFrom(req, req.params.email);
+      const result = await clientAccountService.updateClientProfile(email, req.body);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -472,7 +505,8 @@ export class PublicController {
 
   async getClientProfile(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await clientAccountService.getClientProfile(req.params.email);
+      const email = clientEmailFrom(req, req.params.email);
+      const result = await clientAccountService.getClientProfile(email);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -482,7 +516,8 @@ export class PublicController {
 
   async sendClientPasswordCode(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await clientAccountService.sendClientPasswordCode(req.params.email, req.body);
+      const email = clientEmailFrom(req, req.params.email);
+      const result = await clientAccountService.sendClientPasswordCode(email, req.body);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -492,7 +527,8 @@ export class PublicController {
 
   async changeClientPassword(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await clientAccountService.changeClientPassword(req.params.email, req.body);
+      const email = clientEmailFrom(req, req.params.email);
+      const result = await clientAccountService.changeClientPassword(email, req.body);
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;
@@ -502,7 +538,8 @@ export class PublicController {
 
   async removeFavorite(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await favoritesService.removeFavorite(req.params.id, req.query);
+      const email = clientEmailFrom(req, (req.query as any)?.clientEmail);
+      const result = await favoritesService.removeFavorite(req.params.id, { ...req.query, clientEmail: email });
       res.json(result);
     } catch (error) {
       if (handlePublicError(error, res, next)) return;

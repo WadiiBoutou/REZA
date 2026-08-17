@@ -1,6 +1,6 @@
 import { Camera, Venus, Mars } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
-import SaveModal from './dialogue/savemodal';
+import SaveModal from './modals/SaveModal';
 import api from '../../lib/api';
 import { useAuth } from '../../context/AuthContext';
 import { isValidMoroccanPhone, getMoroccanPhoneError, normalizeMoroccanPhone } from '../../lib/utils';

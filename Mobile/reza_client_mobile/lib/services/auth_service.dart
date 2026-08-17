@@ -22,7 +22,9 @@ class AuthService {
       clientData['email'] = email.trim();
     }
     final client = SessionUser.fromJson(clientData);
-    await sessionStore.save(client);
+    // Persist the session token (secure storage) alongside the profile.
+    final token = res['token'] as String?;
+    await sessionStore.save(client, token: token);
     return client;
   }
 

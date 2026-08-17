@@ -92,56 +92,6 @@ class DiscoveryService {
     );
     return List<String>.from((res['slots'] as List?) ?? []);
   }
-
-  /// Calls the backend employee-availability endpoint.
-  /// Returns: { "employees": [...], "services": [...] }
-  Future<Map<String, dynamic>> getEmployeeAvailability({
-    required String tenantId,
-    required String date,
-    required String startTime,
-    required List<String> serviceIds,
-    List<Map<String, dynamic>>? existingParticipants,
-  }) async {
-    final qs = StringBuffer('date=${Uri.encodeQueryComponent(date)}');
-    qs.write('&startTime=${Uri.encodeQueryComponent(startTime)}');
-    for (final id in serviceIds) {
-      qs.write('&serviceIds=${Uri.encodeQueryComponent(id)}');
-    }
-    if (existingParticipants != null && existingParticipants.isNotEmpty) {
-      final body = <String, dynamic>{
-        'date': date,
-        'startTime': startTime,
-        'serviceIds': serviceIds,
-        'existingParticipants': existingParticipants,
-      };
-      final res = await apiClient.post(
-        '/public/tenant/$tenantId/employee-availability',
-        body,
-      );
-      return res;
-    }
-    final res = await apiClient.get(
-      '/public/tenant/$tenantId/employee-availability?$qs',
-    );
-    return res;
-  }
-
-  /// Validates adding a new participant against existing locked constraints.
-  /// POST /public/tenant/:tenantId/validate-participant
-  /// Returns: { valid, conflict, message?, assignments? }
-  Future<Map<String, dynamic>> validateParticipant({
-    required String tenantId,
-    required String date,
-    required List<Map<String, dynamic>> participants,
-    required Map<String, dynamic> newParticipant,
-  }) async {
-    final body = <String, dynamic>{
-      'date': date,
-      'participants': participants,
-      'newParticipant': newParticipant,
-    };
-    return apiClient.post('/public/tenant/$tenantId/validate-participant', body);
-  }
 }
 
 final discoveryService = DiscoveryService();

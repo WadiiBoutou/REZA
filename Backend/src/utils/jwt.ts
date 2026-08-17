@@ -17,10 +17,13 @@ const JWT_SECRET = resolveJwtSecret();
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 export interface JWTPayload {
-  userId: string;
+  /** Staff tokens carry the user id; client tokens carry clientId instead. */
+  userId?: string;
   email: string;
   tenantId?: string;
   role: string;
+  /** Client-facing tokens carry the platform client account id instead of userId/tenantId. */
+  clientId?: string;
 }
 
 export const generateToken = (payload: JWTPayload): string => {

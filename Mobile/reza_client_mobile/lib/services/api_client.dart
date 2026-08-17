@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
@@ -12,11 +13,31 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+typedef TokenGetter = Future<String?> Function();
+typedef OnUnauthorized = Future<void> Function();
+
 class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
   String get _base => ApiConfig.baseUrl;
+
+  /// Supplies the client session token (secure storage). Attached to every
+  /// request as a Bearer token. Wired by AuthViewModel.
+  TokenGetter? tokenGetter;
+  OnUnauthorized? onUnauthorized;
+
+  Future<Map<String, String>> _headers() async {
+    final h = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    final token = await tokenGetter?.call();
+    if (token != null && token.isNotEmpty) {
+      h['Authorization'] = 'Bearer $token';
+    }
+    return h;
+  }
 
   Future<Map<String, dynamic>> get(String path, {Map<String, String>? query}) async {
     final parsed = Uri.parse('$_base$path');
@@ -26,8 +47,9 @@ class ApiClient {
             ...parsed.queryParameters,
             ...query,
           });
-    final res = await _client.get(uri, headers: _headers);
-    return _decode(res);
+    final headers = await _headers();
+    final res = await _client.get(uri, headers: headers);
+    return _decode(res, hadToken: headers.containsKey('Authorization'));
   }
 
   Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body, {Map<String, String>? query}) async {
@@ -38,12 +60,13 @@ class ApiClient {
             ...parsed.queryParameters,
             ...query,
           });
+    final headers = await _headers();
     final res = await _client.post(
       uri,
-      headers: _headers,
+      headers: headers,
       body: jsonEncode(body),
     );
-    return _decode(res);
+    return _decode(res, hadToken: headers.containsKey('Authorization'));
   }
 
   Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body, {Map<String, String>? query}) async {
@@ -54,27 +77,30 @@ class ApiClient {
             ...parsed.queryParameters,
             ...query,
           });
+    final headers = await _headers();
     final res = await _client.put(
       uri,
-      headers: _headers,
+      headers: headers,
       body: jsonEncode(body),
     );
-    return _decode(res);
+    return _decode(res, hadToken: headers.containsKey('Authorization'));
   }
 
   Future<Map<String, dynamic>> patch(String path, [Map<String, dynamic>? body]) async {
+    final headers = await _headers();
     final res = await _client.patch(
       Uri.parse('$_base$path'),
-      headers: _headers,
+      headers: headers,
       body: body == null ? null : jsonEncode(body),
     );
-    return _decode(res);
+    return _decode(res, hadToken: headers.containsKey('Authorization'));
   }
 
   Future<Map<String, dynamic>> delete(String path, {Map<String, String>? query}) async {
     final uri = Uri.parse('$_base$path').replace(queryParameters: query);
-    final res = await _client.delete(uri, headers: _headers);
-    return _decode(res);
+    final headers = await _headers();
+    final res = await _client.delete(uri, headers: headers);
+    return _decode(res, hadToken: headers.containsKey('Authorization'));
   }
 
   /// Multipart file upload (e.g. avatar) — POSTs `file` as the `avatar` field.
@@ -93,12 +119,7 @@ class ApiClient {
     return _decode(res);
   }
 
-  Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-
-  Map<String, dynamic> _decode(http.Response res) {
+  Map<String, dynamic> _decode(http.Response res, {bool hadToken = false}) {
     Map<String, dynamic> json = {};
     if (res.body.isNotEmpty) {
       final decoded = jsonDecode(res.body);
@@ -107,6 +128,12 @@ class ApiClient {
       } else if (decoded is List) {
         json = {'data': decoded};
       }
+    }
+    if (res.statusCode == 401 && hadToken) {
+      // Expired/invalid session on an AUTHENTICATED call — clear the stored
+      // session so the user is prompted to re-login (mirrors the Pro app's
+      // 401 handling). A bare 401 (e.g. failed login) never triggers this.
+      unawaited(onUnauthorized?.call());
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw ApiException(

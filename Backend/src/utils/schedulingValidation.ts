@@ -200,7 +200,8 @@ export async function findOverlappingAppointment(params: {
 }) {
   const { tenantId, employeeId, startTime, endTime, excludeAppointmentId } = params;
 
-  return prisma.appointment.findFirst({
+  // Legacy top-level assignment blocks the employee (existing behavior).
+  const topLevel = await prisma.appointment.findFirst({
     where: {
       tenantId,
       employeeId,
@@ -211,6 +212,29 @@ export async function findOverlappingAppointment(params: {
     },
     select: { id: true, startTime: true, endTime: true },
   });
+  if (topLevel) return topLevel;
+
+  // Per-service assignments: public bookings store the employee on
+  // AppointmentServiceItem.employeeId with the top-level field null, so
+  // explicit-employee conflicts against them are only visible here.
+  // Same full-window convention as the shared feasibility core
+  // (buildOccupiedRanges: each service-item assignment blocks the employee
+  // for the whole appointment window).
+  const item = await prisma.appointmentServiceItem.findFirst({
+    where: {
+      employeeId,
+      appointment: {
+        tenantId,
+        status: { in: [...ACTIVE_APPOINTMENT_STATUSES] },
+        ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
+        startTime: { lt: endTime },
+        endTime: { gt: startTime },
+      },
+    },
+    select: { appointment: { select: { id: true, startTime: true, endTime: true } } },
+  });
+  if (item) return item.appointment;
+  return null;
 }
 
 export async function findTenantWideOverlappingAppointment(params: {

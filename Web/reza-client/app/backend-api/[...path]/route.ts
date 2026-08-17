@@ -31,8 +31,9 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
     if (upstreamType) outHeaders.set('content-type', upstreamType);
     return new Response(body, { status: upstream.status, headers: outHeaders });
   } catch {
+    console.error('[proxy] Backend unavailable at', BACKEND);
     return Response.json(
-      { message: 'Backend unavailable. Start API on port 5000.' },
+      { error: 'Backend unavailable', message: 'Le service est temporairement indisponible. Veuillez réessayer.' },
       { status: 502 }
     );
   }

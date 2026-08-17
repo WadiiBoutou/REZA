@@ -4,6 +4,7 @@ import { comparePassword, hashPassword } from '../../../utils/password';
 import { sendMail } from '../../../utils/mailer';
 import { HttpError } from '../../../lib/errors';
 import { isValidPhone, phoneError } from '../../../utils/phone';
+import { generateToken } from '../../../utils/jwt';
 
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes — recommended for password resets
 const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — recommended for email confirmation
@@ -171,8 +172,15 @@ export class ClientAuthService {
     });
 
     // The confirmation link proves email ownership — return the full client so
-    // the frontend can sign the user in immediately (no password needed).
+    // the frontend can sign the user in immediately (no password needed), with
+    // a session token so the signed-in session is fully authenticated.
+    const sessionToken = generateToken({
+      clientId: client.id,
+      email: client.email || '',
+      role: 'CLIENT',
+    });
     return {
+      token: sessionToken,
       message: 'Email vérifié avec succès. Vous êtes maintenant connecté.',
       client: {
         id: client.id,
@@ -512,8 +520,17 @@ export class ClientAuthService {
       });
     }
 
-    // Return client data (without sensitive information)
+    // Issue a real client session token. The token (NOT the email) is the
+    // identity every /client/:email + mutation endpoint verifies from now on.
+    const token = generateToken({
+      clientId: client.id,
+      email: client.email || '',
+      role: 'CLIENT',
+    });
+
+    // Return client data (without sensitive information) + the session token
     return {
+      token,
       client: {
         id: client.id,
         email: client.email,

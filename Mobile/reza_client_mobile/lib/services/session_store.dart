@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SessionUser {
@@ -43,6 +44,11 @@ class SessionUser {
 class SessionStore {
   static const _key = 'reza_user';
 
+  /// The client session token lives in platform secure storage (Keychain /
+  /// Keystore), never in plaintext SharedPreferences.
+  static const _tokenKey = 'reza_client_token';
+  static const _secureStorage = FlutterSecureStorage();
+
   Future<SessionUser?> load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);
@@ -55,12 +61,20 @@ class SessionStore {
     }
   }
 
-  Future<void> save(SessionUser user) async {
+  Future<String?> getToken() async {
+    return _secureStorage.read(key: _tokenKey);
+  }
+
+  Future<void> save(SessionUser user, {String? token}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_key, jsonEncode(user.toJson()));
+    if (token != null && token.isNotEmpty) {
+      await _secureStorage.write(key: _tokenKey, value: token);
+    }
   }
 
   Future<void> clear() async {
+    await _secureStorage.delete(key: _tokenKey);
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
   }

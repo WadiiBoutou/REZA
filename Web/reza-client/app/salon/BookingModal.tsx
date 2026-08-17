@@ -266,7 +266,6 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const [resolveLoading, setResolveLoading] = useState(false);
   const [resolvingEmployees, setResolvingEmployees] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const resolveCounterRef = useRef(0);
   const applyingResolvedStateRef = useRef(false);
   
@@ -1415,13 +1414,13 @@ const BookingModal: React.FC<BookingModalProps> = ({
         setIsLoading(false);
         setErrors({ booking: true });
         
-        const errorMessage = err.message || '';
-        if (errorMessage.includes('Online booking closed') || 
-            errorMessage.includes('réservations disabled') ||
-            errorMessage.includes('fermée')) {
+        // Match on the backend's stable error CODE (never message wording — the
+        // copy may change). The API layer surfaces the parsed body on err.data.
+        const errorCode = err?.data?.error;
+        if (errorCode === 'Online reservations disabled') {
           setError('La prise de rendez-vous en ligne est actuellement fermée. Veuillez contacter l\'établissement directement.');
         } else {
-          setError(errorMessage || 'Erreur lors de la réservation. Veuillez réessayer.');
+          setError(err.message || 'Erreur lors de la réservation. Veuillez réessayer.');
         }
       }
     }

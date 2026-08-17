@@ -1106,7 +1106,7 @@ export default function SalonDetail() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     {salonData.images.map((img: string, idx: number) => (
                       <div key={idx} className="aspect-square rounded-2xl overflow-hidden border border-gray-100 shadow-sm cursor-pointer group" onClick={() => { setSelectedImage(idx); setShowLightbox(true); }}>
-                        <img src={img} alt={`Portfolio ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <img src={img} alt={`Portfolio ${idx + 1}`} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                       </div>
                     ))}
                   </div>

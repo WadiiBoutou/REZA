@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import api from '../lib/api';
+import api, { setClientAuthToken, setOnClientUnauthorized } from '../lib/api';
 
 interface User {
   email: string;
@@ -19,7 +19,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
   /** Sign the user in right after clicking the email confirmation link. */
-  connectAfterVerification: (client: { email: string; firstName?: string | null; lastName?: string | null; phone?: string | null }) => void;
+  connectAfterVerification: (client: { email: string; firstName?: string | null; lastName?: string | null; phone?: string | null }, token?: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,17 +32,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Load session after mount — avoids SSR/client localStorage mismatch.
   // Persistent sessions live in localStorage ("Rester connecté" checked),
   // short-lived ones in sessionStorage (cleared when the tab closes).
+  // The auth TOKEN is stored in the same storage as the profile and restored
+  // here so authenticated API calls carry it automatically.
   React.useEffect(() => {
+    const clearAll = () => {
+      localStorage.removeItem('user');
+      localStorage.removeItem('auth_token');
+      sessionStorage.removeItem('user');
+      sessionStorage.removeItem('auth_token');
+    };
     try {
       const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user');
-      if (storedUser) {
+      const storedToken = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+      if (storedUser && storedToken) {
         setUser(JSON.parse(storedUser));
         setIsAuthenticated(true);
+        setClientAuthToken(storedToken);
+      } else if (storedUser) {
+        // Profile without a session token (pre-auth-fix install) — force re-login.
+        clearAll();
+        setUser(null);
+        setIsAuthenticated(false);
       }
     } catch {
-      localStorage.removeItem('user');
-      sessionStorage.removeItem('user');
+      clearAll();
     }
+    // Expired/invalid sessions on any authenticated call → log out cleanly.
+    setOnClientUnauthorized(() => {
+      clearAll();
+      setUser(null);
+      setIsAuthenticated(false);
+      setClientAuthToken(null);
+    });
   }, []);
 
   const login = useCallback(async (email: string, password?: string, rememberMe: boolean = true): Promise<{ success: boolean; error?: string }> => {
@@ -60,6 +81,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await api.clientLogin(email.trim(), password.trim());
       
       if (response.client) {
+        if (!response.token) {
+          setLoading(false);
+          return { success: false, error: 'Erreur de connexion. Veuillez réessayer.' };
+        }
         const userData: User = {
           email: response.client.email || email.trim(),
           name: `${response.client.firstName || ''} ${response.client.lastName || ''}`.trim() || email.trim().split('@')[0],
@@ -71,13 +96,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         // "Rester connecté": persist across browser restarts (localStorage),
         // otherwise keep the session only for this tab (sessionStorage).
+        // The session TOKEN lives in the same storage as the profile.
         const storage = rememberMe ? localStorage : sessionStorage;
         storage.setItem('user', JSON.stringify(userData));
+        storage.setItem('auth_token', response.token);
         if (rememberMe) {
           sessionStorage.removeItem('user');
+          sessionStorage.removeItem('auth_token');
         } else {
           localStorage.removeItem('user');
+          localStorage.removeItem('auth_token');
         }
+        setClientAuthToken(response.token);
         setUser(userData);
         setIsAuthenticated(true);
         setLoading(false);
@@ -96,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Called by the /verify-email page after the confirmation link is clicked.
   // The link proves email ownership, so the user is signed in immediately.
-  const connectAfterVerification = useCallback((client: { email: string; firstName?: string | null; lastName?: string | null; phone?: string | null }) => {
+  const connectAfterVerification = useCallback((client: { email: string; firstName?: string | null; lastName?: string | null; phone?: string | null }, token?: string) => {
     const email = client.email || '';
     const userData: User = {
       email,
@@ -108,13 +138,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     localStorage.setItem('user', JSON.stringify(userData));
     sessionStorage.removeItem('user');
+    if (token) {
+      localStorage.setItem('auth_token', token);
+      sessionStorage.removeItem('auth_token');
+      setClientAuthToken(token);
+    }
     setUser(userData);
     setIsAuthenticated(true);
   }, []);
 
   const logout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('auth_token');
     sessionStorage.removeItem('user');
+    sessionStorage.removeItem('auth_token');
+    setClientAuthToken(null);
     setUser(null);
     setIsAuthenticated(false);
   };

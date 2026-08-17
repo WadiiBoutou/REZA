@@ -1,6 +1,6 @@
 import { Star, Calendar, MapPin, Trash2 } from 'lucide-react';
 import React, { useState } from 'react';
-import DeleteModal from './dialogue/deletemodal';
+import DeleteModal from './modals/DeleteModal';
 import { getImageUrl } from '../../lib/utils';
 
 type Review = {

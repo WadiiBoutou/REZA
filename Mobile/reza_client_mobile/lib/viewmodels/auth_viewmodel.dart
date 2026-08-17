@@ -1,11 +1,19 @@
 import 'package:flutter/foundation.dart';
 import '../services/account_service.dart';
+import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/session_store.dart';
 
 class AuthViewModel extends ChangeNotifier {
   SessionUser? _user;
   bool _loading = true;
+
+  AuthViewModel() {
+    // Wire the client session token into every API call and handle expired
+    // sessions by logging out (mirrors the Pro app's token handling).
+    apiClient.tokenGetter = () => sessionStore.getToken();
+    apiClient.onUnauthorized = logout;
+  }
 
   SessionUser? get user => _user;
   bool get isAuthenticated => _user != null;

@@ -101,10 +101,24 @@ export class ClientNotificationsService {
   }
   }
 
-  async markNotificationRead(id: string) {
+  async markNotificationRead(id: string, email: string) {
     try {
-    
-    // Verify notification exists
+    if (!email) {
+      throw new HttpError(400, {
+        error: 'Email required',
+        message: 'Veuillez fournir votre adresse email.'
+      });
+    }
+
+    // Resolve all client rows for this identity (a person may have booking-created
+    // rows in several salons plus their platform account row).
+    const clients = await prisma.client.findMany({
+      where: { email: email.trim().toLowerCase() },
+      select: { id: true },
+    });
+    const clientIds = clients.map((c) => c.id);
+
+    // Verify the notification exists AND belongs to this client (metadata.clientId).
     const notification = await prisma.notification.findFirst({
       where: {
         id,
@@ -116,6 +130,14 @@ export class ClientNotificationsService {
     if (!notification) {
       throw new HttpError(404, {
         error: 'Notification not found'
+      });
+    }
+
+    const metadata = notification.metadata as any;
+    if (!metadata?.clientId || !clientIds.includes(metadata.clientId)) {
+      throw new HttpError(403, {
+        error: 'Forbidden',
+        message: 'Vous ne pouvez pas modifier cette notification.'
       });
     }
 
