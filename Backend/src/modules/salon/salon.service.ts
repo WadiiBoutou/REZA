@@ -144,6 +144,19 @@ export class SalonService {
       };
     }
 
+    // One establishment name = one salon (product rule: names are unique).
+    const nameTaken = await prisma.tenant.findFirst({
+      where: { name: { equals: input.name.trim(), mode: 'insensitive' } },
+      select: { id: true }
+    });
+    if (nameTaken) {
+      throw {
+        status: 409,
+        error: 'Tenant name exists',
+        message: 'Un établissement avec ce nom existe déjà. Choisissez un autre nom.'
+      };
+    }
+
     // New salons are NEVER auto-covered: the one-time salon fee is paid per
     // salon, so a freshly created salon stays hidden from clients until the
     // owner declares + superadmin approves coverage for it specifically.
@@ -287,6 +300,24 @@ export class SalonService {
 
     if (touchedPublic) {
       assertSalonComplete(next);
+    }
+
+    // Renaming must not collide with another establishment's name.
+    if (input.name !== undefined && input.name.trim().toLowerCase() !== tenant.name.trim().toLowerCase()) {
+      const nameTaken = await prisma.tenant.findFirst({
+        where: {
+          name: { equals: input.name.trim(), mode: 'insensitive' },
+          id: { not: salonId },
+        },
+        select: { id: true },
+      });
+      if (nameTaken) {
+        throw {
+          status: 409,
+          error: 'Tenant name exists',
+          message: 'Un établissement avec ce nom existe déjà. Choisissez un autre nom.'
+        };
+      }
     }
 
     const updated = await prisma.tenant.update({

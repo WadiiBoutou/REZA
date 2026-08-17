@@ -139,40 +139,46 @@ export class AuthService {
   }
 
   async register(input: RegisterInput) {
-    // Self-signup creates a brand-new tenant, so the per-tenant duplicate check
-    // further down can never fire for it (each attempt has a fresh tenantId).
-    // Email is the global login identity (login looks it up across tenants), so
-    // guard the createTenant path globally: one email = one account.
-    if (input.createTenant) {
-      const existingGlobal = await prisma.user.findFirst({
-        where: { email: { equals: input.email, mode: 'insensitive' } },
-        select: { id: true, email: true, firstName: true, lastName: true, verifyEmailToken: true }
-      });
-      if (existingGlobal) {
-        if (existingGlobal.verifyEmailToken) {
-          // Same email, still unverified (user signed up but never confirmed).
-          // Do NOT create a second account/tenant — resend the confirmation
-          // email to the existing account and return the standard success shape
-          // so the user just sees the "confirm your email" prompt again.
-          await this.resendVerificationEmail({ email: existingGlobal.email });
-          return {
-            requiresEmailVerification: true,
-            message:
-              'Un email de confirmation a été envoyé. Vérifiez votre boîte de réception pour activer votre compte.'
-          };
-        }
+    // One account = one email, enforced globally on BOTH registration paths
+    // (self-signup and staff invite). Email is the login identity — login
+    // looks it up across tenants — so a duplicate account would make login
+    // ambiguous and let one user silently own two accounts/salons.
+    const existingGlobal = await prisma.user.findFirst({
+      where: { email: { equals: input.email, mode: 'insensitive' } },
+      select: { id: true, email: true, tenantId: true, role: true, verifyEmailToken: true }
+    });
+
+    if (existingGlobal) {
+      if (!existingGlobal.verifyEmailToken) {
+        // Email already confirmed: can never create another account with it.
         throw {
           status: 409,
           error: 'User exists',
           message: 'Un compte existe déjà avec cette adresse email. Veuillez vous connecter.'
         };
       }
+      // Pending (unverified) account: the LATEST registration wins. Cancel the
+      // old pending account so only the new info + new confirmation link work.
+      await this.cancelPendingRegistration(existingGlobal);
+      log.log(`[Register] Cancelled previous unverified account for ${input.email} — latest registration wins.`);
     }
 
     let tenantId: string;
     let tenant: { id: string; name: string; isActive: boolean } | null = null;
 
     if (input.createTenant && input.tenantName && input.tenantEmail) {
+      // One establishment name = one salon (product rule: names are unique).
+      const nameTaken = await prisma.tenant.findFirst({
+        where: { name: { equals: input.tenantName.trim(), mode: 'insensitive' } },
+        select: { id: true }
+      });
+      if (nameTaken) {
+        throw {
+          status: 409,
+          error: 'Tenant name exists',
+          message: 'Un établissement avec ce nom existe déjà. Choisissez un autre nom.'
+        };
+      }
       const tags: string[] = [];
       if (input.businessType) {
         tags.push(input.businessType);
@@ -347,6 +353,35 @@ export class AuthService {
           : null
       }
     };
+  }
+
+  /**
+   * Cancel a pending (unverified) registration so a re-registration with the
+   * same email can proceed cleanly ("latest wins"). Only the user row is
+   * deleted, unless their tenant is a safe-to-delete auto-created shell from a
+   * previous self-signup attempt (unverified ADMIN, no data, sole user).
+   */
+  private async cancelPendingRegistration(user: {
+    id: string;
+    tenantId: string | null;
+    role: string;
+  }) {
+    if (user.tenantId && user.role === 'ADMIN') {
+      const [users, services, clients, appointments] = await Promise.all([
+        prisma.user.count({ where: { tenantId: user.tenantId } }),
+        prisma.service.count({ where: { tenantId: user.tenantId } }),
+        prisma.client.count({ where: { tenantId: user.tenantId } }),
+        prisma.appointment.count({ where: { tenantId: user.tenantId } }),
+      ]);
+      const soleUser = users === 1;
+      const empty = services === 0 && clients === 0 && appointments === 0;
+      if (soleUser && empty) {
+        // Auto-created shell tenant — deleting it cascades the old user.
+        await prisma.tenant.delete({ where: { id: user.tenantId } }).catch(() => {});
+        return;
+      }
+    }
+    await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
   }
 
   /**

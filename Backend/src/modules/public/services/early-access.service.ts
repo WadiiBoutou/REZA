@@ -91,6 +91,18 @@ export class EarlyAccessService {
         });
       }
 
+      // One establishment name = one salon (product rule: names are unique).
+      const nameTaken = await prisma.tenant.findFirst({
+        where: { name: { equals: data.establishment.trim(), mode: 'insensitive' } },
+        select: { id: true }
+      });
+      if (nameTaken) {
+        throw new HttpError(409, {
+          error: 'Tenant name exists',
+          message: 'Un établissement avec ce nom existe déjà. Choisissez un autre nom.'
+        });
+      }
+
       // Create Tenant (organization/establishment)
       const tenant = await prisma.tenant.create({
         data: {
