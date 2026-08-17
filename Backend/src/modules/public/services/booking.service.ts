@@ -476,6 +476,16 @@ export class BookingService {
 
             if (se.employeeId) {
               // CLIENT EXPLICITLY CHOSE AN EMPLOYEE → validate, never silently reassign
+              if (!se.userEmployeeId) {
+                // Chosen employee has no email and no matching User record — they
+                // can never be stored on an appointment, so reject with a clear
+                // message instead of the misleading "no employee selected".
+                const empName = employeeNameMap.get(se.employeeId) || se.employeeId;
+                throw new HttpError(400, {
+                  error: 'Employee not assignable',
+                  message: `${empName} n'est pas disponible pour la réservation en ligne.`,
+                });
+              }
               const conflictRange = (() => {
                 const ids = [se.employeeId];
                 if (se.userEmployeeId) ids.push(se.userEmployeeId);
@@ -1955,6 +1965,12 @@ export class BookingService {
             }
 
             const uid = employeeToUserMap.get(emp.id) ?? null;
+            // Employee with no email and no matching User record can never be
+            // stored on an appointment (AppointmentServiceItem.employeeId → User).
+            if (!uid && !emp.email) {
+              ineligibleReasons.push({ employeeId: emp.id, reason: 'aucun compte utilisateur associé' });
+              return false;
+            }
             if (isOccupiedByExisting(emp.id, uid, intervalStart, intervalEnd)) {
               ineligibleReasons.push({ employeeId: emp.id, reason: 'déjà réservé sur cet intervalle' });
               return false;

@@ -1152,23 +1152,16 @@ const BookingModal: React.FC<BookingModalProps> = ({
           setStep2Phase(1);
           return;
         } else {
-          // Sans préférence — resolve employees before date step
+          // Sans préférence — keep 'any' so the backend auto-assigns the best
+          // available employee at booking time. Never resolve client-side: the
+          // client cannot know real availability or whether an employee can be
+          // assigned (employees without a User account are not bookable).
           setPerServiceEmployeeSelections(prev => {
             const updated = { ...prev };
             for (const svc of selectedServices) {
               const key = svc.id || svc.name;
-              if (key && (!updated[key] || updated[key] === 'any')) {
-                const capableEmps = employees.filter((emp: Employee) => {
-                  if (!emp.services || emp.services.length === 0) return true;
-                  return emp.services.some(
-                    (es: any) =>
-                      (typeof es === 'string' && (es === svc.id || es === svc.name)) ||
-                      (es.serviceId === svc.id) || (es.serviceId === svc.name) || (es.name === svc.name)
-                  );
-                });
-                if (capableEmps.length > 0) {
-                  updated[key] = capableEmps[0].id;
-                }
+              if (key && updated[key] === undefined) {
+                updated[key] = 'any';
               }
             }
             return updated;
@@ -1177,31 +1170,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
           return;
         }
       } else {
-        // Phase 1 — resolve any remaining 'any' selections before date step
-        setPerServiceEmployeeSelections(prev => {
-          const updated = { ...prev };
-          let changed = false;
-          for (const [key, empId] of Object.entries(updated)) {
-            if (empId === 'any') {
-              const svc = selectedServices.find(s => (s.id || s.name) === key);
-              if (svc) {
-                const capableEmps = employees.filter((emp: Employee) => {
-                  if (!emp.services || emp.services.length === 0) return true;
-                  return emp.services.some(
-                    (es: any) =>
-                      (typeof es === 'string' && (es === svc.id || es === svc.name)) ||
-                      (es.serviceId === svc.id) || (es.serviceId === svc.name) || (es.name === svc.name)
-                  );
-                });
-                if (capableEmps.length > 0) {
-                  updated[key] = capableEmps[0].id;
-                  changed = true;
-                }
-              }
-            }
-          }
-          return changed ? updated : prev;
-        });
+        // Phase 1 — leave any remaining 'any' selections as-is: the backend
+        // auto-assigns the best available employee at booking time.
         setBookingStep(3);
         return;
       }

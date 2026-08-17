@@ -70,6 +70,9 @@ const REASON_BREAK = 'En pause';
 const REASON_BOOKED = 'Déjà occupé';
 const REASON_INACTIF = 'INACTIF';
 const REASON_VACATION = 'VACATION';
+// Employee has no email and no matching User record: appointments store User ids
+// (AppointmentServiceItem.employeeId → User), so this employee can never be assigned.
+const REASON_NO_USER = 'Compte non rattaché';
 
 function formatBreakReason(range: string): string {
   return `${REASON_BREAK} (${range})`;
@@ -276,6 +279,20 @@ export class SchedulingService {
             available: false,
             recommended: false,
             reason: REASON_BOOKED,
+          });
+          continue;
+        }
+
+        // Employees with no email and no matching User record can never be
+        // stored on an appointment (AppointmentServiceItem.employeeId → User).
+        // Don't present them as bookable.
+        if (!userId && !emp.email) {
+          serviceEmployees.push({
+            employeeId: emp.id,
+            employeeName: `${emp.firstName} ${emp.lastName}`,
+            available: false,
+            recommended: false,
+            reason: REASON_NO_USER,
           });
           continue;
         }
@@ -644,6 +661,7 @@ export class SchedulingService {
         if (breakReason) continue;
 
         const userId = employeeToUserMap.get(emp.id) ?? null;
+        if (!userId && !emp.email) continue;
         if (isOccupied(occupiedRanges, emp.id, userId, cursor, serviceEnd)) continue;
 
         found = true;
@@ -749,6 +767,9 @@ export class SchedulingService {
       if (breakReason) continue;
 
       const userId = employeeToUserMap.get(emp.id) ?? null;
+      // Skip employees that can never be assigned to an appointment (no email,
+      // no matching User record) — auto-assign must never pick them.
+      if (!userId && !emp.email) continue;
       if (isOccupied(occupiedRanges, emp.id, userId, startMinutes, endMinutes)) continue;
 
       const totalMinutes = (whEnd - whStart) - getBreakMinutes(emp.workingHours as WorkingHoursDay[] | null, dayIndex, { start: whStart, end: whEnd });
@@ -883,6 +904,17 @@ export class SchedulingService {
         }
 
         const userId = validateUserMap.get(assignment.employeeId) ?? null;
+
+        // Hard impossibility, not a soft conflict: an employee with no email and
+        // no matching User record cannot be stored on an appointment at all.
+        if (!userId && !emp.email) {
+          errors.push({
+            serviceId: assignment.serviceId,
+            message: `${emp.firstName} ${emp.lastName} n'a pas de compte utilisateur associé — ajoutez un email au collaborateur pour pouvoir l'assigner.`,
+          });
+          cursor = serviceEnd;
+          continue;
+        }
 
         if (userId) {
           const dayStart = new Date(dayDate);
