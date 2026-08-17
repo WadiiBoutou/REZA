@@ -566,27 +566,6 @@ const GestionHoraires = () => {
                 ))}
               </div>
 
-              {/* Bulk pause — add the same pause to every open day at once */}
-              <div className="flex flex-wrap items-center gap-3 p-4 bg-[#002366]/[0.04] border border-dashed border-[#002366]/25 rounded-xl mb-4">
-                <Clock size={16} className="text-[#002366] shrink-0" />
-                <span className="text-sm font-medium text-gray-800">Ajouter une pause à tous les jours ouverts :</span>
-                <TimePicker
-                  value={bulkBreakStart}
-                  onChange={(value) => setBulkBreakStart(value)}
-                />
-                <span className="text-gray-400">-</span>
-                <TimePicker
-                  value={bulkBreakEnd}
-                  onChange={(value) => setBulkBreakEnd(value)}
-                />
-                <button
-                  onClick={addBreakToAllDays}
-                  className="text-sm font-medium text-[#002366] hover:text-gray-800 underline ml-auto"
-                >
-                  Appliquer à tous
-                </button>
-              </div>
-
               {/* Schedule Details */}
               <div className="space-y-4">
                 {schedules.filter(s => s.isOpen).map((schedule, index) => {
@@ -650,6 +629,27 @@ const GestionHoraires = () => {
                   );
                 })}
               </div>
+            </div>
+
+            {/* Bulk pause — add the same pause to every open day at once */}
+            <div className="flex flex-wrap items-center gap-3 p-4 bg-[#002366]/[0.04] border border-dashed border-[#002366]/25 rounded-xl">
+              <Clock size={16} className="text-[#002366] shrink-0" />
+              <span className="text-sm font-medium text-gray-800">Ajouter une pause à tous les jours ouverts :</span>
+              <TimePicker
+                value={bulkBreakStart}
+                onChange={(value) => setBulkBreakStart(value)}
+              />
+              <span className="text-gray-400">-</span>
+              <TimePicker
+                value={bulkBreakEnd}
+                onChange={(value) => setBulkBreakEnd(value)}
+              />
+              <button
+                onClick={addBreakToAllDays}
+                className="text-sm font-medium text-[#002366] hover:text-gray-800 underline ml-auto"
+              >
+                Appliquer à tous
+              </button>
             </div>
 
           </div>
