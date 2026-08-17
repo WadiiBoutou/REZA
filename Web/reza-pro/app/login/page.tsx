@@ -99,7 +99,12 @@ function LoginPageContent() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
+  // Avatar is NOT uploaded to Cloudinary when picked — we keep the File locally
+  // (with a local object-URL preview) and only upload it as the final step of
+  // the register submit. This way a cancelled/abandoned signup never leaves an
+  // orphaned image on Cloudinary.
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [organizationName, setOrganizationName] = useState('');
@@ -145,17 +150,13 @@ function LoginPageContent() {
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    try {
-      setUploadingAvatar(true);
-      setError('');
-      const { avatar } = await api.uploadAuthAvatar(file);
-      setAvatarUrl(avatar);
-    } catch (err: any) {
-      setError(err.message || "Erreur lors de l'upload de l'image");
-    } finally {
-      setUploadingAvatar(false);
-      if (e.target) e.target.value = '';
-    }
+    // Deferred upload: just keep the file locally and show a local preview.
+    // Cloudinary upload only happens on submit (see handleSubmit).
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+    setError('');
+    if (e.target) e.target.value = '';
   };
 
   // Pre-fill email from URL parameter
@@ -258,6 +259,22 @@ function LoginPageContent() {
 
       setLoading(true);
       try {
+        // Upload the avatar only now, right before registration finalizes.
+        // If the user cancels/abandons the form earlier, nothing ever reached Cloudinary.
+        let avatarUrl = '';
+        if (avatarFile) {
+          setUploadingAvatar(true);
+          try {
+            const { avatar } = await api.uploadAuthAvatar(avatarFile);
+            avatarUrl = avatar;
+          } catch (uploadErr: any) {
+            setError(uploadErr.message || "Erreur lors de l'upload de l'image");
+            setLoading(false);
+            setUploadingAvatar(false);
+            return;
+          }
+          setUploadingAvatar(false);
+        }
         const result = await register({
           email: email.trim(),
           password,
@@ -291,6 +308,9 @@ function LoginPageContent() {
           setOrganizationName('');
           setCity('');
           setAcceptTerms(false);
+          if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+          setAvatarFile(null);
+          setAvatarPreview(null);
         } else {
           console.error('[Signup] Registration failed:', result.error);
           setError(result.error || 'Erreur lors de la création du compte');
@@ -741,9 +761,9 @@ function LoginPageContent() {
                       className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-dashed border-gray-300 hover:border-[#082259] transition-colors flex items-center justify-center bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                       aria-label="Ajouter une photo de profil"
                     >
-                      {avatarUrl ? (
+                      {avatarPreview ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={avatarUrl} alt="Photo de profil" className="w-full h-full object-cover" />
+                        <img src={avatarPreview} alt="Photo de profil" className="w-full h-full object-cover" />
                       ) : uploadingAvatar ? (
                         <Loader2 className="animate-spin text-gray-400" size={20} />
                       ) : (
