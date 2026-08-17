@@ -6,6 +6,8 @@ import { isValidMoroccanPhone, getMoroccanPhoneError } from '../../lib/utils';
 import CurvySlideButton from '@/components/UI/CurvySlideButton';
 import { Checkbox } from "@/components/UI/checkbox";
 import LoadingOverlay from '@/components/UI/LoadingOverlay';
+import { DatePicker } from '@/components/UI/DatePicker';
+import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -664,7 +666,7 @@ function LoginPageContent() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="firstName" className="block text-sm font-bold text-gray-900 mb-2">
-                        Prénom
+                        Prénom <span className="text-red-500">*</span>
                       </label>
                       <input
                         id="firstName"
@@ -681,7 +683,7 @@ function LoginPageContent() {
                     </div>
                     <div>
                       <label htmlFor="lastName" className="block text-sm font-bold text-gray-900 mb-2">
-                        Nom
+                        Nom <span className="text-red-500">*</span>
                       </label>
                       <input
                         id="lastName"
@@ -793,14 +795,13 @@ function LoginPageContent() {
                       <label htmlFor="dateOfBirth" className="block text-sm font-bold text-gray-900 mb-2">
                         Date de naissance
                       </label>
-                      <input
-                        id="dateOfBirth"
-                        name="dateOfBirth"
-                        type="date"
-                        max={new Date().toISOString().split('T')[0]}
-                        value={dateOfBirth}
-                        onChange={(e) => setDateOfBirth(e.target.value)}
-                        className="w-full px-6 py-3 bg-transparent border border-gray-200 rounded-full focus:ring-1 focus:ring-[#082259] outline-none transition-all text-gray-900 placeholder-gray-400 text-base font-medium"
+                      <DatePicker
+                        value={dateOfBirth ? new Date(dateOfBirth + 'T12:00:00') : undefined}
+                        onChange={(d) => setDateOfBirth(d ? format(d, 'yyyy-MM-dd') : '')}
+                        placeholder="Sélectionner une date"
+                        maxDate={new Date()}
+                        fromYear={1900}
+                        toYear={new Date().getFullYear()}
                       />
                     </div>
                   </>
@@ -809,7 +810,7 @@ function LoginPageContent() {
                 {/* Email Input */}
                 <div>
                   <label htmlFor="email" className="block text-sm font-bold text-gray-900 mb-2">
-                    Email
+                    Email <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <input
@@ -833,7 +834,7 @@ function LoginPageContent() {
                 {/* Password Input */}
                 <div>
                   <label htmlFor="password" className="block text-sm font-bold text-[#000000] mb-2">
-                    Mot de passe
+                    Mot de passe <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <input
@@ -873,7 +874,7 @@ function LoginPageContent() {
                 {mode === 'signup' && (
                   <div>
                     <label htmlFor="confirmPassword" className="block text-sm font-bold text-[#000000] mb-2">
-                      Confirmer le mot de passe
+                      Confirmer le mot de passe <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <input
