@@ -2,6 +2,7 @@ import { Prisma } from '../../../prisma/generated/prisma/client';
 import { prisma } from '../../lib/prisma';
 import { accountService } from '../account/account.service';
 import { isPeriodActive } from '../subscription/subscription.service';
+import { createNotification } from '../../utils/notify';
 import * as log from '../../utils/logger';
 
 export type ListAccountsParams = {
@@ -313,6 +314,7 @@ export class SuperAdminService {
         account: {
           include: {
             subscription: true,
+            owner: { select: { id: true, tenantId: true, firstName: true, lastName: true, email: true } },
             tenants: {
               where: { isActive: true },
               include: { _count: { select: { employees: { where: { isActive: true } } } } },
@@ -420,6 +422,13 @@ export class SuperAdminService {
     // Clear the PAYMENT_DECLARED notification(s) for this payment
     await this.clearPaymentNotifications(payment.id);
 
+    // Tell the account owner their virement was approved.
+    await this.notifyOwner(payment.account.owner, {
+      type: 'PAYMENT_APPROVED',
+      title: 'Virement approuvé',
+      message: `Votre virement de ${payment.amount.toLocaleString('fr-FR')} ${payment.currency} a été approuvé. Votre abonnement est actif.`,
+    });
+
     log.log(
       `[Billing] Payment ${payment.id} approved by ${approverUserId} for account ${account.id} (salons: ${declaredSalons.map((s) => s.name).join(', ')}; employees: +${declaredSalons.reduce((a, s) => a + (employeesBySalon[s.id] ?? 0), 0)})`
     );
@@ -429,7 +438,17 @@ export class SuperAdminService {
 
   /** Reject a PENDING payment. Nothing is applied to coverage. */
   async rejectPayment(paymentId: string, reason?: string) {
-    const payment = await prisma.subscriptionPayment.findUnique({ where: { id: paymentId } });
+    const payment = await prisma.subscriptionPayment.findUnique({
+      where: { id: paymentId },
+      include: {
+        account: {
+          select: {
+            id: true,
+            owner: { select: { id: true, tenantId: true, firstName: true, lastName: true, email: true } },
+          },
+        },
+      },
+    });
     if (!payment) {
       throw { status: 404, error: 'Payment not found', message: 'Paiement introuvable' };
     }
@@ -437,13 +456,29 @@ export class SuperAdminService {
       throw { status: 400, error: 'Not pending', message: 'Ce paiement a déjà été traité' };
     }
 
+    const trimmedReason = reason?.trim() || null;
+
     await prisma.subscriptionPayment.update({
       where: { id: paymentId },
-      data: { status: 'REJECTED', rejectedReason: reason?.trim() || null },
+      data: { status: 'REJECTED', rejectedReason: trimmedReason },
     });
 
     // Clear the PAYMENT_DECLARED notification(s) for this payment
     await this.clearPaymentNotifications(paymentId);
+
+    // Tell the account owner their virement was rejected — the note is for them,
+    // so they can fix the issue and re-declare.
+    await this.notifyOwner(payment.account.owner, {
+      type: 'PAYMENT_REJECTED',
+      title: 'Virement refusé',
+      message: trimmedReason
+        ? `Votre virement de ${payment.amount.toLocaleString('fr-FR')} ${payment.currency} a été refusé. Motif : ${trimmedReason}`
+        : `Votre virement de ${payment.amount.toLocaleString('fr-FR')} ${payment.currency} a été refusé.`,
+    });
+
+    log.log(
+      `[Billing] Payment ${payment.id} rejected for account ${payment.account.id}${trimmedReason ? ` (reason: ${trimmedReason})` : ''}`
+    );
 
     return { success: true };
   }
@@ -461,6 +496,43 @@ export class SuperAdminService {
     } catch (notificationError) {
       // Never block the approve/reject itself
       log.error('Error clearing PAYMENT_DECLARED notification:', notificationError);
+    }
+  }
+
+  /**
+   * Notify the account owner (admin) about their payment's outcome. The
+   * notification is tenant-scoped like all staff notifications, so it lands in
+   * the owner's bell under their home salon (their JWT tenantId).
+   */
+  private async notifyOwner(
+    owner: { id: string; tenantId: string | null } | null,
+    input: { type: 'PAYMENT_APPROVED' | 'PAYMENT_REJECTED'; title: string; message: string }
+  ) {
+    if (!owner) return;
+    try {
+      // Fall back to the owner's first salon if their user has no tenantId.
+      let tenantId = owner.tenantId;
+      if (!tenantId) {
+        const account = await prisma.account.findFirst({
+          where: { ownerUserId: owner.id },
+          select: { tenants: { where: { isActive: true }, take: 1, select: { id: true } } },
+        });
+        tenantId = account?.tenants[0]?.id ?? null;
+      }
+      if (!tenantId) return;
+      await createNotification({
+        data: {
+          tenantId,
+          userId: owner.id,
+          type: input.type,
+          title: input.title,
+          message: input.message,
+          link: '/dashboard/admin/mon-abonnement',
+          metadata: { paymentOutcome: true } as object,
+        },
+      });
+    } catch (notificationError) {
+      log.error(`Error creating ${input.type} notification:`, notificationError);
     }
   }
 

@@ -489,6 +489,57 @@ export default function MonAbonnementPage() {
               </div>
             </div>
           </div>
+
+          {/* Derniers paiements */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-4">Derniers paiements</h2>
+            {payments.length === 0 ? (
+              <p className="text-sm text-gray-400">Aucun paiement déclaré.</p>
+            ) : (
+              <div className="space-y-3">
+                {payments.map((p) => {
+                  const badge = PAYMENT_STATUS[p.status] || {
+                    label: p.status,
+                    className: 'bg-gray-100 text-gray-700',
+                  };
+                  return (
+                    <div key={p.id} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900">
+                            {Number(p.amount).toLocaleString('fr-FR')} {p.currency}
+                          </p>
+                          <p className="text-[11px] text-gray-500">
+                            {new Date(p.createdAt).toLocaleDateString('fr-FR', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                          </p>
+                        </div>
+                        <span
+                          className={`inline-flex shrink-0 items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${badge.className}`}
+                        >
+                          {badge.label}
+                        </span>
+                      </div>
+                      {p.status === 'REJECTED' && (
+                        <div className="mt-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-700">
+                          <span className="font-semibold">Motif : </span>
+                          {p.rejectedReason || 'Aucun motif fourni'}
+                        </div>
+                      )}
+                      {p.status === 'APPROVED' && p.approvedAt && (
+                        <p className="mt-1.5 text-[11px] text-emerald-700">
+                          Approuvé le {new Date(p.approvedAt).toLocaleDateString('fr-FR')}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

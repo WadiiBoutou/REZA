@@ -207,6 +207,8 @@ export default function Sidebar() {
 			case 'NEW_REVIEW':
 				return UserCheck;
 			case 'PAYMENT_RECEIVED':
+			case 'PAYMENT_APPROVED':
+			case 'PAYMENT_REJECTED':
 				return CreditCard;
 			case 'NEW_CLIENT':
 				return Users;

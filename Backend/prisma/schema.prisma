@@ -780,6 +780,8 @@ enum NotificationType {
   APPOINTMENT_CANCELLED // Appointment cancelled
   APPOINTMENT_REMINDER // Appointment reminder
   PAYMENT_DECLARED // Salon declared a virement payment (superadmin review)
+  PAYMENT_APPROVED // Virement approved — sent to the account owner
+  PAYMENT_REJECTED // Virement rejected — sent to the account owner
   SYSTEM // System notification
 }
 
