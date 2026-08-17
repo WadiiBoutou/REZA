@@ -290,11 +290,13 @@ function LoginPageContent() {
         });
 
         if (result.success) {
-          // Show success message about email verification instead of redirecting
+          // Registration requires email confirmation — no session is created and
+          // no redirect happens. Show the same confirmation prompt the user would
+          // see at login, instead of a bogus tokenless redirect to the agenda.
           setSuccessMessage(
-            'Compte créé avec succès ! Un email de vérification a été envoyé à ' +
+            'Veuillez confirmer votre adresse email. Un lien de confirmation vous a été envoyé à ' +
               email.trim() +
-              '. Veuillez vérifier votre boîte de réception et cliquer sur le lien pour activer votre compte.',
+              ' — vérifiez votre boîte de réception.',
           );
           setError(''); // Clear any previous errors
           setLoading(false);

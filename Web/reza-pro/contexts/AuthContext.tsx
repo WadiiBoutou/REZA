@@ -299,8 +299,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await api.register(userData);
-      setUser(response.user);
-      setIsAuthenticated(true);
+      // Registration requires email confirmation: the backend does NOT issue a
+      // token (a session is only created after verifyEmail). Signing the user in
+      // here would redirect to the dashboard with a tokenless session and show
+      // "Session expirée" on every request. Only establish the session when a
+      // token actually came back; otherwise leave the user on the login page to
+      // see the confirmation message.
+      if (response.token) {
+        setUser(response.user);
+        setIsAuthenticated(true);
+      }
       return { success: true };
     } catch (error: any) {
       return {
