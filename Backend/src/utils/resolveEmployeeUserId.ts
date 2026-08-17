@@ -42,13 +42,40 @@ export async function resolveEmployeeUserId(
       return user?.id ?? null;
     }
 
-    const user = await prisma.user.findFirst({
+    let user = await prisma.user.findFirst({
       where: {
         firstName: employee.firstName,
         lastName: employee.lastName,
         tenantId,
       },
     });
+    if (!user) {
+      // Email-less employee: create a dormant User record so the appointment can
+      // reference it (AppointmentServiceItem.employeeId → User). Synthetic email
+      // (.invalid TLD never delivers) + random password → cannot be logged into.
+      try {
+        const randomPassword = crypto.randomBytes(32).toString('hex');
+        user = await prisma.user.create({
+          data: {
+            email: `staff.${employee.id}@reza.invalid`,
+            password: await hashPassword(randomPassword),
+            firstName: employee.firstName,
+            lastName: employee.lastName,
+            phone: employee.phone,
+            tenantId,
+            role: 'STAFF',
+          },
+        });
+      } catch {
+        user = await prisma.user.findFirst({
+          where: {
+            firstName: employee.firstName,
+            lastName: employee.lastName,
+            tenantId,
+          },
+        });
+      }
+    }
     return user?.id ?? null;
   }
 

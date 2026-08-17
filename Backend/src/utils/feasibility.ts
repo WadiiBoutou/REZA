@@ -264,14 +264,6 @@ export function isEmployeeEligibleForInterval(
   }
 
   const userId = employeeToUserMap.get(emp.id) ?? null;
-  // An employee can only be assigned to an appointment if they resolve to a
-  // User id (AppointmentServiceItem.employeeId → User). Employees with an email
-  // are always resolvable (a User is auto-created on first assignment); email-less
-  // employees must match an existing User by name — otherwise they can never be
-  // booked, so never present them as eligible.
-  if (!userId && !emp.email) {
-    return { eligible: false, reason: 'NO_USER' };
-  }
   if (isOccupied(occupiedRanges, emp.id, userId, intervalStart, intervalEnd)) {
     return { eligible: false, reason: 'BOOKED' };
   }
