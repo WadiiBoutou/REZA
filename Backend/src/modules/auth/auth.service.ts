@@ -139,6 +139,36 @@ export class AuthService {
   }
 
   async register(input: RegisterInput) {
+    // Self-signup creates a brand-new tenant, so the per-tenant duplicate check
+    // further down can never fire for it (each attempt has a fresh tenantId).
+    // Email is the global login identity (login looks it up across tenants), so
+    // guard the createTenant path globally: one email = one account.
+    if (input.createTenant) {
+      const existingGlobal = await prisma.user.findFirst({
+        where: { email: { equals: input.email, mode: 'insensitive' } },
+        select: { id: true, email: true, firstName: true, lastName: true, verifyEmailToken: true }
+      });
+      if (existingGlobal) {
+        if (existingGlobal.verifyEmailToken) {
+          // Same email, still unverified (user signed up but never confirmed).
+          // Do NOT create a second account/tenant — resend the confirmation
+          // email to the existing account and return the standard success shape
+          // so the user just sees the "confirm your email" prompt again.
+          await this.resendVerificationEmail({ email: existingGlobal.email });
+          return {
+            requiresEmailVerification: true,
+            message:
+              'Un email de confirmation a été envoyé. Vérifiez votre boîte de réception pour activer votre compte.'
+          };
+        }
+        throw {
+          status: 409,
+          error: 'User exists',
+          message: 'Un compte existe déjà avec cette adresse email. Veuillez vous connecter.'
+        };
+      }
+    }
+
     let tenantId: string;
     let tenant: { id: string; name: string; isActive: boolean } | null = null;
 
