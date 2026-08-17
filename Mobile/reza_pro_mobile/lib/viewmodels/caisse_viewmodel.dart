@@ -60,6 +60,7 @@ class CaisseViewModel extends ChangeNotifier {
     }
   }
 
+  /// Start of the selected period (inclusive), local time.
   DateTime _periodStart() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -67,7 +68,16 @@ class CaisseViewModel extends ChangeNotifier {
     if (selectedPeriod == 1) {
       return today.subtract(Duration(days: today.weekday - 1));
     }
+    // Calendar month: first day of the month to now (matches Web).
     return DateTime(now.year, now.month, 1);
+  }
+
+  /// Date range sent to the backend — the backend does the filtering now, so
+  /// both platforms always see the same set of transactions.
+  (String?, String?) _periodRange() {
+    final start = _periodStart();
+    final now = DateTime.now();
+    return (start.toUtc().toIso8601String(), now.toUtc().toIso8601String());
   }
 
   double servicePrice(Map<String, dynamic> s) {
@@ -82,15 +92,17 @@ class CaisseViewModel extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      final raw = await invoiceService.list(limit: 100);
+      final (startDate, endDate) = _periodRange();
+      final raw = await invoiceService.list(
+        startDate: startDate,
+        endDate: endDate,
+      );
       // A newer load started while this request was in flight — discard ours.
       if (seq != _loadSeq) return;
-      final start = _periodStart();
       final mapped = <Map<String, dynamic>>[];
       for (final inv in raw) {
         final created =
             DateTime.tryParse(inv['createdAt']?.toString() ?? '')?.toLocal();
-        if (created != null && created.isBefore(start)) continue;
         final client = inv['client'] as Map<String, dynamic>?;
         final appointment = inv['appointment'] as Map<String, dynamic>?;
         final service = appointment?['service'] as Map<String, dynamic>?;

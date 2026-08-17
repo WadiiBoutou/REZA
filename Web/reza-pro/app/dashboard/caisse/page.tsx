@@ -130,6 +130,29 @@ const PAYMENT_METHOD_TO_API: Record<string, 'CASH' | 'CARD' | 'BANK_TRANSFER' | 
   Chèque: 'CHECK',
 };
 
+/**
+ * Server-side date range for a caisse period. The backend filters invoices /
+ * cash transactions by these bounds, so the client never aggregates or
+ * truncates. `month` is a CALENDAR month (1st of the month → now), matching
+ * the mobile app — not a rolling 30 days.
+ */
+const getPeriodRange = (period: 'day' | 'week' | 'month' | 'all') => {
+  if (period === 'all') return { startDate: undefined, endDate: undefined };
+  const now = new Date();
+  const start = new Date();
+  if (period === 'day') {
+    start.setHours(0, 0, 0, 0);
+  } else if (period === 'week') {
+    start.setDate(now.getDate() - 7);
+    start.setHours(0, 0, 0, 0);
+  } else {
+    // month → calendar month
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+  }
+  return { startDate: start.toISOString(), endDate: now.toISOString() };
+};
+
 const emptySaleForm = () => ({
   serviceIds: [] as string[],
   amount: 0,
@@ -522,12 +545,13 @@ function CaissePageContent({
     }
   }, [isAuthenticated, authLoading, router]);
 
-  // Load data from API
+  // Load data from API — refetch when the period changes too, since date
+  // filtering now happens server-side (startDate/endDate query params).
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
       fetchData();
     }
-  }, [isAuthenticated, authLoading, salonFilterKey]);
+  }, [isAuthenticated, authLoading, salonFilterKey, selectedPeriod]);
 
   // Lock background scroll while the group billing modal is open
   useEffect(() => {
@@ -549,10 +573,12 @@ function CaissePageContent({
       setLoading(true);
       toast.loading('Chargement des transactions...', { id: 'loading-transactions' });
       
-      // Fetch invoices
-      const invoicesResponse = await api.getInvoices({ 
-        limit: 1000,
-        type: 'SALE' // Only sale invoices, exclude subscription invoices
+      // Fetch invoices — server-side filtered to the selected period
+      const { startDate, endDate } = getPeriodRange(selectedPeriod);
+      const invoicesResponse = await api.getInvoices({
+        startDate,
+        endDate,
+        type: 'SALE', // Only sale invoices, exclude subscription invoices
       });
       const invoices = invoicesResponse.invoices || [];
       
@@ -573,8 +599,9 @@ function CaissePageContent({
       // Fetch cash transactions (deposits/withdrawals)
       let cashTransactions: any[] = [];
       try {
-        const cashTransactionsResponse = await api.getCashTransactions({ 
-          limit: 1000 
+        const cashTransactionsResponse = await api.getCashTransactions({
+          startDate,
+          endDate,
         });
         cashTransactions = cashTransactionsResponse.transactions || [];
       } catch (cashError) {
@@ -708,43 +735,9 @@ function CaissePageContent({
     const matchesMethod = methodFilter === 'all' || tx.method === methodFilter;
     const matchesType = typeFilter === 'all' || tx.type === typeFilter;
     
-    // Period filter
-    let matchesPeriod = true;
-    if (selectedPeriod !== 'all') {
-      const now = new Date();
-      const txDate = new Date(tx.date);
-      
-      // Validate date
-      if (isNaN(txDate.getTime())) {
-        console.warn('Invalid transaction date:', tx.date, tx);
-        return false;
-      }
-
-      const startOfPeriod = new Date();
-      
-      switch (selectedPeriod) {
-        case 'day':
-          startOfPeriod.setHours(0, 0, 0, 0);
-          startOfPeriod.setMinutes(0, 0, 0);
-          matchesPeriod = txDate >= startOfPeriod && txDate <= now;
-          break;
-        case 'week':
-          startOfPeriod.setDate(now.getDate() - 7);
-          startOfPeriod.setHours(0, 0, 0, 0);
-          startOfPeriod.setMinutes(0, 0, 0);
-          matchesPeriod = txDate >= startOfPeriod && txDate <= now;
-          break;
-        case 'month':
-          startOfPeriod.setMonth(now.getMonth() - 1);
-          startOfPeriod.setDate(now.getDate());
-          startOfPeriod.setHours(0, 0, 0, 0);
-          startOfPeriod.setMinutes(0, 0, 0);
-          matchesPeriod = txDate >= startOfPeriod && txDate <= now;
-          break;
-      }
-    }
-    
-    return matchesSearch && matchesMethod && matchesType && matchesPeriod;
+    // Period filtering happens server-side (startDate/endDate params); the
+    // client only filters by search / method / type.
+    return matchesSearch && matchesMethod && matchesType;
   });
 
   // Stats - use all transactions for overall stats, filtered for display

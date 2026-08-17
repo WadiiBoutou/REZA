@@ -26,144 +26,18 @@ import ReactSelect from 'react-select';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import toast from 'react-hot-toast';
-
-// API Appointment type
-type ApiAppointment = {
-  id: string;
-  tenantId: string;
-  clientId: string;
-  startTime: string;
-  endTime: string;
-  duration: number;
-  status: 'PENDING' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
-  notes?: string | null;
-  cancelledBy?: string | null;
-  services?: Array<{
-    id?: string;
-    serviceId?: string | null;
-    name: string;
-    serviceName: string;
-    duration: number;
-    price: number;
-    sortOrder: number;
-    employee?: { id: string; firstName: string; lastName: string } | null;
-  }>;
-  totalDuration?: number;
-  totalPrice?: number;
-  client: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string | null;
-    phone: string | null;
-  };
-  employee: {
-    id: string;
-    firstName: string;
-    lastName: string;
-  } | null;
-  bookingParticipant?: {
-    displayName: string;
-    clientId?: string | null;
-  } | null;
-  bookingGroup?: {
-    id: string;
-    _count?: { participants: number };
-  } | null;
-};
-
-// Frontend Appointment type
-type Appointment = {
-  id: string;
-  clientName: string;
-  service: string;
-  services?: Array<{
-    id?: string;
-    serviceId?: string | null;
-    name: string;
-    duration: number;
-    price: number;
-    sortOrder: number;
-    employee?: { id: string; firstName: string; lastName: string } | null;
-  }>;
-  time: string;
-  endTime: string;
-  duration: number;
-  status: 'confirmed' | 'pending' | 'cancelled' | 'in_progress' | 'completed' | 'no_show' | string;
-  employee: string;
-  phone?: string;
-  email?: string;
-  date: Date;
-  notes?: string;
-  cancelledByClient?: boolean;
-  // API IDs for updates
-  clientId?: string;
-  serviceId?: string;
-  serviceIds?: string[];
-  employeeId?: string | null;
-  /** Required on create when multi-salon filter is active */
-  tenantId?: string;
-  /** Catalog price snapshot for caisse */
-  servicePrice?: number | null;
-  totalDuration?: number;
-  totalPrice?: number;
-  /** Per-service employee assignments for creation */
-  servicesPayload?: Array<{ serviceId: string; employeeId: string | null }>;
-  /** Booking group ID for group bookings */
-  bookingGroupId?: string;
-  /** Number of participants in the booking group (from _count.participants) */
-  bookingGroupParticipantCount?: number;
-};
-
-type FinalizePaymentMethod = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'CHECK';
-
-type FinalizeModalState = {
-  appointment: Appointment;
-  paymentMethod: FinalizePaymentMethod;
-  loading: boolean;
-  /** Group billing is off the table once any participant was invoiced individually. */
-  groupAlreadyInvoiced?: boolean;
-};
-
-type GroupReviewParticipant = {
-  participantId: string;
-  clientId: string | null;
-  displayName: string;
-  isBooker: boolean;
-  services: Array<{
-    serviceId: string | null;
-    serviceName: string;
-    price: number;
-    duration: number | null;
-    employee: { id: string; firstName: string; lastName: string } | null;
-  }>;
-  subtotal: number;
-};
-
-type GroupReviewModalState = {
-  bookingGroupId: string;
-  bookerClientId: string;
-  participants: GroupReviewParticipant[];
-  total: number;
-  paymentMethod: FinalizePaymentMethod;
-  /** Unique participant id of the payer — NOT clientId, since two participants
-   *  can share a client record (guest merged onto booker's client via phone). */
-  selectedPayerParticipantId: string;
-  loading: boolean;
-  loadingMode: 'combined' | 'separate' | null;
-  /** Any participant appointment already individually invoiced → group billing blocked. */
-  hasInvoicedAppointment?: boolean;
-};
-
-type Client = {
-  id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  status?: string;
-  address?: string;
-  avatar?: string | null;
-};
+import { NewAppointmentModal } from './NewAppointmentModal';
+import { AppointmentCard } from './AppointmentCard';
+import {
+  ApiAppointment,
+  Appointment,
+  Client,
+  FinalizePaymentMethod,
+  FinalizeModalState,
+  GroupReviewModalState,
+  GroupReviewParticipant,
+  ServiceCardData,
+} from './types';
 
 // Transform API appointment to frontend format
 const transformApiAppointment = (apiApt: ApiAppointment): Appointment => {
@@ -327,21 +201,6 @@ const transformToApiAppointment = (apt: Appointment, date: Date, time: string): 
 // within an appointment, so each service's own slot is derived as cumulative
 // offsets from the appointment start time (e.g. 09:00-09:45 then 09:45-10:30).
 
-type ServiceCardData = {
-  key: string;
-  apt: Appointment;
-  serviceIndex: number; // 0-based position within the booking
-  serviceCount: number; // total services in the booking
-  serviceName: string;
-  duration: number;
-  startMin: number; // minutes since midnight (Morocco wall time)
-  endMin: number;
-  startLabel: string;
-  endLabel: string;
-  employeeName: string;
-  employeeId: string | null;
-  color: string; // resolved employee color
-};
 
 // Fixed palette used as a deterministic fallback when an employee has no
 // admin-assigned color in their agendaSettings — keeps cards distinguishable
@@ -382,6 +241,37 @@ const isSameDay = (a: Date, b: Date): boolean => {
 // Current time in Morocco wall time (UTC+1, matching the appointment time
 // conversion in transformApiAppointment) as minutes since midnight — used for
 // the red "now" line on the agenda.
+/**
+ * Visible date range for the current agenda view (day/week/month).
+ * Shared by the appointments fetch and the backend availability fetch.
+ */
+const getViewDateRange = (view: string, anchor: Date): { startDate: Date; endDate: Date } => {
+  if (view === 'day') {
+    const startDate = new Date(anchor);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(anchor);
+    endDate.setHours(23, 59, 59, 999);
+    return { startDate, endDate };
+  }
+  if (view === 'week') {
+    const weekStart = new Date(anchor);
+    const dayOfWeek = weekStart.getDay();
+    const diff = weekStart.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Monday
+    weekStart.setDate(diff);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+    return { startDate: weekStart, endDate: weekEnd };
+  }
+  // month
+  const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  monthStart.setHours(0, 0, 0, 0);
+  const monthEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+  monthEnd.setHours(23, 59, 59, 999);
+  return { startDate: monthStart, endDate: monthEnd };
+};
+
 const getMoroccoNowMin = (): number => {
   const now = new Date();
   return (now.getUTCHours() * 60 + now.getUTCMinutes() + 60) % 1440;
@@ -626,1194 +516,7 @@ const getApiErrorMessage = (err: unknown, fallback: string) => {
   return fallback;
 };
 
-interface NewAppointmentModalProps {
-  onClose: () => void;
-  onCreateAppointment: (appointment: Appointment) => Promise<void>;
-  employeesData?: Array<{
-    id: string;
-    name: string;
-    color: string;
-    workingHours: any;
-    agendaSettings: any;
-  }>;
-  initialDate?: Date;
-  initialTime?: string;
-  /** Agenda display range (from Horaires → agenda) — restricts the heure de début picker. */
-  agendaStart?: string;
-  agendaEnd?: string;
-}
 
-// Plan types matching backend scheduling.service.ts
-type PlanEmployeeAvailability = {
-  employeeId: string;
-  employeeName: string;
-  available: boolean;
-  recommended: boolean;
-  reason?: string;
-};
-
-type PlanServiceAssignment = {
-  serviceId: string;
-  serviceName: string;
-  duration: number;
-  employeeId: string | null;
-  employeeName: string;
-};
-
-type PlanAlert = {
-  severity: 'warning' | 'conflict';
-  type: string;
-  message: string;
-};
-
-type PlanResult = {
-  estimatedEndTime: string;
-  recommendedAssignment: PlanServiceAssignment[];
-  services: Array<{
-    serviceId: string;
-    serviceName: string;
-    duration: number;
-    employees: PlanEmployeeAvailability[];
-  }>;
-  alerts: PlanAlert[];
-  clientAlerts: Record<string, PlanAlert[]>;
-};
-
-const PLAN_DEBOUNCE_MS = 300;
-const ERROR_AUTO_DISMISS_MS = 3000;
-const CREATE_ERROR_AUTO_DISMISS_MS = 8000;
-
-const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ onClose, onCreateAppointment, employeesData = [], initialDate, initialTime, agendaStart, agendaEnd }) => {
-  const { isAuthenticated, salons, isSalonFilterMulti, effectiveSalonIds } = useAuth();
-  const [createTenantId, setCreateTenantId] = useState(() =>
-    !isSalonFilterMulti && effectiveSalonIds.length === 1 ? effectiveSalonIds[0] : ''
-  );
-  const [date, setDate] = useState<Date | undefined>(initialDate);
-  const [time, setTime] = useState(initialTime || '');
-  const [selectedServices, setSelectedServices] = useState<Array<{id: string, name: string, duration: number}>>([]);
-  const serviceIds = selectedServices.map((s) => s.id);
-  const [notes, setNotes] = useState('');
-  const [clients, setClients] = useState<Client[]>([]);
-  const [services, setServices] = useState<Array<{id: string, name: string, duration: number}>>([]);
-  const [employees, setEmployees] = useState<Array<{id: string, name: string}>>([]);
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-
-
-  const [loading, setLoading] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-
-  // Client alerts (populated by diagnostics endpoint on date/time change)
-  const [clientAlerts, setClientAlerts] = useState<Record<string, PlanAlert[]>>({});
-
-  // Plan state
-  const [plan, setPlan] = useState<PlanResult | null>(null);
-  const [planLoading, setPlanLoading] = useState(false);
-  const planRequestId = useRef(0);
-  // Manually overridden assignments: serviceId -> employeeId
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
-
-  // Total duration computed from selected services (in order)
-  const totalDuration = selectedServices.reduce((sum, s) => sum + (s.duration || 0), 0);
-
-  // Fetch clients, services, and employees from API (scoped to create salon when multi)
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    if (isSalonFilterMulti && !createTenantId) {
-      setClients([]);
-      setServices([]);
-      setEmployees([]);
-      return;
-    }
-
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const scope = createTenantId ? { salonIds: createTenantId } : undefined;
-        const [clientsRes, servicesRes, employeesRes] = await Promise.all([
-          api.getClients({ limit: 1000 }, scope),
-          api.getServices(undefined, scope),
-          api.getEmployees({ active: true }, scope)
-        ]);
-        
-        const clientsData = (clientsRes.clients || []).map((c: any) => ({
-          id: c.id,
-          name: `${c.firstName} ${c.lastName}`,
-          email: c.email,
-          phone: c.phone,
-          status: c.status,
-          avatar: c.avatar
-        }));
-        setClients(clientsData);
-        
-        const servicesData = (servicesRes.services || []).map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          duration: s.duration
-        }));
-        setServices(servicesData);
-        
-        const employeesDataMapped = (employeesRes.employees || []).map((e: any) => ({
-          id: e.id,
-          name: `${e.firstName} ${e.lastName}`
-        }));
-        setEmployees(employeesDataMapped);
-      } catch (err) {
-        console.error('Error fetching data:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [isAuthenticated, createTenantId, isSalonFilterMulti]);
-
-  // Fetch client diagnostics when only date/time change (no services needed yet)
-  useEffect(() => {
-    if (!date || !time) { setClientAlerts({}); return; }
-    if (serviceIds.length > 0) return;
-
-    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    let normalizedTime = time;
-    if (/^\d{1,2}:\d{2}:\d{2}$/.test(time)) normalizedTime = time.slice(0, 5);
-    else if (/^\d{1,2}$/.test(time)) normalizedTime = time.padStart(2, '0') + ':00';
-
-    const timer = setTimeout(async () => {
-      try {
-        const result = await api.clientDiagnostics({ date: dateStr, startTime: normalizedTime, tenantId: createTenantId || undefined });
-        setClientAlerts(result.clientAlerts as Record<string, PlanAlert[]>);
-      } catch (err) {
-        console.error('Error fetching client diagnostics:', err);
-      }
-    }, PLAN_DEBOUNCE_MS);
-
-    return () => clearTimeout(timer);
-  }, [date, time, serviceIds.length > 0]);
-
-  // Fetch plan when services, date, time, client, or overrides change (debounced)
-  useEffect(() => {
-    if (!date || !time || serviceIds.length === 0) {
-      setPlan(null);
-      // Only reset overrides if non-empty to avoid infinite loop:
-      // Object.is({}, {}) === false, so setOverrides({}) always triggers a re-render.
-      if (Object.keys(overrides).length > 0) setOverrides({});
-      return;
-    }
-
-    const currentId = ++planRequestId.current;
-    const timer = setTimeout(async () => {
-      setPlanLoading(true);
-      try {
-        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-        let normalizedTime = time;
-        if (/^\d{1,2}:\d{2}:\d{2}$/.test(time)) normalizedTime = time.slice(0, 5);
-        else if (/^\d{1,2}$/.test(time)) normalizedTime = time.padStart(2, '0') + ':00';
-
-        const hasOverrides = Object.keys(overrides).length > 0;
-        let assignments: { serviceId: string; employeeId: string | null }[] | undefined;
-        if (hasOverrides && plan) {
-          assignments = selectedServices.map((s) => ({
-            serviceId: s.id,
-            employeeId: overrides[s.id] || plan.recommendedAssignment.find((a) => a.serviceId === s.id)?.employeeId || null,
-          }));
-        }
-
-        const result = await api.planAppointment({
-          serviceIds,
-          date: dateStr,
-          startTime: normalizedTime,
-          clientId: selectedClient?.id,
-          tenantId: createTenantId || undefined,
-          assignments,
-        });
-        if (currentId !== planRequestId.current) return;
-        setPlan(result);
-        setClientAlerts(result.clientAlerts || {});
-      } catch (err) {
-        if (currentId !== planRequestId.current) return;
-        console.error('Error fetching plan:', err);
-        setPlan(null);
-      } finally {
-        if (currentId === planRequestId.current) setPlanLoading(false);
-      }
-    }, PLAN_DEBOUNCE_MS);
-
-    return () => clearTimeout(timer);
-  // Dependency uses join(',') not serviceIds array ref to avoid infinite re-fetch:
-  // .map() creates a new array reference every render, which would make the effect
-  // see a "change" every time setPlan() causes a re-render.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, time, serviceIds.join(','), selectedClient?.id, JSON.stringify(overrides)]);
-
-  const handleClientSelect = (client: Client) => {
-    setSelectedClient(client);
-  };
-
-  const handleCreate = async () => {
-    if (isSalonFilterMulti && !createTenantId) {
-      setCreateError('Veuillez sélectionner un salon');
-      setTimeout(() => setCreateError(null), ERROR_AUTO_DISMISS_MS);
-      return;
-    }
-    if (!date || !time || serviceIds.length === 0 || !selectedClient) {
-      setCreateError('Veuillez remplir tous les champs obligatoires');
-      setTimeout(() => setCreateError(null), ERROR_AUTO_DISMISS_MS);
-      return;
-    }
-    setCreateError(null);
-
-    const normalizedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    normalizedDate.setHours(0, 0, 0, 0);
-
-    let normalizedTime = time;
-    if (/^\d{1,2}:\d{2}:\d{2}$/.test(time)) normalizedTime = time.slice(0, 5);
-    else if (/^\d{1,2}$/.test(time)) normalizedTime = time.padStart(2, '0') + ':00';
-
-    const serviceName = selectedServices.map((s) => s.name).join(', ');
-
-    // Build services array with per-service employee assignments (respects order)
-    const servicesPayload = selectedServices.map((s) => ({
-      serviceId: s.id,
-      employeeId: overrides[s.id] || plan?.recommendedAssignment.find((a) => a.serviceId === s.id)?.employeeId || null,
-    }));
-
-    const firstEmployeeId = servicesPayload[0]?.employeeId || null;
-    const firstEmployeeName = firstEmployeeId
-      ? employees.find((e) => e.id === firstEmployeeId)?.name || 'Non assigné'
-      : 'Non assigné';
-
-    // Compute end time from normalizedTime + totalDuration
-    const [ntH, ntM] = normalizedTime.split(':').map(Number);
-    const endTotalMin = ntH * 60 + ntM + totalDuration;
-    const computedEndTime = `${String(Math.floor(endTotalMin / 60) % 24).padStart(2, '0')}:${String(endTotalMin % 60).padStart(2, '0')}`;
-
-    const newAppointment: Appointment = {
-      id: '',
-      clientName: selectedClient.name,
-      service: serviceName,
-      time: normalizedTime,
-      endTime: computedEndTime,
-      duration: totalDuration,
-      status: 'pending',
-      employee: firstEmployeeName,
-      phone: selectedClient.phone || undefined,
-      email: selectedClient.email || undefined,
-      date: normalizedDate,
-      notes,
-      clientId: selectedClient.id,
-      serviceId: serviceIds[0] || '',
-      serviceIds,
-      employeeId: firstEmployeeId,
-      servicesPayload,
-      tenantId: createTenantId || undefined,
-    };
-
-    try {
-      await onCreateAppointment(newAppointment);
-    } catch (err: any) {
-      const msg = getApiErrorMessage(err, '');
-      setCreateError(msg || 'Erreur lors de la création du rendez-vous');
-      setTimeout(() => setCreateError(null), CREATE_ERROR_AUTO_DISMISS_MS);
-      toast.custom(
-        (t) => (
-          <div className={`bg-red-50 border border-red-200 rounded-lg shadow-lg p-4 max-w-md ${t.visible ? 'animate-in slide-in-from-top-2' : ''}`}>
-            <p className="font-semibold text-red-800 text-sm">Impossible de créer le rendez-vous</p>
-            <p className="text-sm text-red-600 mt-1">{msg || 'Ce créneau n\'est plus disponible. Veuillez en choisir un autre.'}</p>
-          </div>
-        ),
-        { duration: 5000 }
-      );
-    }
-  };
-
-  return (
-  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
-    <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-slideUp">
-      {/* Header */}
-      <div className="sticky top-0 bg-white border-b border-gray-100 px-8 py-6 z-40">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-light text-gray-900">Nouveau rendez-vous</h2>
-          <button 
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-900 transition-colors"
-          >
-            <X size={20} />
-          </button>
-        </div>
-      </div>
-      
-      <div className="px-8 py-6 space-y-8">
-        {/* Error Message */}
-        {createError && (
-          <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 text-sm">
-            {createError}
-          </div>
-        )}
-
-        {isSalonFilterMulti && (
-          <div className="space-y-2">
-            <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Salon</h3>
-            <Select
-              value={createTenantId || undefined}
-              onValueChange={(id) => {
-                setCreateTenantId(id);
-                setSelectedClient(null);
-                setSelectedServices([]);
-              }}
-            >
-              <SelectTrigger className="rounded-full px-4 py-2">
-                <SelectValue placeholder="Choisir un salon *" />
-              </SelectTrigger>
-              <SelectContent>
-                {salons
-                  .filter((s) => effectiveSalonIds.includes(s.id))
-                  .map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        {/* Client */}
-        <div className="space-y-4">
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Client</h3>
-          
-          <div className="space-y-2">
-            <Label>Rechercher un client</Label>
-            <ReactSelect
-              instanceId="client-select"
-              isLoading={loading}
-              isDisabled={loading}
-              placeholder="Taper le nom, email ou téléphone..."
-              noOptionsMessage={() =>"Aucun client trouvé"}
-              options={clients.map(c => ({ value: c.id, label: `${c.name} ${c.email ? `- ${c.email}` : ''} ${c.phone ? `- ${c.phone}` : ''}`, client: c }))}
-              onChange={(option: any) => {
-                if (option) {
-                  handleClientSelect(option.client);
-                } else {
-                  setSelectedClient(null);
-                }
-              }}
-              value={selectedClient ? { value: selectedClient.id, label: `${selectedClient.name} ${selectedClient.email ? `- ${selectedClient.email}` : ''} ${selectedClient.phone ? `- ${selectedClient.phone}` : ''}`, client: selectedClient } : null}
-              formatOptionLabel={(option: any) => {
-                const alerts = clientAlerts[option.client?.id];
-                const msg = alerts?.length > 0 ? alerts[0].message : undefined;
-                return (
-                  <div className="flex items-center gap-2">
-                    <span>{option.label}</span>
-                    {msg && (
-                      <span title={msg}>
-                        <AlertTriangle size={14} className="text-amber-500 shrink-0" />
-                      </span>
-                    )}
-                  </div>
-                );
-              }}
-              className="mt-2 text-sm"
-              styles={{
-                control: (base) => ({
-                  ...base,
-                  borderRadius: '9999px',
-                  padding: '2px 8px',
-                  borderColor: '#e5e7eb',
-                  boxShadow: 'none',
-                  '&:hover': {
-                    borderColor: '#d1d5db'
-                  }
-                })
-              }}
-              isClearable
-            />
-          </div>
-
-          {selectedClient ? (
-            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  {selectedClient.avatar ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={getImageUrl(selectedClient.avatar)}
-                      alt={selectedClient.name}
-                      className="w-12 h-12 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-gray-900 flex items-center justify-center">
-                      <span className="text-white font-medium text-lg">
-                        {selectedClient.name.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                  )}
-                  <div>
-                    <h4 className="font-medium text-gray-900">{selectedClient.name}</h4>
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium mt-1 ${
-                      selectedClient.status === 'Active'
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {selectedClient.status}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                    onClick={() => {
-                      setSelectedClient(null);
-                    }}
-                  className="p-1 text-gray-400 hover:text-gray-900 transition-colors"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Mail size={14} className="text-gray-400" />
-                  <span>{selectedClient.email}</span>
-                </div>
-                <div className="flex items-center gap-2 text-gray-600">
-                  <Phone size={14} className="text-gray-400" />
-                  <span>{selectedClient.phone}</span>
-                </div>
-                {selectedClient.address && (
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <MapPin size={14} className="text-gray-400" />
-                    <span>{selectedClient.address}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        {/* Services */}
-        <div className="space-y-4">
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Services</h3>
-          <div className="space-y-2">
-            <Label>Sélectionner les prestations</Label>
-            <button
-              type="button"
-              disabled={loading || services.length === 0}
-              onClick={() => {
-                const overlay = document.createElement('div');
-                overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4 animate-fadeIn';
-                overlay.onclick = (e: MouseEvent) => { if (e.target === overlay) closePicker(); };
-
-                const panel = document.createElement('div');
-                panel.className = 'bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col animate-slideUp overflow-hidden';
-
-                const closePicker = () => { document.body.removeChild(overlay); };
-
-                // Header
-                const header = document.createElement('div');
-                header.className = 'flex items-center justify-between px-6 py-4 border-b border-gray-100';
-                header.innerHTML = '<h2 class="text-lg font-semibold text-gray-900">Sélectionner les prestations</h2>';
-
-                const closeBtn = document.createElement('button');
-                closeBtn.className = 'p-1 text-gray-400 hover:text-gray-900 transition-colors';
-                closeBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-                closeBtn.onclick = closePicker;
-                header.appendChild(closeBtn);
-                panel.appendChild(header);
-
-                // Body - flex row
-                const body = document.createElement('div');
-                body.className = 'flex flex-1 overflow-hidden';
-
-                // LEFT: available services with checkboxes
-                const leftCol = document.createElement('div');
-                leftCol.className = 'flex-1 overflow-y-auto border-r border-gray-100 p-4 space-y-1';
-
-                const leftTitle = document.createElement('div');
-                leftTitle.className = 'text-xs font-medium text-gray-400 uppercase tracking-wider mb-3';
-                leftTitle.textContent = 'Prestations disponibles';
-                leftCol.appendChild(leftTitle);
-
-                const state: {
-                  selected: Array<{id: string; name: string; duration: number}>;
-                  selectedIds: Set<string>;
-                  dragIndex: number;
-                } = {
-                  selected: selectedServices.map((s) => ({ ...s })),
-                  selectedIds: new Set(selectedServices.map((s) => s.id)),
-                  dragIndex: -1,
-                };
-
-                // RIGHT: selected services reorderable list
-                const rightCol = document.createElement('div');
-                rightCol.className = 'w-72 overflow-y-auto p-4 space-y-1';
-
-                const rightTitle = document.createElement('div');
-                rightTitle.className = 'text-xs font-medium text-gray-400 uppercase tracking-wider mb-3';
-                rightTitle.textContent = "Ordre d'exécution";
-                rightCol.appendChild(rightTitle);
-
-                const rightCount = document.createElement('div');
-                rightCount.className = 'text-xs text-gray-500 mb-2 selected-count';
-                rightCol.appendChild(rightCount);
-
-                const rightEmpty = document.createElement('div');
-                rightEmpty.className = 'text-sm text-gray-400 text-center py-8 selected-empty';
-                rightEmpty.textContent = 'Aucune prestation sélectionnée';
-                rightCol.appendChild(rightEmpty);
-
-                const rightList = document.createElement('div');
-                rightList.className = 'space-y-2 selected-list';
-                rightList.style.display = state.selected.length > 0 ? 'block' : 'none';
-                rightCol.appendChild(rightList);
-
-                const updateRightPanel = () => {
-                  const totalDur = state.selected.reduce((sum, s) => sum + s.duration, 0);
-                  rightCount.textContent = state.selected.length > 0
-                    ? `${state.selected.length} prestation${state.selected.length > 1 ? 's' : ''} · ${totalDur} min`
-                    : '';
-                  rightEmpty.style.display = state.selected.length === 0 ? 'block' : 'none';
-                  rightList.style.display = state.selected.length > 0 ? 'block' : 'none';
-                  rightList.innerHTML = '';
-
-                  state.selected.forEach((svc, idx) => {
-                    const item = document.createElement('div');
-                    item.className = 'flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-grab active:cursor-grabbing';
-                    item.draggable = true;
-                    item.dataset.index = String(idx);
-
-                    const handle = document.createElement('span');
-                    handle.className = 'text-gray-400 shrink-0';
-                    handle.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 6h2v2H8V6zm6 0h2v2h-2V6zM8 11h2v2H8v-2zm6 0h2v2h-2v-2zm-6 5h2v2H8v-2zm6 0h2v2h-2v-2z"/></svg>';
-
-                    const info = document.createElement('div');
-                    info.className = 'flex-1 min-w-0';
-                    const nameSpan = document.createElement('div');
-                    nameSpan.className = 'text-sm font-medium text-gray-800 truncate';
-                    nameSpan.textContent = svc.name;
-                    const durSpan = document.createElement('div');
-                    durSpan.className = 'text-xs text-gray-500';
-                    durSpan.textContent = `${svc.duration} min`;
-                    info.appendChild(nameSpan);
-                    info.appendChild(durSpan);
-
-                    const removeBtn = document.createElement('button');
-                    removeBtn.type = 'button';
-                    removeBtn.className = 'p-1 text-red-400 hover:text-red-600 transition-colors shrink-0';
-                    removeBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-                    removeBtn.onclick = () => {
-                      state.selected.splice(idx, 1);
-                      state.selectedIds.delete(svc.id);
-                      updateCheckboxes();
-                      updateRightPanel();
-                    };
-
-                    item.appendChild(handle);
-                    item.appendChild(info);
-                    item.appendChild(removeBtn);
-
-                    item.ondragstart = () => {
-                      state.dragIndex = idx;
-                      item.classList.add('opacity-50');
-                    };
-                    item.ondragend = () => {
-                      item.classList.remove('opacity-50');
-                      state.dragIndex = -1;
-                    };
-                    item.ondragover = (e: DragEvent) => {
-                      e.preventDefault();
-                      const overIdx = Number((e.currentTarget as HTMLElement).dataset.index);
-                      if (overIdx === state.dragIndex || state.dragIndex < 0) return;
-                      const [moved] = state.selected.splice(state.dragIndex, 1);
-                      state.selected.splice(overIdx, 0, moved);
-                      state.dragIndex = overIdx;
-                      updateRightPanel();
-                      updateCheckboxes();
-                    };
-
-                    rightList.appendChild(item);
-                  });
-                };
-
-                const updateCheckboxes = () => {
-                  const checkboxes = leftCol.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
-                  checkboxes.forEach((cb) => {
-                    cb.checked = state.selectedIds.has(cb.dataset.serviceId || '');
-                  });
-                  const leftDuration = leftCol.querySelector('.left-duration');
-                  if (leftDuration) {
-                    const totalDur = state.selected.reduce((sum, s) => sum + s.duration, 0);
-                    leftDuration.textContent = state.selected.length > 0
-                      ? `${state.selected.length} sélectionnée${state.selected.length > 1 ? 's' : ''} · ${totalDur} min`
-                      : '';
-                  }
-                };
-
-                services.forEach((svc) => {
-                  const label = document.createElement('label');
-                  label.className = 'flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors';
-
-                  const cb = document.createElement('input');
-                  cb.type = 'checkbox';
-                  cb.dataset.serviceId = svc.id;
-                  cb.className = 'w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500';
-                  cb.checked = state.selectedIds.has(svc.id);
-
-                  const info = document.createElement('div');
-                  info.className = 'flex-1 min-w-0';
-                  const nameSpan = document.createElement('div');
-                  nameSpan.className = 'text-sm font-medium text-gray-800';
-                  nameSpan.textContent = svc.name;
-                  const durSpan = document.createElement('div');
-                  durSpan.className = 'text-xs text-gray-500';
-                  durSpan.textContent = `${svc.duration} min`;
-                  info.appendChild(nameSpan);
-                  info.appendChild(durSpan);
-
-                  cb.onchange = () => {
-                    if (cb.checked) {
-                      if (!state.selectedIds.has(svc.id)) {
-                        state.selected.push({ ...svc });
-                        state.selectedIds.add(svc.id);
-                      }
-                    } else {
-                      const idx = state.selected.findIndex((s) => s.id === svc.id);
-                      if (idx >= 0) {
-                        state.selected.splice(idx, 1);
-                        state.selectedIds.delete(svc.id);
-                      }
-                    }
-                    updateRightPanel();
-                  };
-
-                  label.appendChild(cb);
-                  label.appendChild(info);
-                  leftCol.appendChild(label);
-                });
-
-                // Duration summary under left column
-                const leftFooter = document.createElement('div');
-                leftFooter.className = 'px-4 py-2 border-t border-gray-100 text-xs text-gray-500 left-duration';
-                if (selectedServices.length > 0) {
-                  leftFooter.textContent = `${selectedServices.length} sélectionnée${selectedServices.length > 1 ? 's' : ''} · ${totalDuration} min`;
-                }
-                leftCol.appendChild(leftFooter);
-                body.appendChild(leftCol);
-                body.appendChild(rightCol);
-                panel.appendChild(body);
-
-                // Footer
-                const footer = document.createElement('div');
-                footer.className = 'flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100';
-
-                const cancelBtn = document.createElement('button');
-                cancelBtn.type = 'button';
-                cancelBtn.className = 'px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors rounded-full hover:bg-gray-100';
-                cancelBtn.textContent = 'Annuler';
-                cancelBtn.onclick = closePicker;
-
-                const confirmBtn = document.createElement('button');
-                confirmBtn.type = 'button';
-                confirmBtn.className = 'px-6 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors rounded-full';
-                confirmBtn.textContent = 'Terminé';
-                confirmBtn.onclick = () => {
-                  setSelectedServices(state.selected);
-                  closePicker();
-                };
-
-                footer.appendChild(cancelBtn);
-                footer.appendChild(confirmBtn);
-                panel.appendChild(footer);
-
-                overlay.appendChild(panel);
-                document.body.appendChild(overlay);
-                updateRightPanel();
-                updateCheckboxes();
-              }}
-              className="w-full flex items-center justify-between px-5 py-3.5 text-sm border border-gray-200 rounded-xl bg-white hover:bg-gray-50 hover:border-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left"
-            >
-              <span className={selectedServices.length === 0 ? 'text-gray-400' : 'text-gray-800 font-medium'}>
-                {selectedServices.length === 0
-                  ? 'Sélectionner des prestations'
-                  : `${selectedServices.length} prestation${selectedServices.length > 1 ? 's' : ''} · ${totalDuration} min`}
-              </span>
-              <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 5l7 7-7 7"/>
-              </svg>
-            </button>
-            {selectedServices.length > 0 && (
-              <div className="space-y-2">
-                {selectedServices.map((svc, idx) => {
-                  // Determine available employees + recommended from plan (if loaded)
-                  const planSvc = plan?.services.find((ps) => ps.serviceId === svc.id);
-                  const effectiveEmpId = overrides[svc.id] ||
-                    planSvc?.employees.find((e) => e.recommended)?.employeeId ||
-                    undefined;
-
-                  return (
-                    <div key={svc.id} className="rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
-                      {/* Service header row */}
-                      <div className="flex items-center gap-3 px-4 py-3">
-                        <span className="text-[10px] font-bold text-gray-400 bg-gray-200 w-5 h-5 rounded-full flex items-center justify-center shrink-0">{idx + 1}</span>
-                        <span className="flex-1 text-sm font-medium text-gray-800">{svc.name}</span>
-                        <span className="text-xs text-gray-400">{svc.duration} min</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedServices((prev) => prev.filter((s) => s.id !== svc.id));
-                            setOverrides((prev) => { const n = { ...prev }; delete n[svc.id]; return n; });
-                          }}
-                          className="ml-1 p-0.5 text-gray-300 hover:text-red-400 transition-colors"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                        </button>
-                      </div>
-                      {/* Employee dropdown row */}
-                      <div className="px-4 pb-3 border-t border-gray-100">
-                        {planLoading ? (
-                          <div className="flex items-center gap-2 py-2 text-xs text-gray-400">
-                            <div className="w-3 h-3 border border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-                            Calcul de l’affectation...
-                          </div>
-                        ) : (
-                          <Select
-                            value={effectiveEmpId}
-                            onValueChange={(value) => setOverrides((prev) => ({ ...prev, [svc.id]: value }))}
-                          >
-                            <SelectTrigger className="w-full mt-2 rounded-full px-3 py-1.5 text-xs border-gray-200 text-gray-600">
-                              <SelectValue placeholder="Employé (optionnel)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {/* Full list when no plan; plan-filtered list when available */}
-                              {planSvc ? (
-                                planSvc.employees.map((emp) => (
-                                  <SelectItem key={emp.employeeId} value={emp.employeeId}>
-                                    <div className="flex items-center gap-2">
-                                      <span>{emp.employeeName}</span>
-                                      {emp.recommended && (
-                                        <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">Recommandé</span>
-                                      )}
-                                      {!emp.available && (
-                                        <span className="text-[10px] text-amber-500">Indisponible</span>
-                                      )}
-                                    </div>
-                                  </SelectItem>
-                                ))
-                              ) : (
-                                employees.map((emp) => (
-                                  <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
-                                ))
-                              )}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          {totalDuration > 0 && (
-            <div className="text-sm text-gray-500">
-              Durée totale estimée : <span className="font-medium text-gray-800">{totalDuration} min</span>
-              {plan?.estimatedEndTime && time && (
-                <span className="ml-2">
-                  (fin estimée : <span className="font-medium text-gray-800">{plan.estimatedEndTime}</span>)
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Date & Time */}
-        <div className="space-y-4">
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Date & heure</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn("w-full justify-start text-left font-normal rounded-full px-4 py-2 mt-2 h-auto",
-                      !date && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {date ? format(date, "PPP", { locale: fr }) : <span>Choisir une date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarComponent
-                    mode="single"
-                    selected={date}
-                    onSelect={setDate}
-                    locale={fr}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="time" className="mb-2">Heure de début</Label>
-              <div className='mt-2'>
-                <TimePicker
-                  value={time}
-                  onChange={setTime}
-                  id="rdv-time-picker"
-                  startTime={agendaStart}
-                  endTime={agendaEnd}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Planning Status */}
-        {(() => {
-          // Use plan.alerts as authoritative when available (already includes client overlaps).
-          // Fall back to clientAlerts when no full plan yet (no services selected).
-          const allAlerts = plan ? plan.alerts : (selectedClient ? (clientAlerts[selectedClient.id] || []) : []);
-          if (allAlerts.length === 0) return null;
-          const warnings = allAlerts.filter((a) => a.severity === 'warning');
-          const conflicts = allAlerts.filter((a) => a.severity === 'conflict');
-          if (warnings.length === 0 && conflicts.length === 0) return null;
-          return (
-            <div className="space-y-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">État du planning</h3>
-              {warnings.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-amber-700 text-sm font-medium">
-                    <AlertTriangle size={16} />
-                    <span>Avertissements</span>
-                  </div>
-                  {warnings.map((w, i) => (
-                    <div key={i} className="flex items-start gap-2 text-sm text-amber-800 ml-1">
-                      <span className="text-amber-400 mt-0.5">•</span>
-                      <span>{w.message}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {conflicts.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-red-700 text-sm font-medium">
-                    <XCircle size={16} />
-                    <span>Conflits</span>
-                  </div>
-                  {conflicts.map((c, i) => (
-                    <div key={i} className="flex items-start gap-2 text-sm text-red-800 ml-1">
-                      <span className="text-red-400 mt-0.5">•</span>
-                      <span>{c.message}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* Notes */}
-        <div className="space-y-4">
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Notes</h3>
-          <Textarea 
-            rows={3}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Ajouter des notes..."
-            className="rounded-lg px-4 py-2 border-gray-200 focus:ring-2 focus:ring-gray-900"
-          />
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="sticky bottom-0 bg-white border-t border-gray-100 px-8 py-4 flex gap-3">
-        <button 
-          onClick={onClose}
-          className="flex-1 px-6 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-        >
-          Annuler
-        </button>
-        <button 
-          onClick={handleCreate}
-          className="flex-1 px-6 py-2.5 bg-[#002366] text-white text-sm font-medium rounded-full hover:bg-gray-800 transition-colors"
-        >
-          Créer
-        </button>
-      </div>
-    </div>
-  </div>
-);
-}
-
-interface AppointmentCardProps {
-  apt: Appointment;
-  isCompact?: boolean;
-  onDragStart?: (e: React.DragEvent<HTMLDivElement>, appointment: Appointment) => void;
-  onStatusUpdate?: (appointment: Appointment, newStatus: string) => void;
-  onShowDetails?: (appointment: Appointment) => void;
-  employeeColor?: string;
-  serviceColor?: string;
-  showColorInRDV?: boolean;
-  displayFields?: Array<{ id: string; label: string; visible: boolean; order: number }>;
-  /** Per-service card data (one card per service of a multi-service booking). */
-  serviceCard?: ServiceCardData;
-  /** Id of the booking currently hovered in the agenda → highlight all its cards. */
-  hoveredBookingId?: string | null;
-  onBookingHover?: (id: string | null) => void;
-}
-
-const AppointmentCard: React.FC<AppointmentCardProps> = ({ 
-  apt, 
-  isCompact = false, 
-  onDragStart,
-  onStatusUpdate,
-  onShowDetails,
-  employeeColor,
-  serviceColor,
-  showColorInRDV = true,
-  displayFields = [
-    { id: 'hours', label: 'Horaires', visible: true, order: 1 },
-    { id: 'clientName', label: 'Nom du client', visible: true, order: 2 },
-    { id: 'services', label: 'Prestation(s)', visible: true, order: 3 },
-    { id: 'notes', label: 'Titre ou note', visible: true, order: 4 },
-  ],
-  serviceCard,
-  hoveredBookingId,
-  onBookingHover,
-}) => {
-  const [showMenu, setShowMenu] = useState(false);
-
-  const getStatusBg = (status: string) => {
-    // If showColorInRDV is false, use status colors
-    if (!showColorInRDV) {
-      switch (status) {
-        case 'confirmed': return 'bg-emerald-50 border-emerald-200 text-emerald-900';
-        case 'pending': return 'bg-amber-50 border-amber-200 text-amber-900';
-        case 'cancelled': return 'bg-gray-50 border-gray-200 text-gray-500';
-        default: return 'bg-gray-50 border-gray-200 text-gray-900';
-      }
-    }
-    return '';
-  };
-
-  // Per-service card, or a legacy fallback derived from the appointment itself.
-  const card: ServiceCardData = serviceCard ?? {
-    key: apt.id,
-    apt,
-    serviceIndex: 0,
-    serviceCount: 1,
-    serviceName: apt.service,
-    duration: apt.duration,
-    startMin: timeToMinutes(apt.time),
-    endMin: timeToMinutes(apt.time) + (apt.duration || 0),
-    startLabel: apt.time,
-    endLabel: apt.endTime,
-    employeeName: getAppointmentEmployeeLabel(apt),
-    employeeId: apt.employeeId ?? null,
-    color: employeeColor || serviceColor || '#3B82F6',
-  };
-
-  const color = card.color;
-  // Hover identity: all cards of the same booking group (group appointment) or
-  // the same appointment (multi-service) highlight together. Group participants
-  // each carry their own appointment id, so the group id is the shared key.
-  const hoverKey = apt.bookingGroupId || apt.id;
-  const isSiblingHovered = hoveredBookingId != null && hoveredBookingId === hoverKey;
-
-  // Generate lighter background and border colors from the main color.
-  // The background is OPAQUE (solid pastel blended toward white) so the agenda
-  // grid lines / strip shading behind the card never show through it — the
-  // old rgba(…, 0.1) was translucent and let the grid lines render inside the card.
-  const getLightColorStyle = (color: string) => {
-    if (!showColorInRDV) return {};
-    
-    // Convert hex to RGB
-    const hex = color.replace('#', '');
-    const r = parseInt(hex.substring(0, 2), 16) || 0;
-    const g = parseInt(hex.substring(2, 4), 16) || 0;
-    const b = parseInt(hex.substring(4, 6), 16) || 0;
-    
-    const blend = (c: number, w: number) => Math.round(c * (1 - w) + 255 * w);
-    return {
-      backgroundColor: `rgb(${blend(r, 0.88)}, ${blend(g, 0.88)}, ${blend(b, 0.88)})`,
-      borderColor: `rgb(${blend(r, 0.72)}, ${blend(g, 0.72)}, ${blend(b, 0.72)})`,
-    };
-  };
-
-  // Get visible fields sorted by order
-  const visibleFields = displayFields
-    .filter(f => f.visible)
-    .sort((a, b) => a.order - b.order);
-  const hoursVisible = visibleFields.some(f => f.id === 'hours');
-  const clientVisible = visibleFields.some(f => f.id === 'clientName');
-  const serviceVisible = visibleFields.some(f => f.id === 'services');
-  const notesVisible = visibleFields.some(f => f.id === 'notes');
-  const multiService = card.serviceCount > 1;
-
-  return (
-    <div
-      draggable
-      onDragStart={(e) => onDragStart && onDragStart(e, apt)}
-      onMouseEnter={() => onBookingHover?.(hoverKey)}
-      onMouseLeave={() => onBookingHover?.(null)}
-      className={cn(
-        'relative rounded-lg cursor-move border transition-all overflow-hidden w-fit h-full',
-        getStatusBg(apt.status),
-        isCompact ? 'text-xs' : 'text-sm',
-        isSiblingHovered ? 'shadow-md ring-2 ring-gray-900/15' : 'hover:shadow-md',
-      )}
-      style={showColorInRDV ? getLightColorStyle(color) : {}}
-    >
-      {/* Left accent bar in the employee's color */}
-      {showColorInRDV && (
-        <div className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: color }} />
-      )}
-
-      <div className={cn('flex flex-col min-w-0', isCompact ? 'pl-2 pr-1 py-1' : 'pl-2.5 pr-1.5 py-1.5')}>
-        {/* Top row: per-service time range + actions */}
-        <div className="flex items-start justify-between gap-1">
-          {hoursVisible && (
-            <div className="flex items-center gap-1 text-[11px] leading-tight text-gray-500 min-w-0">
-              <Clock size={12} className="shrink-0" />
-              <span className="tabular-nums whitespace-nowrap">{card.startLabel} → {card.endLabel}</span>
-            </div>
-          )}
-          <div className="flex items-center gap-1 shrink-0">
-            {!isCompact && canConfirmStatus(apt.status) && onStatusUpdate && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStatusUpdate(apt, 'confirmed');
-                }}
-                className="px-2 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded transition-colors"
-                title="Confirmer le rendez-vous"
-              >
-                Confirmer
-              </button>
-            )}
-            <Popover open={showMenu} onOpenChange={setShowMenu}>
-              <PopoverTrigger asChild>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowMenu(true);
-                  }}
-                  className="p-1 opacity-40 hover:opacity-100 transition-opacity"
-                >
-                  <MoreVertical size={isCompact ? 12 : 14} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent 
-                className="w-48 p-1" 
-                align="end"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {canConfirmStatus(apt.status) && onStatusUpdate && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStatusUpdate(apt, 'confirmed');
-                      setShowMenu(false);
-                    }}
-                    className="w-full text-left px-3 py-2 text-sm text-emerald-700 hover:bg-emerald-50 rounded transition-colors flex items-center gap-2"
-                  >
-                    <Check size={14} />
-                    Confirmer
-                  </button>
-                )}
-                {canMarkAbsentOrDone(apt.status) && onStatusUpdate && (
-                  <>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onStatusUpdate(apt, 'completed');
-                        setShowMenu(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 rounded transition-colors flex items-center gap-2"
-                    >
-                      <Flag size={14} />
-                      Terminé
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onStatusUpdate(apt, 'no_show');
-                        setShowMenu(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm text-orange-700 hover:bg-orange-50 rounded transition-colors flex items-center gap-2"
-                    >
-                      <UserX size={14} />
-                      Absent
-                    </button>
-                  </>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowMenu(false);
-                    if (onShowDetails) {
-                      onShowDetails(apt);
-                    }
-                  }}
-                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                >
-                  Détails
-                </button>
-              </PopoverContent>
-            </Popover>
-          </div>
-        </div>
-
-        {/* Client name — bold */}
-        {clientVisible && (
-          <p className="font-semibold text-gray-900 truncate leading-tight mt-0.5">{apt.clientName}</p>
-        )}
-
-        {/* Service name (+ booking chip in compact mode) */}
-        {serviceVisible && (
-          <p className="text-xs text-gray-600 truncate leading-snug flex items-center gap-1">
-            <span className="truncate">{card.serviceName}</span>
-            {multiService && isCompact && (
-              <span
-                className="shrink-0 px-1 py-px rounded-full bg-gray-900/[0.04] border border-gray-200 text-[9px] font-semibold text-gray-500"
-                title={`Prestation ${card.serviceIndex + 1} sur ${card.serviceCount} du rendez-vous`}
-              >
-                {card.serviceIndex + 1}/{card.serviceCount}
-              </span>
-            )}
-          </p>
-        )}
-
-        {notesVisible && apt.notes && !isCompact && (
-          <p className="text-[11px] text-gray-400 truncate leading-snug mt-0.5">{apt.notes}</p>
-        )}
-
-        {apt.status === 'cancelled' && apt.cancelledByClient && (
-          <div className="mt-1 text-[11px] text-red-600 font-medium flex items-center gap-1.5">
-            <X size={12} />
-            <span>Annulé par le client</span>
-          </div>
-        )}
-
-        {/* Employee + booking position chip */}
-        {!isCompact && (
-          <div className="flex items-center gap-1 mt-1 text-[11px] text-gray-500 leading-tight">
-            <span
-              className="w-1.5 h-1.5 rounded-full shrink-0"
-              style={{ backgroundColor: showColorInRDV ? color : '#9CA3AF' }}
-            />
-            <span className="truncate">{card.employeeName}</span>
-            {multiService && (
-              <span
-                className="ml-auto shrink-0 px-1 py-px rounded-full bg-gray-900/[0.04] border border-gray-200 text-[9px] font-semibold text-gray-500"
-                title={`Prestation ${card.serviceIndex + 1} sur ${card.serviceCount} du rendez-vous`}
-              >
-                {card.serviceIndex + 1}/{card.serviceCount}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
 
 const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSalonIds } = useAuth();
   const salonFilterKey = salonFilter === 'all' ? 'all' : effectiveSalonIds.join(',');
@@ -1872,7 +575,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
   // Agenda display range
   const [agendaStart, setAgendaStart] = useState('09:00');
   const [agendaEnd, setAgendaEnd] = useState('23:30');
-  const [services, setServices] = useState<Array<{id: number, name: string, color: string}>>([]);
+  const [services, setServices] = useState<Array<{id: string, name: string, color?: string, duration?: number, tenantId?: string}>>([]);
   const [displaySettings, setDisplaySettings] = useState<{
     showColorInRDV: boolean;
     fields?: Array<{ id: string; label: string; visible: boolean; order: number }>;
@@ -1917,7 +620,8 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
             name, 
             color,
             workingHours: emp.workingHours,
-            agendaSettings: agendaSettings
+            agendaSettings: agendaSettings,
+            tenantId: emp.tenantId
           };
         });
         setEmployeeAgendas(transformedEmployees.map((e: any) => ({ id: e.id, name: e.name, color: e.color })));
@@ -1926,7 +630,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
         // Fetch services from API
         const servicesResponse = await api.getServices();
         const allServices = servicesResponse.services || [];
-        setServices(allServices.map((s: any) => ({ id: s.id, name: s.name, color: s.color })));
+        setServices(allServices.map((s: any) => ({ id: s.id, name: s.name, color: s.color, duration: s.duration, tenantId: s.tenantId })));
 
         // Fetch accepted payment methods
         try {
@@ -2098,35 +802,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
       setLoadingAppointments(true);
       
       // Calculate date range based on current view
-      let startDate: Date;
-      let endDate: Date;
-      
-      if (view === 'day') {
-        startDate = new Date(currentDate);
-        startDate.setHours(0, 0, 0, 0);
-        endDate = new Date(currentDate);
-        endDate.setHours(23, 59, 59, 999);
-      } else if (view === 'week') {
-        const weekStart = new Date(currentDate);
-        const dayOfWeek = weekStart.getDay();
-        const diff = weekStart.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Monday
-        weekStart.setDate(diff);
-        weekStart.setHours(0, 0, 0, 0);
-        startDate = weekStart;
-        
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekEnd.getDate() + 6);
-        weekEnd.setHours(23, 59, 59, 999);
-        endDate = weekEnd;
-      } else { // month
-        const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-        monthStart.setHours(0, 0, 0, 0);
-        startDate = monthStart;
-        
-        const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-        monthEnd.setHours(23, 59, 59, 999);
-        endDate = monthEnd;
-      }
+      const { startDate, endDate } = getViewDateRange(view, currentDate);
       
       const response = await api.getAppointments({
         startDate: startDate.toISOString(),
@@ -2145,64 +821,46 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
     }
   };
   
+  // ─── Backend-provided per-slot availability (agenda shading) ──────────────
+  // The “no employee available” strip shading is computed by the backend with
+  // the booking solver's own primitives (agenda status -> working hours ->
+  // breaks). No client-side reimplementation of working-hours logic.
+  const [dayAvailability, setDayAvailability] = useState<Record<string, Record<string, boolean>> | null>(null);
+
+  const fetchDayAvailability = async () => {
+    if (!isAuthenticated) return;
+    const { startDate, endDate } = getViewDateRange(view, currentDate);
+    try {
+      const res = await api.getDayAvailability(
+        startDate.toISOString().slice(0, 10),
+        endDate.toISOString().slice(0, 10)
+      );
+      setDayAvailability(res.days || {});
+    } catch (err) {
+      console.error('Error fetching day availability:', err);
+      setDayAvailability(null);
+    }
+  };
+
   // Fetch appointments when view, date, or salon filter changes
   useEffect(() => {
     fetchAppointments();
+    fetchDayAvailability();
   }, [isAuthenticated, view, currentDateKey, salonFilterKey]);
 
-  // Helper function to check if employee is available at a given date/time
-  const isEmployeeAvailable = (employeeId: string | null, date: Date, time: string): boolean => {
-    if (!employeeId) return true; // If no employee selected, consider available
-    
-    const employee = employeesData.find(emp => emp.id === employeeId);
-    if (!employee || !employee.workingHours) return true; // Default to available if no data
-    
-    const workingHours = employee.workingHours;
-    if (!Array.isArray(workingHours)) return true;
-    
-    // Get day name in French
-    const dayNames = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
-    const dayName = dayNames[date.getDay()];
-    
-    // Find working hours for this day
-    const daySchedule = workingHours.find((wh: any) => wh.day === dayName);
-    if (!daySchedule || !daySchedule.isWorking) return false;
-    
-    // Check if time is within working hours
-    const [timeHours, timeMinutes] = time.split(':').map(Number);
-    const timeInMinutes = timeHours * 60 + timeMinutes;
-    
-    const [startHours, startMinutes] = daySchedule.startTime.split(':').map(Number);
-    const startInMinutes = startHours * 60 + startMinutes;
-    
-    const [endHours, endMinutes] = daySchedule.endTime.split(':').map(Number);
-    const endInMinutes = endHours * 60 + endMinutes;
-    
-    if (timeInMinutes < startInMinutes || timeInMinutes >= endInMinutes) {
-      return false;
-    }
-    
-    // Check if time is during a break
-    if (daySchedule.breaks && Array.isArray(daySchedule.breaks)) {
-      for (const breakTime of daySchedule.breaks) {
-        const [breakStartHours, breakStartMinutes] = breakTime.start.split(':').map(Number);
-        const breakStartInMinutes = breakStartHours * 60 + breakStartMinutes;
-        
-        const [breakEndHours, breakEndMinutes] = breakTime.end.split(':').map(Number);
-        const breakEndInMinutes = breakEndHours * 60 + breakEndMinutes;
-        
-        if (timeInMinutes >= breakStartInMinutes && timeInMinutes < breakEndInMinutes) {
-          return false;
-        }
-      }
-    }
-    
-    return true;
+  /** Backend's per-slot map for a given local date, or undefined while loading. */
+  const availabilityForDate = (d: Date): Record<string, boolean> | undefined => {
+    if (!dayAvailability) return undefined;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return dayAvailability[key];
   };
-  
-  // Get available employees for a given date/time
-  const getAvailableEmployees = (date: Date, time: string) => {
-    return employeesData.filter(emp => isEmployeeAvailable(emp.id, date, time));
+
+  /** True when NO employee of the filtered salons works this slot (backend verdict). */
+  const hasNoEmployeeAvailable = (d: Date, time: string): boolean => {
+    const slots = availabilityForDate(d);
+    // Not loaded yet (or fetch failed) — keep the pre-fix all-gray behavior.
+    if (!slots) return true;
+    return slots[time] !== true;
   };
 
   // Dispatch event when main calendar date changes to sync sidebar
@@ -2993,7 +1651,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                     >
                       {/* 30-min strips: availability shading + quick create */}
                       {timeSlots.map((time) => {
-                        const isNoEmployee = getAvailableEmployees(date, time).length === 0;
+                        const isNoEmployee = hasNoEmployeeAvailable(date, time);
                         return (
                           <div
                             key={time}
@@ -3080,7 +1738,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
               >
                 {/* 30-min strips: availability shading + quick create */}
                 {timeSlots.map((time) => {
-                  const isNoEmployee = getAvailableEmployees(currentDate, time).length === 0;
+                  const isNoEmployee = hasNoEmployeeAvailable(currentDate, time);
                   const cellStyle = getCalendarCellStyle();
                   return (
                     <div
@@ -3312,6 +1970,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
           onClose={() => setShowNewRDV(false)} 
           onCreateAppointment={handleCreateAppointment}
           employeesData={employeesData}
+          servicesData={services}
           initialDate={newRdvInitialDate}
           initialTime={newRdvInitialTime}
           agendaStart={agendaStart}

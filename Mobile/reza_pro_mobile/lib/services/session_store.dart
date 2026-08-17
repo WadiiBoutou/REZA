@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SalonSummary {
@@ -109,12 +110,19 @@ class StaffUser {
 }
 
 class SessionStore {
+  /// Legacy SharedPreferences key used before the token moved to secure
+  /// storage — read once during migration, then removed.
   static const _tokenKey = 'reza_pro_token';
   static const _userKey = 'reza_pro_user';
   static const _salonsKey = 'reza_pro_salons';
   static const _activeTenantKey = 'reza_pro_active_tenant';
   /// Web `activeSalonIds`: `["all"]` or concrete tenant id list.
   static const _salonFilterKey = 'reza_pro_active_salon_ids';
+
+  /// Auth token lives in platform secure storage (Keychain / Keystore), not
+  /// plaintext SharedPreferences.
+  static const _secureTokenKey = 'reza_pro_token_secure';
+  static const _secureStorage = FlutterSecureStorage();
 
   Future<void> save({
     required String token,
@@ -123,7 +131,7 @@ class SessionStore {
     String? activeTenantId,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
+    await _writeToken(token);
     await prefs.setString(_userKey, jsonEncode(user.toJson()));
     if (salons != null) {
       await prefs.setString(
@@ -162,9 +170,31 @@ class SessionStore {
     return 'all';
   }
 
+  /// Token lives in secure storage; falls back to the legacy plaintext
+  /// SharedPreferences copy exactly once, migrating it to secure storage and
+  /// clearing the plaintext value so existing sessions survive the upgrade.
   Future<String?> getToken() async {
+    final secure = await _secureStorage.read(key: _secureTokenKey);
+    if (secure != null && secure.isNotEmpty) return secure;
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_tokenKey);
+    final legacy = prefs.getString(_tokenKey);
+    if (legacy == null || legacy.isEmpty) return null;
+    await _writeToken(legacy);
+    await prefs.remove(_tokenKey);
+    return legacy;
+  }
+
+  Future<void> _writeToken(String token) async {
+    await _secureStorage.write(key: _secureTokenKey, value: token);
+    // Best-effort cleanup of any legacy plaintext copy.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_tokenKey)) {
+        await prefs.remove(_tokenKey);
+      }
+    } catch (_) {
+      // Secure write already succeeded; cleanup is non-critical.
+    }
   }
 
   Future<StaffUser?> getUser() async {
@@ -198,6 +228,7 @@ class SessionStore {
   }
 
   Future<void> clear() async {
+    await _secureStorage.delete(key: _secureTokenKey);
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_userKey);

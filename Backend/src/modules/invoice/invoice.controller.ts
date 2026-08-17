@@ -7,11 +7,33 @@ import { isSalonRequiredError, resolveWriteTenantId } from '../../utils/salonSco
 export class InvoiceController {
   async getInvoices(req: Request, res: Response, next: NextFunction) {
     try {
-      const { status, type } = req.query;
+      const { status, type, startDate, endDate } = req.query;
+      let start: Date | undefined;
+      let end: Date | undefined;
+      if (startDate) {
+        start = new Date(startDate as string);
+        if (isNaN(start.getTime())) {
+          return res.status(400).json({
+            error: 'INVALID_DATE',
+            message: 'Format de date invalide pour startDate. Utilisez une date ISO valide.',
+          });
+        }
+      }
+      if (endDate) {
+        end = new Date(endDate as string);
+        if (isNaN(end.getTime())) {
+          return res.status(400).json({
+            error: 'INVALID_DATE',
+            message: 'Format de date invalide pour endDate. Utilisez une date ISO valide.',
+          });
+        }
+      }
       const invoices = await invoiceService.getInvoices(
         req.salonIds || [req.tenantId!],
         status as string,
-        type as string
+        type as string,
+        start,
+        end
       );
       res.json({ invoices });
     } catch (error) {

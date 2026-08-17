@@ -9,7 +9,13 @@ import { schedulingService } from './scheduling.service';
 import { formatDateForNotification } from '../../utils/dateTime';
 import { salonClientsFilter, tenantIdFilter } from '../../utils/salonScope';
 import { buildProcheAvatarMap } from '../../utils/familyMemberAvatars';
-import { rangesOverlap } from '../../utils/feasibility';
+import {
+  rangesOverlap,
+  getWorkingHoursForDay,
+  overlapsBreak,
+  formatMinutes,
+  WorkingHoursDay,
+} from '../../utils/feasibility';
 import * as log from '../../utils/logger';
 import {
   getServicePrice,
@@ -976,6 +982,80 @@ export class AppointmentService {
         cancellationReason: 'Cancelled by admin',
       },
     });
+  }
+
+  /**
+   * Per-30-minute-slot “any employee available” map for each date in a range,
+   * computed with the SAME shared feasibility primitives as the booking solver
+   * (agenda status -> working hours -> breaks). The agenda grid shades slots
+   * where NO employee of the filtered salons is scheduled to work, instead of
+   * reimplementing that logic in JS. Bookings are intentionally NOT considered:
+   * the shading reflects staffing (is anyone at work), not current occupancy.
+   */
+  async getDayAvailability(
+    tenantIds: string | string[],
+    startDate: string,
+    endDate: string,
+  ): Promise<{ days: Record<string, Record<string, boolean>> }> {
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRe.test(startDate) || !dateRe.test(endDate)) {
+      throw new Error('INVALID_DATE_FORMAT');
+    }
+    const parseDate = (s: string): Date => {
+      const [y, m, d] = s.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      if (isNaN(dt.getTime())) throw new Error('INVALID_DATE');
+      return dt;
+    };
+    const start = parseDate(startDate);
+    const end = parseDate(endDate);
+    if (end < start) throw new Error('INVALID_DATE_RANGE');
+    const dayCount = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+    // Guard against pathological ranges (a month view is ~31 days).
+    if (dayCount > 62) throw new Error('INVALID_DATE_RANGE');
+
+    const ids = Array.isArray(tenantIds) ? tenantIds : [tenantIds];
+    const employees = await prisma.employee.findMany({
+      where: { tenantId: tenantIdFilter(ids), isActive: true },
+      select: { workingHours: true, agendaSettings: true },
+    });
+
+    const days: Record<string, Record<string, boolean>> = {};
+    for (let i = 0; i < dayCount; i++) {
+      const dayDate = new Date(start);
+      dayDate.setDate(start.getDate() + i);
+      const dayIndex = dayDate.getDay();
+      const key = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`;
+
+      const slots: Record<string, boolean> = {};
+      for (let m = 0; m < 1440; m += 30) {
+        const slotStart = m;
+        const slotEnd = Math.min(m + 30, 1440);
+        let anyAvailable = false;
+        for (const emp of employees) {
+          const empStatus = emp.agendaSettings ? (emp.agendaSettings as any).status : undefined;
+          if (empStatus && empStatus !== 'active') continue;
+          const wh = getWorkingHoursForDay(emp.workingHours, dayIndex);
+          if (!wh) continue;
+          if (slotStart < wh.start || slotEnd > wh.end) continue;
+          if (
+            overlapsBreak(
+              emp.workingHours as WorkingHoursDay[] | null,
+              dayIndex,
+              slotStart,
+              slotEnd,
+            )
+          ) {
+            continue;
+          }
+          anyAvailable = true;
+          break;
+        }
+        slots[formatMinutes(m)] = anyAvailable;
+      }
+      days[key] = slots;
+    }
+    return { days };
   }
 }
 

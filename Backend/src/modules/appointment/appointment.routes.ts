@@ -3,6 +3,7 @@ import { appointmentController } from './appointment.controller';
 
 const router = express.Router();
 
+router.get('/availability-days', appointmentController.getDayAvailability);
 router.post('/plan', appointmentController.planAppointment);
 router.post('/client-diagnostics', appointmentController.clientDiagnostics);
 router.post('/:id/validate-move', appointmentController.validateMove);

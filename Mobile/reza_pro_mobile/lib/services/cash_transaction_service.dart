@@ -1,6 +1,4 @@
 import 'api_client.dart';
-import '../mock_data.dart';
-import 'session_store.dart';
 
 class CashTransactionService {
   Future<List<Map<String, dynamic>>> list({
@@ -10,17 +8,6 @@ class CashTransactionService {
     int page = 1,
     int limit = 50,
   }) async {
-    if (useMockData) {
-      final sessionUser = await sessionStore.getUser();
-      final data = sessionUser?.tenantId == 'mock-salon-1'
-          ? getMockCashTransactionsSalon1()
-          : <Map<String, dynamic>>[];
-
-      if (type != null && type != 'all') {
-        return data.where((tx) => tx['type'] == type).toList();
-      }
-      return data;
-    }
 
     final res = await apiClient.get('/cash-transactions', query: {
       if (startDate != null) 'startDate': startDate,
@@ -43,16 +30,6 @@ class CashTransactionService {
     String? notes,
     String? tenantId,
   }) async {
-    if (useMockData) {
-      return {
-        'id': generateId(),
-        'type': type,
-        'amount': amount,
-        'paymentMethod': paymentMethod,
-        'notes': notes,
-        'createdAt': DateTime.now().toIso8601String(),
-      };
-    }
 
     final res = await apiClient.post('/cash-transactions', {
       'type': type,

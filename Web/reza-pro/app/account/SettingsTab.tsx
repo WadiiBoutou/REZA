@@ -1,8 +1,8 @@
 // @ts-nocheck
 import { Bell, Shield, Key, Smartphone, CreditCard, Plus, Check, Lock, ChevronRight, X, Trash2 } from 'lucide-react';
 import React, { useState } from 'react';
-import DeleteModal from './dialogue/deletemodal';
-import SaveModal from './dialogue/savemodal';
+import DeleteModal from './modals/DeleteModal';
+import SaveModal from './modals/SaveModal';
 import { useRouter } from 'next/navigation';
 import Loading from '../salon/Loading';
 

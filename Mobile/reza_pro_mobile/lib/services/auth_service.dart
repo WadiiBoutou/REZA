@@ -1,6 +1,5 @@
 import 'api_client.dart';
 import 'session_store.dart';
-import '../mock_data.dart';
 
 class AuthSession {
   final String token;
@@ -34,13 +33,6 @@ class AuthSession {
 
 class AuthService {
   Future<AuthSession> login(String email, String password) async {
-    if (useMockData) {
-      // Check if credentials match our mock user
-      if (email == 'admin@reza.com' && password == '123456') {
-        return mockAuthSession;
-      }
-      throw ApiException('Identifiants incorrects');
-    }
 
     final res = await apiClient.post('/auth/login', {
       'email': email.trim(),
@@ -56,9 +48,6 @@ class AuthService {
   }
 
   Future<AuthSession> me() async {
-    if (useMockData) {
-      return mockAuthSession;
-    }
 
     final res = await apiClient.get('/auth/me');
     // /me has no token — caller keeps existing
@@ -70,21 +59,6 @@ class AuthService {
   }
 
   Future<AuthSession> switchSalon(String tenantId) async {
-    if (useMockData) {
-      // Find the salon in our list
-      final salon = mockSalons.firstWhere((s) => s.id == tenantId,
-          orElse: () => mockSalons.first);
-      final updatedUser = mockUser.copyWith(
-        tenantId: salon.id,
-        tenantName: salon.name,
-      );
-      return AuthSession(
-        token: mockAuthSession.token,
-        user: updatedUser,
-        salons: mockSalons,
-        activeTenantId: salon.id,
-      );
-    }
 
     final res = await apiClient.post('/auth/switch-salon', {
       'tenantId': tenantId,
@@ -95,13 +69,11 @@ class AuthService {
   }
 
   Future<void> logout() async {
-    if (!useMockData) {
-      try {
-        await apiClient.post('/auth/logout');
-      } catch (_) {
-        // ignore network errors on logout
-      }
-    }
+  try {
+    await apiClient.post('/auth/logout');
+  } catch (_) {
+    // ignore network errors on logout
+  }
   }
 }
 

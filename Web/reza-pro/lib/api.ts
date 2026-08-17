@@ -64,23 +64,34 @@ function friendlyHttpMessage(status: number, fallback: string): string {
 
 /**
  * Safely turn a non-OK response into an Error. Reads the body as text, parses
- * JSON when possible (backend errors), and falls back to a clean French
- * message when the body is HTML or unreadable. Never leaks parse exceptions.
+ * JSON when possible (backend errors: string body, `message`, `error`, or
+ * `errors[]`), and falls back to a clean French message when the body is HTML
+ * or unreadable. Never leaks parse exceptions or raw HTML. This is the single
+ * shared error-parsing implementation used by ApiClient.request and by the
+ * multipart uploads (previously two near-identical copies).
  */
 async function errorFromResponse(response: Response, fallback: string): Promise<Error> {
   const status = response.status;
   try {
     const text = await response.text();
     if (text && text.trim()) {
+      let errorMessage = '';
       try {
         const data = JSON.parse(text);
-        const msg = data && (typeof data.message === 'string' ? data.message : (typeof data.error === 'string' ? data.error : ''));
-        if (msg) return new Error(msg);
-        return new Error(friendlyHttpMessage(status, fallback));
+        if (typeof data === 'string') {
+          errorMessage = data;
+        } else if (data && typeof data.message === 'string') {
+          errorMessage = data.message;
+        } else if (data && typeof data.error === 'string') {
+          errorMessage = data.error;
+        } else if (data && Array.isArray(data.errors)) {
+          errorMessage = data.errors.map((e: any) => e?.message || e).join(', ');
+        }
       } catch {
         // Non-JSON body (HTML etc.) — never surface it raw.
-        return new Error(friendlyHttpMessage(status, fallback));
       }
+      if (errorMessage) return new Error(errorMessage);
+      return new Error(friendlyHttpMessage(status, fallback));
     }
   } catch {
     // Body unreadable
@@ -238,37 +249,10 @@ class ApiClient {
         // Don't redirect automatically - let the app handle it
       }
       
-      let errorMessage: string = `HTTP ${response.status}: ${response.statusText}`;
-      
-      try {
-        // Try to get error message from response
-        const contentType = responseClone.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const errorData = await responseClone.json();
-          // Handle different error response formats
-          if (typeof errorData === 'string') {
-            errorMessage = errorData;
-          } else if (errorData?.message) {
-            errorMessage = errorData.message;
-          } else if (errorData?.error) {
-            errorMessage = errorData.error;
-          } else if (errorData?.errors && Array.isArray(errorData.errors)) {
-            errorMessage = errorData.errors.map((e: any) => e.message || e).join(', ');
-          }
-        } else {
-          // Try to get text response
-          const text = await responseClone.text();
-          if (text && text.trim()) {
-            errorMessage = text.trim().startsWith('<') ? friendlyHttpMessage(response.status, errorMessage) : text;
-          }
-        }
-      } catch (parseError) {
-        // If parsing fails, use default message
-        console.error('Error parsing error response:', parseError);
-        errorMessage = friendlyHttpMessage(response.status, errorMessage);
-      }
-      
-      const error = new Error(errorMessage);
+      const error = await errorFromResponse(
+        responseClone,
+        `HTTP ${response.status}: ${response.statusText}`
+      );
       (error as any).status = response.status;
       (error as any).statusText = response.statusText;
       throw error;
@@ -571,10 +555,6 @@ class ApiClient {
   }
 
   /** Minimal subscription info for auth context. */
-  async getSubscription() {
-    return this.request<{ account: any; subscription: any }>('/subscription');
-  }
-
   /** Declare a virement payment for the current bill. */
   async declarePayment(input: { amount?: number; reference?: string; payerName?: string; salonIds?: string[] } = {}) {
     return this.request<{ payment: { id: string; amount: number; status: string; createdAt: string } }>(
@@ -584,15 +564,7 @@ class ApiClient {
   }
 
   /** Payment history for the account owner. */
-  async getPayments() {
-    return this.request<{ payments: any[] }>('/subscription/payments');
-  }
-
   /** Subscription invoice history (SUBSCRIPTION-type invoices for this account). */
-  async getSubscriptionInvoices() {
-    return this.request<{ invoices: any[] }>('/tenant/subscription-invoices');
-  }
-
   // Superadmin endpoints
   async superAdminGetAccounts(params?: { page?: number; limit?: number; q?: string }) {
     const qs = new URLSearchParams();
@@ -618,23 +590,6 @@ class ApiClient {
   ) {
     return this.request<{ success: boolean }>(`/superadmin/accounts/${accountId}`, {
       method: 'PATCH',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async superAdminGetBillingConfig() {
-    return this.request<{ config: any }>('/superadmin/billing-config');
-  }
-
-  async superAdminUpdateBillingConfig(data: {
-    pricePerSalon?: number;
-    freeEmployeeThreshold?: number;
-    pricePerEmployee?: number;
-    employeeTiers?: { min: number; max: number | null; price: number }[] | null;
-    currency?: string;
-  }) {
-    return this.request<{ config: any }>('/superadmin/billing-config', {
-      method: 'PUT',
       body: JSON.stringify(data),
     });
   }
@@ -730,10 +685,6 @@ class ApiClient {
     return this.request<any>(`/clients?${query.toString()}`, {
       headers: this.salonHeaders(opts?.salonIds),
     });
-  }
-
-  async getClient(id: string) {
-    return this.request<any>(`/clients/${id}`);
   }
 
   async createClient(clientData: any) {
@@ -965,6 +916,20 @@ class ApiClient {
   }
 
   // Appointment endpoints
+  /**
+   * Per-30-min-slot “any employee available” map for each date in range — the
+   * agenda's “no employee available” shading, computed backend-side with the
+   * booking solver's own primitives (no client-side working-hours logic).
+   */
+  async getDayAvailability(startDate: string, endDate: string) {
+    const query = new URLSearchParams();
+    query.append('startDate', startDate);
+    query.append('endDate', endDate);
+    return this.request<{
+      days: Record<string, Record<string, boolean>>;
+    }>(`/appointments/availability-days?${query.toString()}`);
+  }
+
   async getAppointments(params?: {
     startDate?: string;
     endDate?: string;
@@ -989,10 +954,6 @@ class ApiClient {
     if (params?.page) query.append('page', params.page.toString());
     if (params?.limit) query.append('limit', params.limit.toString());
     return this.request<any>(`/appointments?${query.toString()}`);
-  }
-
-  async getAppointment(id: string) {
-    return this.request<any>(`/appointments/${id}`);
   }
 
   async planAppointment(params: {
@@ -1069,17 +1030,6 @@ class ApiClient {
     return this.request<any>(`/invoices?${query.toString()}`);
   }
 
-  async getInvoice(id: string) {
-    return this.request<any>(`/invoices/${id}`);
-  }
-
-  async createInvoice(invoiceData: any) {
-    return this.request<any>('/invoices', {
-      method: 'POST',
-      body: JSON.stringify(invoiceData),
-    });
-  }
-
   /** Flow A — Encaisser une vente (PAID invoice + service line items) */
   async createSale(saleData: {
     clientId: string;
@@ -1138,13 +1088,6 @@ class ApiClient {
     return this.request<any>('/invoices/pending-groups');
   }
 
-  async updateInvoice(id: string, invoiceData: any) {
-    return this.request<any>(`/invoices/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(invoiceData),
-    });
-  }
-
   // Review endpoints
   async getReviews(params?: { status?: string; clientId?: string; page?: number; limit?: number }) {
     const query = new URLSearchParams();
@@ -1153,13 +1096,6 @@ class ApiClient {
     if (params?.page) query.append('page', params.page.toString());
     if (params?.limit) query.append('limit', params.limit.toString());
     return this.request<any>(`/reviews?${query.toString()}`);
-  }
-
-  async createReview(reviewData: any) {
-    return this.request<any>('/reviews', {
-      method: 'POST',
-      body: JSON.stringify(reviewData),
-    });
   }
 
   async moderateReview(id: string, status: 'APPROVED' | 'REJECTED' | 'PENDING', rejectReason?: string) {
@@ -1190,27 +1126,6 @@ class ApiClient {
   }
 
   // Statistics endpoints
-  async getStatsOverview(params?: { startDate?: string; endDate?: string }) {
-    const query = new URLSearchParams();
-    if (params?.startDate) query.append('startDate', params.startDate);
-    if (params?.endDate) query.append('endDate', params.endDate);
-    return this.request<any>(`/stats/overview?${query.toString()}`);
-  }
-
-  async getAppointmentStats(params?: { startDate?: string; endDate?: string }) {
-    const query = new URLSearchParams();
-    if (params?.startDate) query.append('startDate', params.startDate);
-    if (params?.endDate) query.append('endDate', params.endDate);
-    return this.request<any>(`/stats/appointments?${query.toString()}`);
-  }
-
-  async getRevenueStats(params?: { startDate?: string; endDate?: string }) {
-    const query = new URLSearchParams();
-    if (params?.startDate) query.append('startDate', params.startDate);
-    if (params?.endDate) query.append('endDate', params.endDate);
-    return this.request<any>(`/stats/revenue?${query.toString()}`);
-  }
-
   // Tenant endpoints
   async getTenant() {
     return this.request<any>('/tenant');
@@ -1251,58 +1166,6 @@ class ApiClient {
       return JSON.parse(text);
     } catch {
       throw new Error('Réponse du serveur invalide. Veuillez réessayer.');
-    }
-  }
-
-  async uploadHeaderImage(file: File): Promise<{ headerImage: string }> {
-    const formData = new FormData();
-    formData.append('headerImage', file);
-
-    const url = `${this.baseURL}/tenant/upload-header-image`;
-    const headers: HeadersInit = {};
-
-    // Get current token (refresh from localStorage if needed)
-    const currentToken = this.token || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
-    if (currentToken) {
-      headers['Authorization'] = `Bearer ${currentToken}`;
-    } else {
-      console.error('[API] No token found for header image upload!');
-    }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw await errorFromResponse(response, "Erreur lors de l'upload de l'image d'en-tête");
-    }
-
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error('Réponse du serveur invalide. Veuillez réessayer.');
-    }
-  }
-
-  async getHeaderImage(): Promise<{ headerImage: string | null }> {
-    try {
-      // Use query parameter to prevent caching instead of headers (to avoid CORS issues)
-      const cacheBuster = `?t=${Date.now()}`;
-      const response = await this.request<{ headerImage: string | null }>(`/tenant/header-image${cacheBuster}`, {
-        method: 'GET'
-      });
-      return response;
-    } catch (error) {
-      console.error('[API] getHeaderImage error:', error);
-      console.error('[API] getHeaderImage error details:', {
-        message: (error as any)?.message,
-        status: (error as any)?.status,
-        statusText: (error as any)?.statusText
-      });
-      throw error;
     }
   }
 
@@ -1561,21 +1424,6 @@ class ApiClient {
     return this.request<any>('/tenant/payment-methods');
   }
 
-  async addPaymentMethod(data: {
-    type: 'moroccan_transfer' | 'card';
-    iban?: string;
-    cardNumber?: string;
-    cardName?: string;
-    cardExpiry?: string;
-    cardCvc?: string;
-    last4?: string;
-  }) {
-    return this.request<any>('/tenant/payment-methods', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
   async updatePaymentMethod(id: string, data: { isDefault?: boolean }) {
     return this.request<any>(`/tenant/payment-methods/${id}`, {
       method: 'PUT',
@@ -1617,10 +1465,6 @@ class ApiClient {
     return this.request<any>(`/cash-transactions?${query.toString()}`);
   }
 
-  async getCashTransaction(id: string) {
-    return this.request<any>(`/cash-transactions/${id}`);
-  }
-
   async createCashTransaction(transactionData: {
     type: 'DEPOSIT' | 'WITHDRAWAL' | 'REFUND';
     amount: number;
@@ -1631,12 +1475,6 @@ class ApiClient {
     return this.request<any>('/cash-transactions', {
       method: 'POST',
       body: JSON.stringify(transactionData),
-    });
-  }
-
-  async deleteCashTransaction(id: string) {
-    return this.request<any>(`/cash-transactions/${id}`, {
-      method: 'DELETE',
     });
   }
 

@@ -6,6 +6,36 @@ import { createAppointmentSchema, updateAppointmentSchema, planAppointmentSchema
 import { isSalonRequiredError, resolveWriteTenantId } from '../../utils/salonScope';
 
 export class AppointmentController {
+  async getDayAvailability(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate } = req.query;
+      if (!startDate || !endDate || typeof startDate !== 'string' || typeof endDate !== 'string') {
+        return res.status(400).json({
+          error: 'INVALID_DATE',
+          message: 'Les paramètres startDate et endDate (YYYY-MM-DD) sont requis.',
+        });
+      }
+      const result = await appointmentService.getDayAvailability(
+        req.salonIds || [req.tenantId!],
+        startDate,
+        endDate
+      );
+      res.json({ ...result, startDate, endDate });
+    } catch (error: any) {
+      if (
+        error.message === 'INVALID_DATE' ||
+        error.message === 'INVALID_DATE_FORMAT' ||
+        error.message === 'INVALID_DATE_RANGE'
+      ) {
+        return res.status(400).json({
+          error: 'INVALID_DATE',
+          message: 'Format de date invalide. Utilisez des dates YYYY-MM-DD dans un intervalle cohérent (max 62 jours).',
+        });
+      }
+      next(error);
+    }
+  }
+
   async getAppointments(req: Request, res: Response, next: NextFunction) {
     try {
       const { startDate, endDate, cancelledStartDate, cancelledEndDate, clientId, employeeId, serviceId, status, page = '1', limit = '50' } = req.query;

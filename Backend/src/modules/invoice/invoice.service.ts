@@ -76,13 +76,24 @@ function sanitizeInvoice(invoice: any) {
 }
 
 export class InvoiceService {
-  async getInvoices(tenantIds: string | string[], status?: string, type?: string) {
+  async getInvoices(
+    tenantIds: string | string[],
+    status?: string,
+    type?: string,
+    startDate?: Date,
+    endDate?: Date
+  ) {
     const where: any = { tenantId: tenantIdFilter(tenantIds) };
     if (status && status !== 'ALL') {
       where.status = status;
     }
     if (type) {
       where.type = type;
+    }
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = startDate;
+      if (endDate) where.createdAt.lte = endDate;
     }
 
     const invoices = await prisma.invoice.findMany({

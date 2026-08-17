@@ -1,8 +1,8 @@
 // @ts-nocheck
 import { Plus, Edit2, Trash2, Phone, Mail, Camera, X } from 'lucide-react';
 import React, { useState } from 'react';
-import DeleteModal from './dialogue/deletemodal';
-import SaveModal from './dialogue/savemodal';
+import DeleteModal from './modals/DeleteModal';
+import SaveModal from './modals/SaveModal';
 
 const FamilyTab = ({
   familyMembers: familyMembersProp = [],

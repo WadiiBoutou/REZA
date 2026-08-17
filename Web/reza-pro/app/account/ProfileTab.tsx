@@ -1,6 +1,6 @@
 import { Camera } from 'lucide-react';
 import React, { useState } from 'react';
-import SaveModal from './dialogue/savemodal';
+import SaveModal from './modals/SaveModal';
 
 const ProfileTab = ({ userData }) => {
   const [isEditing, setIsEditing] = useState(false);

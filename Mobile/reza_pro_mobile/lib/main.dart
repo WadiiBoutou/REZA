@@ -3,14 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 import 'constants/app_colors.dart';
-import 'mock_data.dart';
 import 'viewmodels/auth_viewmodel.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/login_screen.dart';
 import 'widgets/rz_logo.dart';
 
 void main() {
-  initializeMockData();
   initializeDateFormatting('fr_FR', null).then((_) {
     runApp(const RezaProApp());
   });
