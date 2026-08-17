@@ -1341,7 +1341,6 @@ const ServiceModal = ({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="bookable">Prestation réservable</SelectItem>
-                    <SelectItem value="visible">Affichée mais non réservable</SelectItem>
                     <SelectItem value="hidden">Masquée sur le portail</SelectItem>
                   </SelectContent>
                 </Select>

@@ -1078,10 +1078,6 @@ export default function ClientsGestionPage() {
                 {/* Status */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Statut</h3>
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    « Actif » autorise ce client à prendre rendez-vous en ligne dans ce salon. « Inactif » le bloque
-                    uniquement ici — son compte reste accessible et vous pouvez toujours créer des rendez-vous pour lui manuellement.
-                  </p>
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
