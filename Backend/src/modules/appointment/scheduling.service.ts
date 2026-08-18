@@ -753,6 +753,12 @@ export class SchedulingService {
       const hasSkill = !empSkills || empSkills.size === 0 || serviceIds.some((sid) => empSkills.has(sid));
       if (!hasSkill) continue;
 
+      // Never auto-assign an employee the salon has set INACTIVE or on VACATION
+      // — downstream validation would reject the booking, so picking them here
+      // only produces confusing errors for legitimate "Sans préférence" groups.
+      const empStatus = emp.agendaSettings ? (emp.agendaSettings as any).status : undefined;
+      if (empStatus && empStatus !== 'active') continue;
+
       const wh = emp.workingHours as WorkingHoursDay[] | null;
       const daySchedule = wh?.find((d) => isSameDay(d.day, dayIndex));
       if (!daySchedule || !daySchedule.isWorking) continue;

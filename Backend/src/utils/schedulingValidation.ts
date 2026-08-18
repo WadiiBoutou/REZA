@@ -441,6 +441,17 @@ export async function validateAppointmentRules(params: ValidationParams) {
       if (source === 'ADMIN') {
         return { isValid: true };
       }
+      // PUBLIC: an explicitly-picked employee outside their working hours, on a
+      // break, or on their day off cannot be assigned. This was previously
+      // discarded (only the ADMIN branch handled it), which silently accepted
+      // bookings for an unavailable employee whenever another employee was free
+      // for the slot (e.g. outside-hours pick while a colleague still works).
+      return {
+        isValid: false,
+        status: whResult.status || 400,
+        error: whResult.error || 'Employee unavailable',
+        message: whResult.message || "Ce collaborateur n'est pas disponible à cette heure.",
+      };
     }
   }
 
