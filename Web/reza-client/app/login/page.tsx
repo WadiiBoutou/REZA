@@ -810,7 +810,7 @@ function LoginPageContent() {
                 {/* Email Input */}
                 <div>
                   <label htmlFor="email" className="block text-sm font-bold text-gray-900 mb-2">
-                    Email <span className="text-red-500">*</span>
+                    Email {mode === 'signup' && <span className="text-red-500">*</span>}
                   </label>
                   <div className="relative">
                     <input
@@ -834,7 +834,7 @@ function LoginPageContent() {
                 {/* Password Input */}
                 <div>
                   <label htmlFor="password" className="block text-sm font-bold text-[#000000] mb-2">
-                    Mot de passe <span className="text-red-500">*</span>
+                    Mot de passe {mode === 'signup' && <span className="text-red-500">*</span>}
                   </label>
                   <div className="relative">
                     <input
