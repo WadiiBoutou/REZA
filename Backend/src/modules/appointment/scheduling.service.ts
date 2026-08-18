@@ -15,6 +15,7 @@ import {
   getSalonDayBreaks,
   overlapsBreaks,
   breakMinutesWithin,
+  getVisibleEmployeeIds,
   type WorkingHoursDay,
 } from '../../utils/feasibility';
 
@@ -690,7 +691,7 @@ export class SchedulingService {
     const totalDuration = services.reduce((sum, s) => sum + s.duration, 0);
     const endMinutes = startMinutes + totalDuration;
 
-    const employees = await prisma.employee.findMany({
+    let employees = await prisma.employee.findMany({
       where: { tenantId, isActive: true },
       select: {
         id: true,
@@ -702,6 +703,12 @@ export class SchedulingService {
         employeeServices: { select: { serviceId: true } },
       },
     });
+
+    // Public-path visibility: only employees the salon has paid for.
+    const visibleIds = await getVisibleEmployeeIds(tenantId);
+    if (visibleIds) {
+      employees = employees.filter((e) => visibleIds.has(e.id));
+    }
 
     const skillMap = new Map<string, Set<string>>();
     for (const emp of employees) {

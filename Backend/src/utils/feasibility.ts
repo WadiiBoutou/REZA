@@ -25,6 +25,46 @@ import type { AppointmentStatus } from '../../prisma/generated/prisma/client';
 
 export const ACTIVE_STATUSES: AppointmentStatus[] = ['PENDING', 'CONFIRMED', 'IN_PROGRESS'];
 
+/**
+ * Return the set of employee IDs visible on the public site for a tenant.
+ * Visible = within the free threshold + paid-for employees this period.
+ * Returns null when the tenant has no subscription info (safe fallback: show all).
+ */
+export async function getVisibleEmployeeIds(tenantId: string): Promise<Set<string> | null> {
+  try {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        employeesPaid: true,
+        subscriptionActive: true,
+        account: {
+          select: {
+            subscription: { select: { status: true, currentPeriodEnd: true } },
+          },
+        },
+      },
+    });
+    if (!tenant) return null;
+    const sub = tenant.account?.subscription;
+    const periodActive = sub?.status === 'ACTIVE' &&
+      (!sub.currentPeriodEnd || sub.currentPeriodEnd.getTime() > Date.now());
+    // Get free threshold
+    const config = await prisma.billingConfig.findUnique({ where: { id: 'default' } });
+    const freeThreshold = config?.freeEmployeeThreshold ?? 0;
+    const paidCount = periodActive ? (tenant.employeesPaid ?? 0) : 0;
+    const maxVisible = freeThreshold + paidCount;
+    // Get all active employees ordered
+    const employees = await prisma.employee.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return new Set(employees.slice(0, maxVisible).map((e) => e.id));
+  } catch {
+    return null; // fallback: don't filter
+  }
+}
+
 const DAY_NAMES_FR_EN: Record<number, string[]> = {
   0: ['dimanche', 'sunday'],
   1: ['lundi', 'monday'],
@@ -328,7 +368,7 @@ export async function loadFeasibilityContext(
   const dayDate = new Date(year, month - 1, dayNum);
   const dayIndex = dayDate.getDay();
 
-  const employees = await prisma.employee.findMany({
+  let employees = await prisma.employee.findMany({
     where: { tenantId, isActive: true },
     select: {
       id: true,
@@ -340,6 +380,12 @@ export async function loadFeasibilityContext(
       employeeServices: { select: { serviceId: true } },
     },
   });
+
+  // Public-path visibility: only show employees the salon has paid for.
+  const visibleIds = await getVisibleEmployeeIds(tenantId);
+  if (visibleIds) {
+    employees = employees.filter((e) => visibleIds.has(e.id));
+  }
 
   const skillMap = buildSkillMap(employees as FeasibilityEmployee[]);
 
