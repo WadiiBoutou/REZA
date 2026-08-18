@@ -342,15 +342,34 @@ export class BookingService {
 
             if (!guestClient) {
               // Create a new lightweight global client record for this guest
-              guestClient = await prisma.client.create({
-                data: {
-                  firstName: guestFirstName,
-                  lastName: guestLastName,
-                  phone: guestPhone || '',
-                  email: guestEmail?.toLowerCase() || null,
-                  status: 'ACTIVE',
-                },
-              });
+              // Before creating, check if a client with this email already exists
+              // (prevents P2002 unique-constraint violations when a participant's
+              // email matches an existing client — e.g. the booker's own email).
+              let emailToCreate = guestEmail?.toLowerCase() || null;
+              if (emailToCreate) {
+                const existingByEmail = await prisma.client.findFirst({ where: { email: emailToCreate } });
+                if (existingByEmail) {
+                  if (!isBooker(existingByEmail) && guestMatches(existingByEmail)) {
+                    // Same person, already in DB — reuse
+                    guestClient = existingByEmail;
+                  } else {
+                    // Email belongs to someone else (booker or different person) —
+                    // don't create with this email or we hit P2002
+                    emailToCreate = null;
+                  }
+                }
+              }
+              if (!guestClient) {
+                guestClient = await prisma.client.create({
+                  data: {
+                    firstName: guestFirstName,
+                    lastName: guestLastName,
+                    phone: guestPhone || '',
+                    email: emailToCreate,
+                    status: 'ACTIVE',
+                  },
+                });
+              }
             }
 
             appointmentClientId = guestClient.id;
