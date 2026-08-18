@@ -355,11 +355,7 @@ export default function MonAbonnementPage() {
                       ) : (
                         <p className="text-[11px] text-gray-400 mt-0.5">Entièrement réglé — rien à payer</p>
                       )}
-                      {hasNewEmployees && (
-                        <p className="text-[11px] text-amber-600 mt-0.5">
-                          {s.employeesPaid} employé{s.employeesPaid > 1 ? 's' : ''} payé{hasNewEmployees ? 's' : ''} ce mois — {s.billableEmployees} nouveau{s.billableEmployees > 1 ? 'x' : ''} à couvrir ({s.employeeFee.toLocaleString('fr-FR')} {currency})
-                        </p>
-                      )}
+
                     </div>
                     <span className={`text-sm font-bold shrink-0 ${s.total > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
                       {s.total > 0 ? `${s.total.toLocaleString('fr-FR')} ${currency}` : '0 ' + currency}
