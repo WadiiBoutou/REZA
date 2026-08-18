@@ -1398,7 +1398,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
         return (
           <div key={c.key} className="absolute z-10" style={{
             left: `${(c.lane / c.laneCount) * 100}%`,
-            maxWidth: `${100 / c.laneCount}%`,
+            width: `${100 / c.laneCount}%`,
             top: `${minToTopRem(c.startMin)}rem`,
             height: `${Math.max(c.duration * MINUTE_HEIGHT_REM, minH)}rem`,
           }}>
@@ -1410,7 +1410,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
       return (
         <div key={`grp-${aptId}`} className="absolute z-[8] rounded-lg border border-gray-400/60 bg-gray-400/5 pointer-events-none" style={{
           left: `calc(${(lane / laneCount) * 100}% - 2px)`,
-          maxWidth: `calc(${100 / laneCount}% + 4px)`,
+          width: `calc(${100 / laneCount}% + 4px)`,
           top: `${minToTopRem(startMin)}rem`,
           padding: '2px',
         }}>
