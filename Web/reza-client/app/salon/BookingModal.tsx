@@ -1227,7 +1227,12 @@ const BookingModal: React.FC<BookingModalProps> = ({
       
       const finalFirstName = bookingData.firstName?.trim() || (isAuthenticated && user ? userFirstName : '');
       const finalLastName = bookingData.lastName?.trim() || (isAuthenticated && user ? userLastName : '');
-      const finalEmail = bookingData.email?.trim() || (isAuthenticated && user?.email ? user.email : '');
+      // Only fall back to the authenticated user's email for the BOOKER (first
+      // person).  Subsequent guests must use whatever the user typed — never
+      // inherit the booker's email, which would create a second Client record
+      // with the same email (P2002 unique-constraint violation).
+      const finalEmail = bookingData.email?.trim()
+        || (savedPeople.length === 0 && isAuthenticated && user?.email ? user.email : '');
       const finalPhone = bookingData.phone?.trim() || (isAuthenticated && user?.phone ? user.phone : '');
 
       if (!finalFirstName || !finalLastName || !finalPhone) {
