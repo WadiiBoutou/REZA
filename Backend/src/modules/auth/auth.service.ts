@@ -8,6 +8,7 @@ import { LoginInput, RegisterInput, ForgotPasswordInput, ResetPasswordInput, Sen
 import { accountService } from '../account/account.service';
 import * as log from '../../utils/logger';
 import { isValidPhone, phoneError } from '../../utils/phone';
+import { DEFAULT_BUSINESS_HOURS } from '../../utils/defaultBusinessHours';
 
 /**
  * Base URL for links included in emails (password reset link).
@@ -220,6 +221,7 @@ export class AuthService {
           language: 'fr',
           bookingAdvanceDays: 30,
           cancellationHours: 24,
+          businessHours: DEFAULT_BUSINESS_HOURS as any,
           description: JSON.stringify(onboardingData)
         }
       });

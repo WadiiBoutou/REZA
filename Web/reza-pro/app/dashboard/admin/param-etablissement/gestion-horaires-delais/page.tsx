@@ -123,12 +123,12 @@ const GestionHoraires = () => {
   // Default schedules structure
   const defaultSchedules: DaySchedule[] = [
     { day: 'Lundi', dayShort: 'Lu', isOpen: false, openTime: '10:00', closeTime: '20:00', breaks: [] },
-    { day: 'Mardi', dayShort: 'Ma', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [] },
-    { day: 'Mercredi', dayShort: 'Me', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [] },
-    { day: 'Jeudi', dayShort: 'Je', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [] },
-    { day: 'Vendredi', dayShort: 'Ve', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [] },
-    { day: 'Samedi', dayShort: 'Sa', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [] },
-    { day: 'Dimanche', dayShort: 'Di', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [] }
+    { day: 'Mardi', dayShort: 'Ma', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [{ start: '12:00', end: '13:00' }] },
+    { day: 'Mercredi', dayShort: 'Me', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [{ start: '12:00', end: '13:00' }] },
+    { day: 'Jeudi', dayShort: 'Je', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [{ start: '12:00', end: '13:00' }] },
+    { day: 'Vendredi', dayShort: 'Ve', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [{ start: '12:00', end: '13:00' }] },
+    { day: 'Samedi', dayShort: 'Sa', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [{ start: '12:00', end: '13:00' }] },
+    { day: 'Dimanche', dayShort: 'Di', isOpen: true, openTime: '10:00', closeTime: '20:00', breaks: [{ start: '12:00', end: '13:00' }] }
   ];
 
   // Establishment hours state

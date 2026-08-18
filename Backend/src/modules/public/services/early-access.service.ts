@@ -4,6 +4,7 @@ import { hashPassword } from '../../../utils/password';
 import { slugifyName } from '../../../utils/slugify';
 import { HttpError } from '../../../lib/errors';
 import { optionalPhoneSchema } from '../../../utils/phone';
+import { DEFAULT_BUSINESS_HOURS } from '../../../utils/defaultBusinessHours';
 
 export class EarlyAccessService {
   async signupEarlyAccess(body: unknown) {
@@ -129,6 +130,7 @@ export class EarlyAccessService {
           language: 'fr',
           bookingAdvanceDays: 30,
           cancellationHours: 24,
+          businessHours: DEFAULT_BUSINESS_HOURS as any,
           description: JSON.stringify({
             onboardingCompleted: true,
             onboardingDate: new Date().toISOString()

@@ -1,4 +1,9 @@
 import { prisma } from '../lib/prisma';
+import {
+  getSalonDayBreaks,
+  minutesSinceMidnight as strToMinutes,
+  formatMinutes,
+} from './feasibility';
 
 const ACTIVE_APPOINTMENT_STATUSES = ['PENDING', 'CONFIRMED', 'IN_PROGRESS'] as const;
 
@@ -129,8 +134,11 @@ export function checkEmployeeWorkingHoursAndBreaks(params: {
   startTime: Date;
   endTime: Date;
   timeZone?: string;
+  /** Salon-level businessHours; when provided, breaks come from the salon
+   *  schedule (schedules[].breaks) instead of the employee's workingHours. */
+  businessHours?: unknown;
 }): WorkingHoursCheckResult {
-  const { workingHours, startTime, endTime, timeZone = 'Africa/Casablanca' } = params;
+  const { workingHours, startTime, endTime, timeZone = 'Africa/Casablanca', businessHours } = params;
 
   if (!workingHours || !Array.isArray(workingHours) || workingHours.length === 0) {
     return { isAvailable: true };
@@ -167,24 +175,23 @@ export function checkEmployeeWorkingHoursAndBreaks(params: {
     };
   }
 
-  if (dayData.breaks && Array.isArray(dayData.breaks)) {
-    for (const b of dayData.breaks) {
-      if (!b.start || !b.end) continue;
-      const [bsH, bsM] = b.start.split(':').map(Number);
-      const [beH, beM] = b.end.split(':').map(Number);
-      const breakStart = bsH * 60 + bsM;
-      const breakEnd = beH * 60 + beM;
-
-      if (startMinutes < breakEnd && endMinutes > breakStart) {
-        return {
-          isAvailable: false,
-          status: 400,
-          error: 'Employee on break',
-          message: `Cet employé est en pause à cette heure (${b.start} - ${b.end}).`,
-          reason: 'BREAK',
-          breakRange: `${b.start}-${b.end}`,
-        };
-      }
+  const breaks = businessHours !== undefined
+    ? getSalonDayBreaks(businessHours, dayIndex)
+    : (Array.isArray(dayData.breaks) ? dayData.breaks.map((b: any) => ({
+        start: strToMinutes(b.start),
+        end: strToMinutes(b.end),
+      })) : []);
+  for (const b of breaks) {
+    if (!b || b.start === undefined || b.end === undefined) continue;
+    if (startMinutes < b.end && endMinutes > b.start) {
+      return {
+        isAvailable: false,
+        status: 400,
+        error: 'Employee on break',
+        message: `Cet employé est en pause à cette heure (${formatMinutes(b.start)} - ${formatMinutes(b.end)}).`,
+        reason: 'BREAK',
+        breakRange: `${formatMinutes(b.start)}-${formatMinutes(b.end)}`,
+      };
     }
   }
 
@@ -427,6 +434,7 @@ export async function validateAppointmentRules(params: ValidationParams) {
       startTime,
       endTime,
       timeZone: settings?.timezone || 'Africa/Casablanca',
+      businessHours: settings?.businessHours,
     });
 
     if (!whResult.isAvailable) {

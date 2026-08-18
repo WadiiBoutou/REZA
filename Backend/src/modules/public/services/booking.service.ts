@@ -12,10 +12,10 @@ import * as log from '../../../utils/logger';
 import {
   isSameDay as sharedIsSameDay,
   minutesSinceMidnight,
-  overlapsBreak as sharedOverlapsBreak,
   isOccupied as sharedIsOccupied,
   loadFeasibilityContext as sharedLoadFeasibilityContext,
   solveIntervalAssignment,
+  overlapsBreaks,
   ACTIVE_STATUSES,
 } from '../../../utils/feasibility';
 import type { Service } from '../../../../prisma/generated/prisma/client';
@@ -54,6 +54,8 @@ type FeasibilityContext = {
   dayIndex: number;
   /** Client's own occupied ranges on this day (keyed by clientId). */
   clientOccupiedRanges: { start: number; end: number }[];
+  /** The salon-wide pause(s) for the context's day (minutes). */
+  salonBreaks: { start: number; end: number }[];
 };
 
 type ResolvedParticipant = {
@@ -1808,12 +1810,6 @@ export class BookingService {
     return minutesSinceMidnight(time);
   }
 
-  private overlapsBreak(
-    wh: unknown, idx: number, rs: number, re: number,
-  ): boolean {
-    return sharedOverlapsBreak(wh as any, idx, rs, re);
-  }
-
   // ─── Pre-loaded context for per-request caching (available-slots) ──────
 
   private async loadFeasibilityContext(
@@ -1872,7 +1868,7 @@ export class BookingService {
     function snm(id: string) { return svcName.get(id) || id; }
     function pnm(i: number, svcs: string[]) { return `P${i}(${svcs.map(snm).join('+')})`; }
 
-    const { employees, skillMap, employeeToUserMap, occupiedRanges, serviceDurationMap, dayIndex, clientOccupiedRanges } = ctx;
+    const { employees, skillMap, employeeToUserMap, occupiedRanges, serviceDurationMap, dayIndex, clientOccupiedRanges, salonBreaks } = ctx;
 
     function isOccupiedByExisting(empId: string, uid: string | null, rs: number, re: number): boolean {
       return sharedIsOccupied(occupiedRanges, empId, uid, rs, re);
@@ -1949,7 +1945,7 @@ export class BookingService {
               return false;
             }
 
-            if (this.overlapsBreak(emp.workingHours, dayIndex, intervalStart, intervalEnd)) {
+            if (overlapsBreaks(salonBreaks, intervalStart, intervalEnd)) {
               ineligibleReasons.push({ employeeId: emp.id, reason: 'pendant une pause' });
               return false;
             }

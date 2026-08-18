@@ -2,6 +2,7 @@ import { prisma } from '../../lib/prisma';
 import { generateToken } from '../../utils/jwt';
 import { slugifyName } from '../../utils/slugify';
 import { accountService } from '../account/account.service';
+import { DEFAULT_BUSINESS_HOURS } from '../../utils/defaultBusinessHours';
 
 export interface CreateSalonInput {
   name: string;
@@ -193,6 +194,7 @@ export class SalonService {
         language: 'fr',
         bookingAdvanceDays: 30,
         cancellationHours: 24,
+        businessHours: DEFAULT_BUSINESS_HOURS as any,
       },
     });
 

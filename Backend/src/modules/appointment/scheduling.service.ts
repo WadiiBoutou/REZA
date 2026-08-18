@@ -7,14 +7,14 @@ import {
   isSameDay,
   minutesSinceMidnight,
   formatMinutes,
-  overlapsBreak,
-  getBreakMinutes,
   rangesOverlap,
   buildOccupiedRanges,
   resolveEmployeeToUserMap,
   getWorkingHoursForDay,
   isOccupied,
-  isEmployeeEligibleForInterval,
+  getSalonDayBreaks,
+  overlapsBreaks,
+  breakMinutesWithin,
   type WorkingHoursDay,
 } from '../../utils/feasibility';
 
@@ -77,14 +77,10 @@ function formatBreakReason(range: string): string {
 
 // Return the break range string (e.g. "13:00-14:00") when [rangeStart, rangeEnd]
 // overlaps a break, else null. Uses the shared overlap semantics.
-function findBreakRange(workingHours: WorkingHoursDay[] | null, dayIndex: number, rangeStart: number, rangeEnd: number): string | null {
-  const dayData = workingHours?.find((d) => isSameDay(d.day, dayIndex));
-  if (!dayData?.breaks || !Array.isArray(dayData.breaks)) return null;
-  for (const b of dayData.breaks) {
-    const bs = minutesSinceMidnight(b.start);
-    const be = minutesSinceMidnight(b.end);
-    if (rangesOverlap(rangeStart, rangeEnd, bs, be)) {
-      return `${b.start}-${b.end}`;
+function findBreakRange(breaks: { start: number; end: number }[], rangeStart: number, rangeEnd: number): string | null {
+  for (const b of breaks) {
+    if (rangesOverlap(rangeStart, rangeEnd, b.start, b.end)) {
+      return `${formatMinutes(b.start)}-${formatMinutes(b.end)}`;
     }
   }
   return null;
@@ -97,6 +93,14 @@ export class SchedulingService {
     const [year, month, dayNum] = date.split('-').map(Number);
     const dayDate = new Date(year, month - 1, dayNum);
     const dayIndex = dayDate.getDay();
+
+    // Salon-wide pause: employees no longer carry their own breaks — everyone
+    // follows the salon's schedule (tenantSettings.businessHours.schedules).
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { businessHours: true },
+    });
+    const salonBreaks = getSalonDayBreaks(settings?.businessHours, dayIndex);
 
     // Load services
     const services = await prisma.service.findMany({
@@ -170,18 +174,18 @@ export class SchedulingService {
       return getWorkingHoursForDay(emp.workingHours, dayIndex);
     }
 
-    function getBreakMinutesForEmp(emp: typeof employees[0], wh: { start: number; end: number }): number {
-      return getBreakMinutes(emp.workingHours as WorkingHoursDay[] | null, dayIndex, wh);
+    function getBreakMinutesForEmp(wh: { start: number; end: number }): number {
+      return breakMinutesWithin(salonBreaks, wh);
     }
 
-    function overlapsBreakForEmp(emp: typeof employees[0], rangeStart: number, rangeEnd: number): string | null {
-      return findBreakRange(emp.workingHours as WorkingHoursDay[] | null, dayIndex, rangeStart, rangeEnd);
+    function overlapsBreakForEmp(rangeStart: number, rangeEnd: number): string | null {
+      return findBreakRange(salonBreaks, rangeStart, rangeEnd);
     }
 
     function calcWorkload(emp: typeof employees[0], userId: string): number {
       const wh = getWorkingHours(emp);
       if (!wh) return 1;
-      const breakMinutes = getBreakMinutesForEmp(emp, wh);
+      const breakMinutes = getBreakMinutesForEmp(wh);
       const totalMinutes = (wh.end - wh.start) - breakMinutes;
       if (totalMinutes <= 0) return 1;
       const ranges = occupiedRanges.get(userId) || [];
@@ -254,7 +258,7 @@ export class SchedulingService {
           continue;
         }
 
-        const breakReason = overlapsBreakForEmp(emp, cursor, serviceEnd);
+        const breakReason = overlapsBreakForEmp(cursor, serviceEnd);
         if (breakReason) {
           serviceEmployees.push({
             employeeId: emp.id,
@@ -618,6 +622,12 @@ export class SchedulingService {
 
     const occupiedRanges = buildOccupiedRanges(existingAppointments as any);
 
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { businessHours: true },
+    });
+    const salonBreaks = getSalonDayBreaks(settings?.businessHours, dayIndex);
+
     function getWorkingHours(emp: typeof employees[0]): { start: number; end: number } | null {
       return getWorkingHoursForDay(emp.workingHours, dayIndex);
     }
@@ -640,7 +650,7 @@ export class SchedulingService {
         if (!wh) continue;
         if (cursor < wh.start || serviceEnd > wh.end) continue;
 
-        const breakReason = overlapsBreak(emp.workingHours as WorkingHoursDay[] | null, dayIndex, cursor, serviceEnd);
+        const breakReason = overlapsBreaks(salonBreaks, cursor, serviceEnd);
         if (breakReason) continue;
 
         const userId = employeeToUserMap.get(emp.id) ?? null;
@@ -720,6 +730,12 @@ export class SchedulingService {
 
     const occupiedRanges = buildOccupiedRanges(existingAppointments as any);
 
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { businessHours: true },
+    });
+    const salonBreaks = getSalonDayBreaks(settings?.businessHours, dayIndex);
+
     function calcOccupied(userId: string): number {
       return (occupiedRanges.get(userId) || []).reduce((sum, r) => sum + (r.end - r.start), 0);
     }
@@ -745,13 +761,13 @@ export class SchedulingService {
       const whEnd = minutesSinceMidnight(daySchedule.endTime);
       if (startMinutes < whStart || endMinutes > whEnd) continue;
 
-      const breakReason = overlapsBreak(emp.workingHours as WorkingHoursDay[] | null, dayIndex, startMinutes, endMinutes);
+      const breakReason = overlapsBreaks(salonBreaks, startMinutes, endMinutes);
       if (breakReason) continue;
 
       const userId = employeeToUserMap.get(emp.id) ?? null;
       if (isOccupied(occupiedRanges, emp.id, userId, startMinutes, endMinutes)) continue;
 
-      const totalMinutes = (whEnd - whStart) - getBreakMinutes(emp.workingHours as WorkingHoursDay[] | null, dayIndex, { start: whStart, end: whEnd });
+      const totalMinutes = (whEnd - whStart) - breakMinutesWithin(salonBreaks, { start: whStart, end: whEnd });
       const workload = userId && totalMinutes > 0 ? calcOccupied(userId) / totalMinutes : 0;
 
       if (workload < bestWorkload) {
@@ -795,6 +811,12 @@ export class SchedulingService {
       where: { id: { in: serviceIds }, tenantId },
     });
     const serviceMap = new Map(services.map((s) => [s.id, s]));
+
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenantId },
+      select: { businessHours: true },
+    });
+    const salonBreaks = getSalonDayBreaks(settings?.businessHours, dayIndex);
 
     const employees = await prisma.employee.findMany({
       where: { tenantId, isActive: true },
@@ -869,7 +891,7 @@ export class SchedulingService {
           }
         }
 
-        const breakReason = findBreakRange(emp.workingHours as WorkingHoursDay[] | null, dayIndex, cursor, serviceEnd);
+        const breakReason = findBreakRange(salonBreaks, cursor, serviceEnd);
         if (breakReason) {
           if (!isAdmin) {
             const [bStart, bEnd] = breakReason.split('-');
@@ -881,7 +903,7 @@ export class SchedulingService {
             continue;
           }
         }        const userId = validateUserMap.get(assignment.employeeId) ?? null;
-
+
 
         if (userId) {
           const dayStart = new Date(dayDate);

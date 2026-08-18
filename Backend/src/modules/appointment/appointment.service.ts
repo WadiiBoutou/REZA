@@ -12,9 +12,9 @@ import { buildProcheAvatarMap } from '../../utils/familyMemberAvatars';
 import {
   rangesOverlap,
   getWorkingHoursForDay,
-  overlapsBreak,
+  getSalonDayBreaks,
+  overlapsBreaks,
   formatMinutes,
-  WorkingHoursDay,
 } from '../../utils/feasibility';
 import * as log from '../../utils/logger';
 import {
@@ -925,7 +925,7 @@ export class AppointmentService {
       });
       const settings = await prisma.tenantSettings.findUnique({
         where: { tenantId },
-        select: { timezone: true },
+        select: { timezone: true, businessHours: true },
       });
       const timeZone = settings?.timezone || 'Africa/Casablanca';
 
@@ -945,6 +945,7 @@ export class AppointmentService {
           startTime,
           endTime,
           timeZone,
+          businessHours: settings?.businessHours,
         });
         if (!whResult.isAvailable && whResult.message) {
           conflicts.push(whResult.message);
@@ -1017,8 +1018,14 @@ export class AppointmentService {
     const ids = Array.isArray(tenantIds) ? tenantIds : [tenantIds];
     const employees = await prisma.employee.findMany({
       where: { tenantId: tenantIdFilter(ids), isActive: true },
-      select: { workingHours: true, agendaSettings: true },
+      select: { tenantId: true, workingHours: true, agendaSettings: true },
     });
+
+    const settingsList = await prisma.tenantSettings.findMany({
+      where: { tenantId: { in: ids } },
+      select: { tenantId: true, businessHours: true },
+    });
+    const settingsByTenant = new Map(settingsList.map((s) => [s.tenantId, s.businessHours]));
 
     const days: Record<string, Record<string, boolean>> = {};
     for (let i = 0; i < dayCount; i++) {
@@ -1038,14 +1045,7 @@ export class AppointmentService {
           const wh = getWorkingHoursForDay(emp.workingHours, dayIndex);
           if (!wh) continue;
           if (slotStart < wh.start || slotEnd > wh.end) continue;
-          if (
-            overlapsBreak(
-              emp.workingHours as WorkingHoursDay[] | null,
-              dayIndex,
-              slotStart,
-              slotEnd,
-            )
-          ) {
+          if (overlapsBreaks(getSalonDayBreaks(settingsByTenant.get(emp.tenantId), dayIndex), slotStart, slotEnd)) {
             continue;
           }
           anyAvailable = true;

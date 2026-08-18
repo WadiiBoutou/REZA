@@ -91,6 +91,45 @@ export function getBreakMinutes(
   return total;
 }
 
+/**
+ * The salon-wide break(s) for a given day, from tenantSettings.businessHours.schedules.
+ * Employees no longer carry their own breaks: everyone follows the salon's pause.
+ * Returns minute-of-day ranges; empty when the salon has no schedule/breaks for the day.
+ */
+export function getSalonDayBreaks(
+  businessHours: unknown,
+  dayIndex: number,
+): { start: number; end: number }[] {
+  const schedules = (businessHours as any)?.schedules;
+  if (!Array.isArray(schedules)) return [];
+  const sched = schedules.find((s: any) => isSameDay(s?.day, dayIndex));
+  if (!sched || sched.isOpen === false || !Array.isArray(sched.breaks)) return [];
+  return sched.breaks
+    .filter((b: any) => b?.start && b?.end)
+    .map((b: any) => ({ start: minutesSinceMidnight(b.start), end: minutesSinceMidnight(b.end) }));
+}
+
+/** Whether [rangeStart, rangeEnd] overlaps any of the given break ranges (minutes). */
+export function overlapsBreaks(
+  breaks: { start: number; end: number }[],
+  rangeStart: number,
+  rangeEnd: number,
+): boolean {
+  return breaks.some((b) => rangesOverlap(rangeStart, rangeEnd, b.start, b.end));
+}
+
+/** Total minutes of the given breaks fully contained in [wh.start, wh.end]. */
+export function breakMinutesWithin(
+  breaks: { start: number; end: number }[],
+  wh: { start: number; end: number },
+): number {
+  let total = 0;
+  for (const b of breaks) {
+    if (b.start >= wh.start && b.end <= wh.end) total += b.end - b.start;
+  }
+  return total;
+}
+
 export type WorkingHoursDay = {
   day: string;
   isWorking: boolean;
@@ -118,6 +157,8 @@ export type FeasibilityContext = {
   serviceDurationMap: Map<string, number>;
   dayIndex: number;
   clientOccupiedRanges: { start: number; end: number }[];
+  /** The salon-wide pause(s) for the context's day (minutes) — the only breaks that apply. */
+  salonBreaks: { start: number; end: number }[];
 };
 
 /** Build employeeId -> Set<serviceId> skill map. */
@@ -235,6 +276,7 @@ export function isEmployeeEligibleForInterval(
   intervalStart: number,
   intervalEnd: number,
   opts: EligibilityOptions = {},
+  salonBreaks: { start: number; end: number }[] = [],
 ): { eligible: boolean; reason?: string } {
   const { checkAgendaStatus = true } = opts;
 
@@ -259,7 +301,7 @@ export function isEmployeeEligibleForInterval(
     return { eligible: false, reason: 'OUTSIDE_HOURS' };
   }
 
-  if (overlapsBreak(emp.workingHours as WorkingHoursDay[] | null, dayIndex, intervalStart, intervalEnd)) {
+  if (overlapsBreaks(salonBreaks, intervalStart, intervalEnd)) {
     return { eligible: false, reason: 'BREAK' };
   }
 
@@ -356,6 +398,12 @@ export async function loadFeasibilityContext(
     }
   }
 
+  const settings = await prisma.tenantSettings.findUnique({
+    where: { tenantId },
+    select: { businessHours: true },
+  });
+  const salonBreaks = getSalonDayBreaks(settings?.businessHours, dayIndex);
+
   return {
     tenantId,
     employees: employees as FeasibilityEmployee[],
@@ -365,6 +413,7 @@ export async function loadFeasibilityContext(
     serviceDurationMap,
     dayIndex,
     clientOccupiedRanges,
+    salonBreaks,
   };
 }
 
