@@ -147,7 +147,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
       onMouseEnter={() => onBookingHover?.(hoverKey)}
       onMouseLeave={() => onBookingHover?.(null)}
       className={cn(
-        'relative rounded-lg cursor-move border transition-all overflow-hidden w-fit h-full',
+        'relative rounded-lg cursor-move border transition-all overflow-hidden w-full h-full',
         getStatusBg(apt.status),
         isCompact ? 'text-xs' : 'text-sm',
         isSiblingHovered ? 'shadow-md ring-2 ring-gray-900/15' : 'hover:shadow-md',
