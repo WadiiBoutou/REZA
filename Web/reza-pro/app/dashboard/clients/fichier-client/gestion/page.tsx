@@ -49,6 +49,7 @@ interface Client {
   phone: string;
   address?: string;
   avatar?: string;
+  gender?: string;
   lastVisit?: Date;
   lastVisitTime?: string;
   nextAppointment?: Date;
@@ -102,6 +103,7 @@ const mapBackendToFrontend = (backendClient: BackendClient, appointments?: any[]
     phone: backendClient.phone,
     address: backendClient.address || undefined,
     avatar: backendClient.avatar || undefined,
+    gender: backendClient.gender || undefined,
     status: backendClient.status === 'ACTIVE' ? 'Active' : 'Inactive',
     notes: backendClient.notes || undefined,
     addedByClient: backendClient.addedByClient
@@ -297,7 +299,7 @@ export default function ClientsGestionPage() {
       email: client.email,
       phone: client.phone,
       address: client.address || '',
-      gender: (client as any).gender || '',
+      gender: client.gender || '',
       avatar: client.avatar || undefined,
       status: client.status,
       notes,
