@@ -173,17 +173,14 @@ export class SubscriptionService {
       const count = t._count.employees;
       const totalBillable = Math.max(0, count - config.freeEmployeeThreshold);
       const amountPaid = periodActive ? (t.amountPaidThisPeriod ?? 0) : 0;
+      const paidCount = periodActive ? (t.employeesPaid ?? 0) : 0;
       // Flat-rate: ALL billable employees priced at the tier's rate for the total count
       const totalMonthlyFee = employeeTiers
         ? SubscriptionService.computeTieredFee(totalBillable, employeeTiers)
         : totalBillable * config.pricePerEmployee;
       const employeeFee = Math.max(0, totalMonthlyFee - amountPaid);
-      // How many employees are covered by the amount already paid
-      const tierPrice = totalBillable > 0
-        ? (employeeTiers ? SubscriptionService.findTierPrice(totalBillable, employeeTiers) : config.pricePerEmployee)
-        : 0;
-      const coveredCount = tierPrice > 0 ? Math.min(totalBillable, Math.floor(amountPaid / tierPrice)) : 0;
-      const billableEmployees = totalBillable - coveredCount;
+      // Badge: count-based (how many employees are uncovered by count)
+      const billableEmployees = Math.max(0, totalBillable - paidCount);
       const salonFee = t.salonCovered ? 0 : config.pricePerSalon;
       return {
         id: t.id,
@@ -191,7 +188,7 @@ export class SubscriptionService {
         subscriptionActive: t.subscriptionActive,
         salonCovered: t.salonCovered,
         employeeCount: count,
-        employeesPaid: coveredCount,
+        employeesPaid: paidCount,
         billableEmployees,
         salonFee,
         employeeFee,
