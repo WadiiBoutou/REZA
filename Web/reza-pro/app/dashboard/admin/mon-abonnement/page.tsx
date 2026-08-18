@@ -315,6 +315,8 @@ export default function MonAbonnementPage() {
                 if (s.salonFee > 0) parts.push(`${s.salonFee.toLocaleString('fr-FR')} ${currency} unique`);
                 if (s.employeeFee > 0)
                   parts.push(`${s.billableEmployees} employé${s.billableEmployees > 1 ? 's' : ''} — ${s.employeeFee.toLocaleString('fr-FR')} ${currency}/mois`);
+                // Mid-period top-up: new employees added this period that need payment
+                const hasNewEmployees = bill.periodActive && s.employeesPaid > 0 && s.billableEmployees > 0;
                 return (
                   <label
                     key={s.id}
@@ -337,6 +339,11 @@ export default function MonAbonnementPage() {
                             Couvert
                           </span>
                         )}
+                        {hasNewEmployees && (
+                          <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                            +{s.billableEmployees} employé{s.billableEmployees > 1 ? 's' : ''} à couvrir
+                          </span>
+                        )}
                         {!s.subscriptionActive && (
                           <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
                             Non visible aux clients
@@ -347,6 +354,11 @@ export default function MonAbonnementPage() {
                         <p className="text-[11px] text-gray-500 mt-0.5">{parts.join(' + ')}</p>
                       ) : (
                         <p className="text-[11px] text-gray-400 mt-0.5">Entièrement réglé — rien à payer</p>
+                      )}
+                      {hasNewEmployees && (
+                        <p className="text-[11px] text-amber-600 mt-0.5">
+                          {s.employeesPaid} employé{s.employeesPaid > 1 ? 's' : ''} payé{hasNewEmployees ? 's' : ''} ce mois — {s.billableEmployees} nouveau{s.billableEmployees > 1 ? 'x' : ''} à couvrir ({s.employeeFee.toLocaleString('fr-FR')} {currency})
+                        </p>
                       )}
                     </div>
                     <span className={`text-sm font-bold shrink-0 ${s.total > 0 ? 'text-gray-900' : 'text-gray-300'}`}>
@@ -372,6 +384,22 @@ export default function MonAbonnementPage() {
               <p className="text-[11px] text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
                 Votre période payée est terminée — les employés au-delà du seuil sont masqués jusqu'au règlement de la nouvelle période.
               </p>
+            )}
+
+            {/* Mid-period top-up info */}
+            {bill.periodActive && selectedBills.some((s) => s.employeesPaid > 0 && s.billableEmployees > 0) && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-xs font-semibold text-amber-800 mb-1">Nouveaux employés à couvrir</p>
+                {selectedBills.filter((s) => s.employeesPaid > 0 && s.billableEmployees > 0).map((s) => (
+                  <p key={s.id} className="text-[11px] text-amber-700">
+                    {s.name} : {s.employeesPaid} employé{s.employeesPaid > 1 ? 's' : ''} payé{!s.billableEmployees ? '' : 's'} + {s.billableEmployees} nouveau{s.billableEmployees > 1 ? 'x' : ''} à couvrir = {s.employeeCount} au total.{' '}
+                    <span className="font-semibold">Coût supplémentaire : {s.employeeFee.toLocaleString('fr-FR')} {currency}</span>
+                  </p>
+                ))}
+                <p className="text-[11px] text-amber-600 mt-1.5">
+                  Les nouveaux employés seront visibles sur le site une fois le paiement validé par la plateforme.
+                </p>
+              </div>
             )}
 
             {!hasPending && due > 0 && (
