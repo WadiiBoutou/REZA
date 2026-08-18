@@ -384,24 +384,25 @@ export class SuperAdminService {
           currentPeriodEnd: periodEnd,
         },
       }),
-      // Declared salons become covered forever + get their employees' coverage.
+      // Declared salons become covered forever + get their monetary coverage.
       // Non-declared salons keep whatever coverage they already had (unchanged).
       ...account.tenants.map((t) => {
         const declared = declaredIds.has(t.id);
-        const employeeDelta = declared ? (employeesBySalon[t.id] ?? 0) : 0;
+        const salonSnapshot = declaredSalons.find((s) => s.id === t.id);
+        const salonEmployeeFee = salonSnapshot?.employeeFee ?? 0;
         const data: any = {};
         if (declared) {
           data.salonCovered = true;
           data.subscriptionActive = true;
         }
         if (resetCoverage) {
-          // Period lapsed: stored employeesPaid is stale (billing reads it as 0
+          // Period lapsed: stored coverage is stale (billing reads it as 0
           // while inactive). SET the new period's coverage explicitly — declared
-          // salons get their declared count, and non-declared salons reset to 0
+          // salons get their declared amount, and non-declared salons reset to 0
           // so they can't inherit free employee coverage from the old period.
-          data.employeesPaid = declared ? employeeDelta : 0;
+          data.amountPaidThisPeriod = declared ? salonEmployeeFee : 0;
         } else if (declared) {
-          data.employeesPaid = { increment: employeeDelta };
+          data.amountPaidThisPeriod = { increment: salonEmployeeFee };
         }
         return prisma.tenant.update({ where: { id: t.id }, data });
       }),

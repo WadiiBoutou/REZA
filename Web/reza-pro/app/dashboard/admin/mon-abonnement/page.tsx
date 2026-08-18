@@ -387,15 +387,29 @@ export default function MonAbonnementPage() {
             )}
 
             {/* Mid-period top-up info */}
-            {bill.periodActive && selectedBills.some((s) => s.employeesPaid > 0 && s.billableEmployees > 0) && (
+            {bill.periodActive && selectedBills.some((s) => s.billableEmployees > 0) && (
               <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <p className="text-xs font-semibold text-amber-800 mb-1">Nouveaux employés à couvrir</p>
-                {selectedBills.filter((s) => s.employeesPaid > 0 && s.billableEmployees > 0).map((s) => (
-                  <p key={s.id} className="text-[11px] text-amber-700">
-                    {s.name} : {s.employeesPaid} employé{s.employeesPaid > 1 ? 's' : ''} payé{!s.billableEmployees ? '' : 's'} + {s.billableEmployees} nouveau{s.billableEmployees > 1 ? 'x' : ''} à couvrir = {s.employeeCount} au total.{' '}
-                    <span className="font-semibold">Coût supplémentaire : {s.employeeFee.toLocaleString('fr-FR')} {currency}</span>
-                  </p>
-                ))}
+                {selectedBills.filter((s) => s.billableEmployees > 0).map((s) => {
+                  const totalBillable = Math.max(0, s.employeeCount - (bill.config?.freeEmployeeThreshold ?? 0));
+                  const tiers = bill.config?.employeeTiers;
+                  let tierPrice = bill.config?.pricePerEmployee ?? 100;
+                  if (tiers && totalBillable > 0) {
+                    for (const t of tiers) {
+                      if (t.max === null) { tierPrice = t.price; break; }
+                      if (totalBillable >= t.min && totalBillable <= t.max) { tierPrice = t.price; break; }
+                    }
+                  }
+                  const totalMonthly = totalBillable * tierPrice;
+                  const alreadyPaid = totalMonthly - s.employeeFee;
+                  return (
+                    <p key={s.id} className="text-[11px] text-amber-700">
+                      {s.name} : {s.employeeCount} employé{s.employeeCount > 1 ? 's' : ''} — {tierPrice} {currency}/employé/mois = {totalMonthly.toLocaleString('fr-FR')} {currency}.{' '}
+                      {alreadyPaid > 0 && <>Déjà payé : <span className="font-medium">{alreadyPaid.toLocaleString('fr-FR')} {currency}</span>. </>}
+                      <span className="font-semibold">Reste à payer : {s.employeeFee.toLocaleString('fr-FR')} {currency}</span>
+                    </p>
+                  );
+                })}
                 <p className="text-[11px] text-amber-600 mt-1.5">
                   Les nouveaux employés seront visibles sur le site une fois le paiement validé par la plateforme.
                 </p>

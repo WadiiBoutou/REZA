@@ -158,6 +158,10 @@ model Tenant {
   // employees beyond this count stay hidden from the public site until the
   // difference is paid and approved.
   employeesPaid Int @default(0)
+  // Monetary amount already paid for employees this period (MAD). When tiers
+  // are flat-rate, the per-employee price changes as total count crosses tier
+  // boundaries — so we track the amount, not just the count.
+  amountPaidThisPeriod Float @default(0)
 
   // Multi-salon ownership
   accountId String?

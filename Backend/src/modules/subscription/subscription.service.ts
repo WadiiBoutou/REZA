@@ -103,25 +103,28 @@ export class SubscriptionService {
   }
 
   /**
-   * Progressive (marginal) per-employee fee: each billable employee is charged
-   * at the rate of the band its position falls into. e.g. tiers 1-5 @100,
-   * 6+ @80 → 7 billable employees = 5×100 + 2×80 = 660.
+   * Look up the per-employee price for a given total count based on tier ranges.
+   * e.g. tiers [{1,1,250},{2,3,150},{4,5,100},{6,null,80}]:
+   *   1 emp → 250, 3 emp → 150, 4 emp → 100, 7 emp → 80.
+   */
+  static findTierPrice(count: number, tiers: EmployeeTier[]): number {
+    for (const t of tiers) {
+      if (t.max === null) return t.price; // unbounded last tier
+      if (count >= t.min && count <= t.max) return t.price;
+    }
+    return tiers[tiers.length - 1]?.price ?? 0;
+  }
+
+  /**
+   * Flat-rate per-employee fee: ALL billable employees are charged at the rate
+   * of the tier the total count falls into. e.g. 4 employees → tier 4-5 →
+   * 100 MAD/each → 400 MAD total.
    */
   static computeTieredFee(count: number, tiers: EmployeeTier[]): number {
-    let remaining = Math.max(0, count);
-    let fee = 0;
-    for (const t of tiers) {
-      if (remaining <= 0) break;
-      const bandSize = t.max === null ? remaining : Math.max(0, t.max - t.min + 1);
-      const take = Math.min(remaining, bandSize);
-      fee += take * t.price;
-      remaining -= take;
-    }
-    // Anything beyond the last defined band (when it's bounded) is charged at the last band's rate.
-    if (remaining > 0 && tiers.length > 0) {
-      fee += remaining * tiers[tiers.length - 1].price;
-    }
-    return fee;
+    const n = Math.max(0, count);
+    if (n === 0) return 0;
+    const price = SubscriptionService.findTierPrice(n, tiers);
+    return n * price;
   }
 
   /**
@@ -168,20 +171,28 @@ export class SubscriptionService {
     // Per-salon breakdown
     const salonsBills: SalonBill[] = salons.map((t) => {
       const count = t._count.employees;
-      const covered = periodActive ? (t.employeesPaid ?? 0) : 0;
-      const billable = Math.max(0, count - config.freeEmployeeThreshold - covered);
+      const totalBillable = Math.max(0, count - config.freeEmployeeThreshold);
+      const amountPaid = periodActive ? (t.amountPaidThisPeriod ?? 0) : 0;
+      // Flat-rate: ALL billable employees priced at the tier's rate for the total count
+      const totalMonthlyFee = employeeTiers
+        ? SubscriptionService.computeTieredFee(totalBillable, employeeTiers)
+        : totalBillable * config.pricePerEmployee;
+      const employeeFee = Math.max(0, totalMonthlyFee - amountPaid);
+      // How many employees are covered by the amount already paid
+      const tierPrice = totalBillable > 0
+        ? (employeeTiers ? SubscriptionService.findTierPrice(totalBillable, employeeTiers) : config.pricePerEmployee)
+        : 0;
+      const coveredCount = tierPrice > 0 ? Math.min(totalBillable, Math.floor(amountPaid / tierPrice)) : 0;
+      const billableEmployees = totalBillable - coveredCount;
       const salonFee = t.salonCovered ? 0 : config.pricePerSalon;
-      const employeeFee = employeeTiers
-        ? SubscriptionService.computeTieredFee(billable, employeeTiers)
-        : billable * config.pricePerEmployee;
       return {
         id: t.id,
         name: t.name,
         subscriptionActive: t.subscriptionActive,
         salonCovered: t.salonCovered,
         employeeCount: count,
-        employeesPaid: covered,
-        billableEmployees: billable,
+        employeesPaid: coveredCount,
+        billableEmployees,
         salonFee,
         employeeFee,
         total: Math.round((salonFee + employeeFee) * 100) / 100,

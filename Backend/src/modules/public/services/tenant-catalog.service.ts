@@ -1,6 +1,7 @@
 import { prisma } from '../../../lib/prisma';
 import { HttpError } from '../../../lib/errors';
 import { transformImageUrl } from '../../../utils/imageUrl';
+import { SubscriptionService } from '../../subscription/subscription.service';
 
 export class TenantCatalogService {
   async getTenantServices(tenantId: string, query: Record<string, unknown>) {
@@ -84,6 +85,7 @@ export class TenantCatalogService {
       select: {
         id: true,
         employeesPaid: true,
+        amountPaidThisPeriod: true,
         account: {
           select: {
             subscription: {
@@ -152,8 +154,18 @@ export class TenantCatalogService {
     const periodActive =
       sub?.status === 'ACTIVE' &&
       (!sub.currentPeriodEnd || sub.currentPeriodEnd.getTime() > Date.now());
-    const covered =
-      (await this.getFreeEmployeeThreshold()) + (periodActive ? (tenant.employeesPaid ?? 0) : 0);
+    // Compute how many employees are covered by the amount already paid this period.
+    const freeThreshold = await this.getFreeEmployeeThreshold();
+    const totalBillable = Math.max(0, filteredEmployees.length - freeThreshold);
+    const amountPaid = periodActive ? (tenant.amountPaidThisPeriod ?? 0) : 0;
+    // Look up the tier price for the total billable count to convert amount → count
+    const billingConfig = await prisma.billingConfig.findUnique({ where: { id: 'default' } });
+    const tiers = SubscriptionService.parseEmployeeTiers(billingConfig?.employeeTiers);
+    const tierPrice = totalBillable > 0 && tiers
+      ? SubscriptionService.findTierPrice(totalBillable, tiers)
+      : (billingConfig?.pricePerEmployee ?? 100);
+    const paidEmployees = tierPrice > 0 ? Math.min(totalBillable, Math.floor(amountPaid / tierPrice)) : 0;
+    const covered = freeThreshold + paidEmployees;
     const visibleEmployees = covered >= filteredEmployees.length
       ? filteredEmployees
       : filteredEmployees.slice(0, Math.max(0, covered));
