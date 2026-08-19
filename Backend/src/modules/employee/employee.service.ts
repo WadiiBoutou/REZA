@@ -56,12 +56,13 @@ export class EmployeeService {
   }
 
   async createEmployee(tenantId: string, data: any) {
-    const { serviceIds, ...employeeData } = data;
+    const { serviceIds, isPublic, ...employeeData } = data;
 
     return prisma.employee.create({
       data: {
         ...employeeData,
         tenantId,
+        isPublic: isPublic !== undefined ? isPublic : false,
         employeeServices: serviceIds ? {
           create: serviceIds.map((serviceId: string) => ({
             serviceId
@@ -79,7 +80,7 @@ export class EmployeeService {
   }
 
   async updateEmployee(tenantId: string, id: string, data: any) {
-    const { serviceIds, ...employeeData } = data;
+    const { serviceIds, isPublic, ...employeeData } = data;
 
     const existing = await prisma.employee.findFirst({
       where: { id, tenantId }
@@ -107,7 +108,10 @@ export class EmployeeService {
 
     return prisma.employee.update({
       where: { id },
-      data: employeeData,
+      data: {
+        ...employeeData,
+        ...(isPublic !== undefined ? { isPublic } : {})
+      },
       include: {
         employeeServices: {
           include: {

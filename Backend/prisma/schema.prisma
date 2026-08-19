@@ -464,6 +464,7 @@ model Employee {
   avatar    String?
   gender    String? // 'male' | 'female' (optional)
   isActive  Boolean @default(true)
+  isPublic  Boolean @default(false) // Whether this employee is visible on the public client site (paid for)
 
   // Working hours (stored as JSON for flexibility)
   workingHours Json?

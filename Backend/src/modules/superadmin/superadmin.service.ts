@@ -407,6 +407,39 @@ export class SuperAdminService {
       }),
     ]);
 
+    // Set isPublic=true for newly covered employees in each declared salon.
+    // For each salon, get active employees sorted alphabetically and set
+    // isPublic=true for the first `employeesPaid` of them.
+    // If period lapsed, reset all isPublic first so old visibility is cleared.
+    for (const t of account.tenants) {
+      if (!declaredIds.has(t.id)) continue;
+
+      if (resetCoverage) {
+        // Period lapsed: reset ALL employees in this salon to isPublic=false
+        await prisma.employee.updateMany({ where: { tenantId: t.id, isActive: true }, data: { isPublic: false } });
+      }
+
+      const tenantData = await prisma.tenant.findUnique({
+        where: { id: t.id },
+        select: { employeesPaid: true }
+      });
+      const maxPublic = tenantData?.employeesPaid ?? 0;
+      if (maxPublic <= 0) continue;
+      const emps = await prisma.employee.findMany({
+        where: { tenantId: t.id, isActive: true },
+        select: { id: true },
+        orderBy: { firstName: 'asc' },
+      });
+      const idsToPublish = emps.slice(0, maxPublic).map(e => e.id);
+      const idsToUnpublish = emps.slice(maxPublic).map(e => e.id);
+      if (idsToPublish.length > 0) {
+        await prisma.employee.updateMany({ where: { id: { in: idsToPublish } }, data: { isPublic: true } });
+      }
+      if (idsToUnpublish.length > 0) {
+        await prisma.employee.updateMany({ where: { id: { in: idsToUnpublish } }, data: { isPublic: false } });
+      }
+    }
+
     // Keep salonsPaid in sync with the actual covered count
     const coveredCount = await prisma.tenant.count({
       where: { accountId: account.id, isActive: true, salonCovered: true },

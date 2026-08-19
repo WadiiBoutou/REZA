@@ -77,28 +77,16 @@ export class TenantCatalogService {
     try {
     const { active } = query;
 
-    // Verify tenant exists and is active
-    const tenant = await prisma.tenant.findFirst({
+    // Verify tenant exists and is active    const tenant = await prisma.tenant.findFirst({
       where: {
         OR: [
           { slug: tenantId }, { subdomain: tenantId },
-          { domain: tenantId },
-          { id: tenantId }
+          { domain: tenantId }, { id: tenantId }
         ],
         isActive: true,
         subscriptionActive: true
       },
-      select: {
-        id: true,
-        employeesPaid: true,
-        account: {
-          select: {
-            subscription: {
-              select: { status: true, currentPeriodEnd: true }
-            }
-          }
-        }
-      }
+      select: { id: true }
     });
 
     if (!tenant) {
@@ -126,6 +114,7 @@ export class TenantCatalogService {
         phone: true,
         avatar: true,
         isActive: true,
+        isPublic: true,
         agendaSettings: true,
         employeeServices: {
           select: {
@@ -149,25 +138,11 @@ export class TenantCatalogService {
     // Filter out employees with inactive/vacation status from public listing
     const filteredEmployees = employees.filter(emp => {
       const status = emp.agendaSettings ? (emp.agendaSettings as any).status : undefined;
-      return !status || status === 'active';
+      return (!status || status === 'active') && emp.isPublic;
     });
 
-    // Billing coverage slice: only employees within the free threshold plus the
-    // paid covered count (for the current period) are shown publicly. Employees
-    // added beyond coverage stay hidden until the owner pays the difference.
-    const sub = tenant.account?.subscription;
-    const periodActive =
-      sub?.status === 'ACTIVE' &&
-      (!sub.currentPeriodEnd || sub.currentPeriodEnd.getTime() > Date.now());
-    // Visibility: free threshold + employees already paid for by count.
-    const freeThreshold = await this.getFreeEmployeeThreshold();
-    const covered = freeThreshold + (periodActive ? (tenant.employeesPaid ?? 0) : 0);
-    const visibleEmployees = covered >= filteredEmployees.length
-      ? filteredEmployees
-      : filteredEmployees.slice(0, Math.max(0, covered));
-
     // Transform employees to include services array
-    const employeesWithServices = visibleEmployees.map(employee => ({
+    const employeesWithServices = filteredEmployees.map(employee => ({
       id: employee.id,
       firstName: employee.firstName,
       lastName: employee.lastName,
