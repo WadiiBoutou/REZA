@@ -1394,8 +1394,8 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
         const c = sorted[0];
         return (
           <div key={c.key} className="absolute z-10" style={{
-            left: `${c.lane * CARD_STACK_OFFSET_PX}px`,
-            width: `calc(100% - ${c.laneCount * CARD_STACK_OFFSET_PX}px)`,
+            left: `${(c.lane / c.laneCount) * 100}%`,
+            width: `${100 / c.laneCount}%`,
             top: `${minToTopRem(c.startMin)}rem`,
             height: `${Math.max(c.duration * MINUTE_HEIGHT_REM, minH)}rem`,
           }}>
@@ -1406,8 +1406,8 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
       // Multi-card: frame wrapper auto-sized around the cards
       return (
         <div key={`grp-${aptId}`} className="absolute z-[8] rounded-lg border border-gray-400/60 bg-gray-400/5 pointer-events-none" style={{
-          left: `calc(${lane * CARD_STACK_OFFSET_PX}px - 2px)`,
-          width: `calc(100% - ${laneCount * CARD_STACK_OFFSET_PX}px + 4px)`,
+          left: `calc(${(lane / laneCount) * 100}% - 2px)`,
+          width: `calc(${100 / laneCount}% + 4px)`,
           top: `${minToTopRem(startMin)}rem`,
           padding: '2px',
         }}>
