@@ -77,7 +77,8 @@ export class TenantCatalogService {
     try {
     const { active } = query;
 
-    // Verify tenant exists and is active    const tenant = await prisma.tenant.findFirst({
+    // Verify tenant exists and is active
+    const tenant = await prisma.tenant.findFirst({
       where: {
         OR: [
           { slug: tenantId }, { subdomain: tenantId },
@@ -188,7 +189,7 @@ export class TenantCatalogService {
     }
 
     const employee = await prisma.employee.findFirst({
-      where: { id: employeeId, tenantId: tenant.id },
+      where: { id: employeeId, tenantId: tenant.id, isPublic: true },
       select: { id: true, firstName: true, lastName: true, email: true }
     });
     if (!employee) {
@@ -312,6 +313,7 @@ export class TenantCatalogService {
       where: {
         tenantId: { in: tenantIds },
         isActive: true,
+        isPublic: true,
         employeeServices: {
           some: { service: { visibility: { in: ['BOOKABLE', 'VISIBLE'] } } },
         },
