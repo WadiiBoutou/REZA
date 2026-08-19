@@ -368,11 +368,13 @@ export class SuperAdminService {
     const periodLapsed = !isPeriodActiveWithGrace(sub);
     const resetCoverage = periodLapsed;
 
-    if (!periodLapsed && sub?.currentPeriodEnd) {
-      // Extend from the existing period end to avoid resetting the period
-      // when a client pays again mid-month for additional employees.
+    if (periodLapsed) {
+      // New period started: period end = now + 1 month
+    } else if (sub?.currentPeriodEnd) {
+      // Period still active: DO NOT extend the period end.
+      // Additional employee payments within the current period only add
+      // employees to the paid count — the period end stays unchanged.
       periodEnd = new Date(sub.currentPeriodEnd);
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
     }
 
     await prisma.$transaction([
