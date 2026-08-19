@@ -1,6 +1,7 @@
 import { prisma } from '../../../lib/prisma';
 import { HttpError } from '../../../lib/errors';
 import { transformImageUrl } from '../../../utils/imageUrl';
+import { getVisibleEmployeeIds } from '../../../utils/feasibility';
 
 export class TenantCatalogService {
   async getTenantServices(tenantId: string, query: Record<string, unknown>) {
@@ -60,7 +61,13 @@ export class TenantCatalogService {
       employees: service.employeeServices.map(es => es.employee)
     }));
 
-    return { services: servicesWithEmployees };
+    // Filter: only show services with at least 1 visible (paid-for) employee
+    const visibleIds = await getVisibleEmployeeIds(tenant.id);
+    const filteredServices = visibleIds
+      ? servicesWithEmployees.filter(s => s.employees.some((e: any) => visibleIds.has(e.id)))
+      : servicesWithEmployees;
+
+    return { services: filteredServices };
   } catch (error) {
     throw error;
   }
