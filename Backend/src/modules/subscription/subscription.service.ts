@@ -48,12 +48,29 @@ export interface BillBreakdown {
   salons: SalonBill[];
 }
 
-/** A paid period is active when the subscription is ACTIVE and not past its end. */
+/**
+ * A paid period is active when the subscription is ACTIVE and not past its end.
+ */
 export function isPeriodActive(sub: { status: string; currentPeriodEnd: Date | null } | null): boolean {
   if (!sub) return false;
   if (sub.status !== 'ACTIVE') return false;
   if (!sub.currentPeriodEnd) return true;
   return sub.currentPeriodEnd.getTime() > Date.now();
+}
+
+/** Number of days after period end that a lapsed subscription's salons stay visible. */
+export const GRACE_PERIOD_DAYS = 3;
+
+/**
+ * A salon stays visible for a grace period after the subscription period ends,
+ * so the owner can renew without losing business.
+ */
+export function isPeriodActiveWithGrace(sub: { status: string; currentPeriodEnd: Date | null } | null): boolean {
+  if (!sub) return false;
+  if (sub.status !== 'ACTIVE') return false;
+  if (!sub.currentPeriodEnd) return true;
+  const graceMs = GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+  return sub.currentPeriodEnd.getTime() + graceMs > Date.now();
 }
 
 export class SubscriptionService {
@@ -162,7 +179,7 @@ export class SubscriptionService {
     }
 
     const sub = account.subscription;
-    const periodActive = isPeriodActive(sub);
+    const periodActive = isPeriodActiveWithGrace(sub);
     const salons = account.tenants;
 
     // Explicit selection restricts which salons contribute to the bill.

@@ -1,7 +1,7 @@
 import { Prisma } from '../../../prisma/generated/prisma/client';
 import { prisma } from '../../lib/prisma';
 import { accountService } from '../account/account.service';
-import { isPeriodActive } from '../subscription/subscription.service';
+import { isPeriodActive, isPeriodActiveWithGrace } from '../subscription/subscription.service';
 import { createNotification } from '../../utils/notify';
 import * as log from '../../utils/logger';
 
@@ -356,13 +356,24 @@ export class SuperAdminService {
     const employeesBySalon = details.employeesBySalon ?? {};
 
     const now = new Date();
-    const periodEnd = new Date(now);
+    let periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-    // If the previous period had lapsed, the stored per-salon employeesPaid is
-    // stale (billing treats it as 0) — SET the new period's coverage instead of
-    // incrementing, otherwise coverage would stack and over-cover the account.
-    const resetCoverage = !isPeriodActive(sub);
+    // If the previous period had lapsed (past grace period), the stored per-salon
+    // employeesPaid is stale (billing treats it as 0) — SET the new period's
+    // coverage instead of incrementing, otherwise coverage would stack and
+    // over-cover the account.
+    // We use isPeriodActiveWithGrace so that payments made within the 3-day grace
+    // period are treated as renewals (extend from existing period end), not resets.
+    const periodLapsed = !isPeriodActiveWithGrace(sub);
+    const resetCoverage = periodLapsed;
+
+    if (!periodLapsed && sub?.currentPeriodEnd) {
+      // Extend from the existing period end to avoid resetting the period
+      // when a client pays again mid-month for additional employees.
+      periodEnd = new Date(sub.currentPeriodEnd);
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+    }
 
     await prisma.$transaction([
       prisma.subscriptionPayment.update({
