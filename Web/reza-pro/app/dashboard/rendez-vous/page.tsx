@@ -212,13 +212,10 @@ const EMPLOYEE_COLOR_PALETTE = [
 const UNASSIGNED_COLOR = '#9CA3AF';
 const MINUTE_HEIGHT_REM = 5 / 30; // 5rem per 30-min slot (same scale as the old min-h-20)
 
-// Minimum readable width for a single lane of agenda cards (px). Each day
-// column is sized as (its own peak concurrent-lane count) × this value, so
-// cards are never squeezed below it no matter how many appointments genuinely
-// overlap — days with heavier overlap simply get wider columns and the whole
-// week scrolls horizontally instead of compressing every lane into a fixed
-// narrow column.
+// Minimum readable width for a single lane of agenda cards (px).
 const MIN_LANE_WIDTH_PX = 160;
+// Horizontal pixel offset between stacked overlapping cards.
+const CARD_STACK_OFFSET_PX = 8;
 
 const timeToMinutes = (time: string): number => {
   const [h, m] = time.split(':').map(Number);
@@ -359,10 +356,10 @@ const expandAppointmentToServiceCards = (
 
 type LaidOutServiceCard = ServiceCardData & { lane: number; laneCount: number };
 
-// Day column width = the day's own peak concurrent-lane count × the minimum
-// readable card width (Math.max(1, …) covers empty days).
-const dayColumnWidthPx = (laid: LaidOutServiceCard[]): number =>
-  Math.max(1, ...laid.map((c) => c.laneCount)) * MIN_LANE_WIDTH_PX;
+// Day column width is always 1 block. Overlapping cards stack with a small
+// pixel offset instead of expanding the column.
+const dayColumnWidthPx = (_laid: LaidOutServiceCard[]): number =>
+  MIN_LANE_WIDTH_PX;
 
 // Assign concurrent cards to side-by-side lanes with booking-group awareness:
 // ALL sibling cards of the same booking are treated as ONE atomic block and
@@ -1397,8 +1394,8 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
         const c = sorted[0];
         return (
           <div key={c.key} className="absolute z-10" style={{
-            left: `${(c.lane / c.laneCount) * 100}%`,
-            width: `${100 / c.laneCount}%`,
+            left: `${c.lane * CARD_STACK_OFFSET_PX}px`,
+            width: `calc(100% - ${c.laneCount * CARD_STACK_OFFSET_PX}px)`,
             top: `${minToTopRem(c.startMin)}rem`,
             height: `${Math.max(c.duration * MINUTE_HEIGHT_REM, minH)}rem`,
           }}>
@@ -1409,8 +1406,8 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
       // Multi-card: frame wrapper auto-sized around the cards
       return (
         <div key={`grp-${aptId}`} className="absolute z-[8] rounded-lg border border-gray-400/60 bg-gray-400/5 pointer-events-none" style={{
-          left: `calc(${(lane / laneCount) * 100}% - 2px)`,
-          width: `calc(${100 / laneCount}% + 4px)`,
+          left: `calc(${lane * CARD_STACK_OFFSET_PX}px - 2px)`,
+          width: `calc(100% - ${laneCount * CARD_STACK_OFFSET_PX}px + 4px)`,
           top: `${minToTopRem(startMin)}rem`,
           padding: '2px',
         }}>
@@ -1643,7 +1640,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                       style={{
                         flexGrow: 1,
                         flexShrink: 0,
-                        flexBasis: `${widthPx}px`,
+                        width: `${widthPx}px`,
                         height: `${agendaHeightRem}rem`,
                       }}
                       onDragOver={handleDragOver}
