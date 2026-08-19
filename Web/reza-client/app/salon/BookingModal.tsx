@@ -1370,7 +1370,16 @@ const BookingModal: React.FC<BookingModalProps> = ({
           name: p.displayName as string,
           subtotal: p.subtotal as number,
           time: p.startTime ? formatMoroccoTime(p.startTime) : undefined,
-          services: flatServices.filter((s) => p.serviceIds?.includes(s.id)),
+          services: (p.services || []).map((s: any) => {
+            const flatSvc = flatServices.find((fs: any) => fs.id === s.id) || s;
+            const empName = s.employeeName || getEmployeeName(s.employeeId || s.userEmployeeId, employees);
+            return {
+              ...flatSvc,
+              employeeId: s.employeeId,
+              userEmployeeId: s.userEmployeeId,
+              employeeName: empName || undefined,
+            };
+          }),
         }));
         setReceiptSummary({
           participants: pricingParticipants,
@@ -1456,8 +1465,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
         salonPhone={salonData?.phone}
         salonIce={salonData?.ice}
         salonRc={salonData?.rc}
-        salonIf={salonData?.if}
-      />
+         salonIf={salonData?.if}
+         employees={employees}
+       />
     );
   }
 

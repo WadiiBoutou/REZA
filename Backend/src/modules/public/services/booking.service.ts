@@ -687,23 +687,44 @@ export class BookingService {
       }
 
       const grandTotal = resolved.reduce((sum, p) => sum + p.subtotal, 0);
-      const pricingSummary = resolved.map((p) => ({
-        displayName: p.displayName,
-        isBooker: p.isBooker,
-        serviceIds: p.serviceIds,
-        // Per-participant service snapshot — lets the receipt render each
-        // client's own services, timing and price (mirrors the web receipt).
-        services: p.services.map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          duration: s.duration ?? 0,
-          price: Math.round(getServicePrice(s) * 100) / 100,
-        })),
-        duration: p.duration,
-        subtotal: Math.round(p.subtotal * 100) / 100,
-        employeeId: p.employeeId,
-        startTime: p.startTime.toISOString(),
-      }));
+      const pricingSummary = resolved.map((p) => {
+        // Build a map from serviceId → assigned employeeId for per-service display
+        const svcEmployeeMap = new Map<string, string | null>();
+        if (p.serviceEmployees) {
+          for (const se of p.serviceEmployees) {
+            svcEmployeeMap.set(se.serviceId, se.employeeId);
+          }
+        }
+        // Also resolve userEmployeeId for user-based employee lookup
+        const svcUserEmpMap = new Map<string, string | null>();
+        if (p.serviceEmployees) {
+          for (const se of p.serviceEmployees) {
+            svcUserEmpMap.set(se.serviceId, se.userEmployeeId);
+          }
+        }
+
+        return {
+          displayName: p.displayName,
+          isBooker: p.isBooker,
+          serviceIds: p.serviceIds,
+          // Per-participant service snapshot — lets the receipt render each
+          // client's own services, timing and price (mirrors the web receipt).
+          // Includes employeeId per service so "par [Employee]" can be displayed
+          // for auto-assigned ("Sans préférence") services.
+          services: p.services.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            duration: s.duration ?? 0,
+            price: Math.round(getServicePrice(s) * 100) / 100,
+            employeeId: svcEmployeeMap.get(s.id),
+            userEmployeeId: svcUserEmpMap.get(s.id),
+          })),
+          duration: p.duration,
+          subtotal: Math.round(p.subtotal * 100) / 100,
+          employeeId: p.employeeId,
+          startTime: p.startTime.toISOString(),
+        };
+      });
 
       const bookingGroup = await prisma.bookingGroup.create({
         data: {
