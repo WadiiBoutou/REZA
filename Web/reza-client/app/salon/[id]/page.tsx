@@ -281,18 +281,13 @@ export default function SalonDetail() {
     const activeEmployees = employees.filter(emp => emp.isActive !== false);
     
     return activeEmployees.map(emp => {
-      // Get first service name from services array
-      const firstService = emp.services && emp.services.length > 0 
-        ? emp.services[0].name 
-        : null;
-      
       return {
         id: emp.id,
         firstName: emp.firstName,
         lastName: emp.lastName,
         name: `${emp.firstName || ''} ${emp.lastName || ''}`.trim(),
         initials: `${emp.firstName?.[0] || ''}${emp.lastName?.[0] || ''}`.toUpperCase() || '?',
-        specialty: firstService || 'Professionnel',
+        role: emp.role || null,
         avatar: emp.avatar ? getImageUrl(emp.avatar) : null,
         services: emp.services || []
       };
@@ -991,8 +986,8 @@ export default function SalonDetail() {
                               </span>
                             )}
                           </div>
-                          <h4 className="font-bold text-gray-950 text-sm sm:text-base">{member.name}</h4>
-                          <p className="text-xs sm:text-sm text-gray-500 mt-1">{member.specialty}</p>
+                           <h4 className="font-bold text-gray-950 text-sm sm:text-base">{member.name}</h4>
+                           {member.role && <p className="text-xs sm:text-sm text-gray-500 mt-1">{member.role}</p>}
                         </div>
                       ))}
                     </div>
@@ -1570,8 +1565,8 @@ export default function SalonDetail() {
                       </span>
                     )}
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-900 mb-1">{member.name}</h2>
-                  <p className="text-sm text-gray-500 mb-2">{member.specialty}</p>
+                   <h2 className="text-2xl font-bold text-gray-900 mb-1">{member.name}</h2>
+                   {member.role && <p className="text-sm text-gray-500 mb-2">{member.role}</p>}
                   <div className="flex items-center gap-1.5 justify-center">
                     <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                     <span className="text-sm font-bold text-gray-900">{salonData.rating ? salonData.rating.toFixed(1) : '5.0'}</span>
@@ -1620,19 +1615,8 @@ export default function SalonDetail() {
                         <span className="text-gray-600 text-base">Clients servis</span>
                         <span className="font-bold text-gray-900 text-base">{stats ? stats.clientsServed : '—'}</span>
                       </div>
-                    </div>
-                    
-                    <div>
-                      <h4 className="font-bold text-gray-900 text-base mb-3">Langues</h4>
-                      <div className="flex gap-2">
-                        {['Français', 'Arabe', 'Anglais'].map((lang, i) => (
-                          <span key={i} className="px-3 py-1.5 bg-gray-100 text-gray-800 rounded-full text-xs font-semibold">
-                            {lang}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                     </div>
+                   </div>
                   
                   {/* Prestations Section */}
                   <div id="emp-prestations" className="scroll-mt-16 pt-6 border-t border-gray-100 space-y-4">

@@ -151,6 +151,7 @@ export class TenantCatalogService {
       phone: employee.phone,
       avatar: employee.avatar,
       isActive: employee.isActive,
+      role: (employee.agendaSettings as any)?.role ?? null,
       services: employee.employeeServices.map(es => es.service)
     }));
 
