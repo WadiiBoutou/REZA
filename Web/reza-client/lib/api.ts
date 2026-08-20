@@ -266,11 +266,24 @@ class ApiClient {
   }
 
   // Get per-employee availability status for date + time + services
-  async getEmployeeAvailability(tenantId: string, date: string, startTime: string, serviceIds: string[]) {
+  async getEmployeeAvailability(
+    tenantId: string,
+    date: string,
+    startTime: string,
+    serviceIds: string[],
+    existingParticipants?: Array<{
+      serviceIds: string[];
+      startTime: string;
+      serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
+    }>,
+  ) {
     const params = new URLSearchParams();
     params.append('date', date);
     params.append('startTime', startTime);
     serviceIds.forEach(id => params.append('serviceIds', id));
+    if (existingParticipants && existingParticipants.length > 0) {
+      params.append('existingParticipants', JSON.stringify(existingParticipants));
+    }
     return this.request<{
       employees: Array<{
         id: string;

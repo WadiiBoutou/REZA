@@ -1648,6 +1648,14 @@ export class BookingService {
         throw new HttpError(404, { error: 'Tenant not found' });
       }
 
+      // Accepts both "HH:MM" and full ISO datetimes ("YYYY-MM-DDTHH:MM:SS").
+      const minutesFromTimeValue = (value: string): number => {
+        if (typeof value !== 'string') return 0;
+        const part = value.includes('T') ? value.slice(11, 16) : (value.split(' ')[1] ?? value);
+        const [h, m] = part.split(':').map(Number);
+        return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : 0;
+      };
+
       const serviceIdsArray = Array.isArray(serviceIds)
         ? (serviceIds as string[])
         : typeof serviceIds === 'string'
@@ -1678,8 +1686,7 @@ export class BookingService {
       const virtualOccupied = new Map<string, Array<{ start: number; end: number }>>();
       const epAutoResolved: string[] = [];
       for (const ep of existingParticipantsList) {
-        const [h, m] = ep.startTime.split(':').map(Number);
-        let cursor = h * 60 + m;
+        let cursor = minutesFromTimeValue(ep.startTime);
         const excludeIds: string[] = [];
         for (let si = 0; si < ep.serviceIds.length; si++) {
           const svcId = ep.serviceIds[si];
@@ -1744,8 +1751,7 @@ export class BookingService {
       }
 
       // Check virtual occupation from existing participants
-      const [startH, startM] = (startTime as string).split(':').map(Number);
-      const startMin = startH * 60 + startM;
+      const startMin = minutesFromTimeValue(startTime as string);
 
       for (const sPlan of planResult.services) {
         // Compute interval for this service
@@ -1773,6 +1779,39 @@ export class BookingService {
               existing.available = false;
               existing.reason = 'Déjà assigné à un autre participant du groupe';
             }
+          }
+        }
+      }
+
+      // Recompute the recommended employee per service so already-locked
+      // participants are excluded — planReservation's recommendation was
+      // computed without knowledge of existingParticipants.
+      if (existingParticipantsList.length > 0) {
+        const lockedIdsForInterval = (svcStart: number, svcEnd: number): string[] => {
+          const ids: string[] = [];
+          for (const [empId, ranges] of virtualOccupied) {
+            if (ranges.some((r) => r.start < svcEnd && r.end > svcStart)) ids.push(empId);
+          }
+          return ids;
+        };
+
+        for (const sPlan of planResult.services) {
+          const svcIdx = serviceIdsArray.indexOf(sPlan.serviceId);
+          let svcStart = startMin;
+          for (let i = 0; i < svcIdx; i++) {
+            svcStart += (planResult.services[i]?.duration || 30);
+          }
+          const svcEnd = svcStart + (sPlan.duration || 30);
+          const timeStr = `${String(Math.floor(svcStart / 60)).padStart(2, '0')}:${String(svcStart % 60).padStart(2, '0')}`;
+          const resolved = await schedulingService.resolveAnyone({
+            tenantId: tenant.id,
+            serviceIds: [sPlan.serviceId],
+            date: date as string,
+            startTime: timeStr,
+            excludeEmployeeIds: lockedIdsForInterval(svcStart, svcEnd),
+          });
+          for (const e of sPlan.employees) {
+            e.recommended = e.employeeId === resolved.employeeId;
           }
         }
       }

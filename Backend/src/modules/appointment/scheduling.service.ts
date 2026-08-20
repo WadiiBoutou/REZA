@@ -206,7 +206,7 @@ export class SchedulingService {
       log.log('[Feasibility] planReservation service=' + service.name +
         ' range=' + fmtRange);
 
-      let bestEmployee: typeof employees[0] | null = null;
+      let bestEmployees: typeof employees[0][] = [];
       let bestWorkload = Infinity;
 
       for (const emp of employees) {
@@ -295,9 +295,15 @@ export class SchedulingService {
 
         if (workload < bestWorkload) {
           bestWorkload = workload;
-          bestEmployee = emp;
+          bestEmployees = [emp];
+        } else if (workload === bestWorkload) {
+          bestEmployees.push(emp);
         }
       }
+
+      const bestEmployee = bestEmployees.length > 0
+        ? bestEmployees[Math.floor(Math.random() * bestEmployees.length)]
+        : null;
 
       const availableCount = serviceEmployees.filter((e) => e.available).length;
       log.log('[Feasibility] planReservation service=' + service.name +
@@ -747,7 +753,7 @@ export class SchedulingService {
       return (occupiedRanges.get(userId) || []).reduce((sum, r) => sum + (r.end - r.start), 0);
     }
 
-    let bestEmployee: (typeof employees)[0] | null = null;
+    let bestEmployees: (typeof employees)[0][] = [];
     let bestWorkload = Infinity;
 
     const excludeSet = new Set(excludeEmployeeIds);
@@ -785,13 +791,20 @@ export class SchedulingService {
 
       if (workload < bestWorkload) {
         bestWorkload = workload;
-        bestEmployee = emp;
+        bestEmployees = [emp];
+      } else if (workload === bestWorkload) {
+        bestEmployees.push(emp);
       }
     }
 
-    if (!bestEmployee) {
+    if (bestEmployees.length === 0) {
       return { employeeId: null, userEmployeeId: null };
     }
+
+    // Among equally-available candidates, pick one at random so that
+    // consecutive "Sans préférence" participants with the same slot don't
+    // always land on the same (first) employee.
+    const bestEmployee = bestEmployees[Math.floor(Math.random() * bestEmployees.length)];
 
     let userEmployeeId = employeeToUserMap.get(bestEmployee.id) ?? null;
     // resolveAnyone's internal employee-to-user lookup may miss when no User

@@ -262,6 +262,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
   // Per-service employee availability data from backend (for "Même employé" unchecked view)
   const [serviceEmployeeData, setServiceEmployeeData] = useState<Record<string, any[]>>({});
 
+  // Auto-locked employees (backend recommendation at slot selection). These
+  // flow into existingParticipants + submission so group-participant booking
+  // excludes already-locked employees — but are never shown in the recap.
+  const [autoLockedSelections, setAutoLockedSelections] = useState<Record<string, string>>({});
+
   // Conflict resolution state
   const [resolveLoading, setResolveLoading] = useState(false);
   const [resolvingEmployees, setResolvingEmployees] = useState(false);
@@ -396,6 +401,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
       setSelectedTeamMemberId('any');
       setEmployeeAvailabilityMap({});
       setAvailabilityLoadingMap({});
+      setServiceEmployeeData({});
+      setAutoLockedSelections({});
     }
   }, [show]);
 
@@ -801,52 +808,59 @@ const BookingModal: React.FC<BookingModalProps> = ({
   }, [selectedServices, savedPeople]);
 
   // Remonter savedPeople au parent pour les calculs de disponibilité (existingParticipants)
-  // Debounced 200ms. flatServices is kept via ref to avoid infinite re-render loops
-  // when parent recreates salonServices on every render.
+  // flatServices is kept via ref to avoid infinite re-render loops when parent
+  // recreates salonServices on every render.
   const flatServicesRef = useRef(flatServices);
   flatServicesRef.current = flatServices;
 
-  useEffect(() => {
-    if (!onExistingParticipantsChange) return;
+  // Build the already-locked participants payload sent to the availability
+  // endpoints. Includes BOTH explicit per-service choices AND auto-locked
+  // employees, so a slot for the next participant accounts for all of them.
+  const buildExistingParticipants = useCallback((): Array<{
+    serviceIds: string[];
+    startTime: string;
+    serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
+  }> => {
+    const fs = flatServicesRef.current;
+    const existing: Array<{
+      serviceIds: string[];
+      startTime: string;
+      serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
+    }> = [];
 
-    const timer = setTimeout(() => {
-      const fs = flatServicesRef.current;
-      const existing: Array<{
-        serviceIds: string[];
-        startTime: string;
-        serviceEmployees?: Array<{ serviceId: string; employeeId: string | null }>;
-      }> = [];
+    for (const p of savedPeople) {
+      const mainTime = bookingData.date && bookingData.time ? `${bookingData.date}T${bookingData.time}:00` : '';
+      const pTime = p.customDate && p.customTime
+        ? `${p.customDate}T${p.customTime}:00`
+        : mainTime;
+      if (!pTime || p.serviceIds.length === 0) continue;
 
-      for (const p of savedPeople) {
-        const mainTime = bookingData.date && bookingData.time ? `${bookingData.date}T${bookingData.time}:00` : '';
-        const pTime = p.customDate && p.customTime
-          ? `${p.customDate}T${p.customTime}:00`
-          : mainTime;
-        if (!pTime || p.serviceIds.length === 0) continue;
-
-        const svcEmployees: Array<{ serviceId: string; employeeId: string | null }> = [];
-        if (p.perServiceEmployees && Object.keys(p.perServiceEmployees).length > 0) {
-          for (const [svcKey, empId] of Object.entries(p.perServiceEmployees)) {
-            if (empId && empId !== 'any') {
-              const svc = fs.find((s: any) => (s.id || s.name) === svcKey);
-              const realSvcId = svc?.id || svcKey;
-              svcEmployees.push({ serviceId: realSvcId, employeeId: empId });
-            }
-          }
+      const svcEmployees: Array<{ serviceId: string; employeeId: string | null }> = [];
+      const merged = { ...(p.perServiceEmployees || {}), ...(p.perServiceLocked || {}) };
+      for (const [svcKey, empId] of Object.entries(merged)) {
+        if (empId && empId !== 'any') {
+          const svc = fs.find((s: any) => (s.id || s.name) === svcKey);
+          svcEmployees.push({ serviceId: svc?.id || svcKey, employeeId: empId });
         }
-
-        existing.push({
-          serviceIds: p.serviceIds,
-          startTime: pTime,
-          serviceEmployees: svcEmployees.length > 0 ? svcEmployees : undefined,
-        });
       }
 
-      onExistingParticipantsChange(existing.length > 0 ? existing : []);
-    }, 200);
+      existing.push({
+        serviceIds: p.serviceIds,
+        startTime: pTime,
+        serviceEmployees: svcEmployees.length > 0 ? svcEmployees : undefined,
+      });
+    }
 
-    return () => clearTimeout(timer);
-  }, [savedPeople, bookingData.date, bookingData.time, onExistingParticipantsChange]);
+    return existing;
+  }, [savedPeople, bookingData.date, bookingData.time]);
+
+  // Propagate synchronously (no debounce): a slow propagation let later
+  // participants see slots that were feasible only with fewer participants —
+  // the false-available → 409-at-submission race.
+  useEffect(() => {
+    if (!onExistingParticipantsChange) return;
+    onExistingParticipantsChange(buildExistingParticipants());
+  }, [savedPeople, bookingData.date, bookingData.time, buildExistingParticipants, onExistingParticipantsChange]);
 
   // Notify parent about current person's explicit employee choices for availability checking
   useEffect(() => {
@@ -911,6 +925,10 @@ const BookingModal: React.FC<BookingModalProps> = ({
     const controller = new AbortController();
     availAbortRef.current = controller;
 
+    // Stale availability (previous date/time) must never leak into the lock
+    // decision of the next slot.
+    setServiceEmployeeData({});
+
     const bookerServiceIds = selectedServices.map(s => s.id).filter(Boolean) as string[];
 
     const fetchAvailabilityForPerson = async (
@@ -921,9 +939,16 @@ const BookingModal: React.FC<BookingModalProps> = ({
       if (!timeSlot || serviceIds.length === 0) return;
       setAvailabilityLoadingMap(prev => ({ ...prev, [personKey]: true }));
       try {
-        const res = await api.getEmployeeAvailability(salonId, bookingData.date, timeSlot, serviceIds);
+        const res = await api.getEmployeeAvailability(
+          salonId,
+          bookingData.date,
+          timeSlot,
+          serviceIds,
+          buildExistingParticipants(),
+        );
         if (controller.signal.aborted) return;
         setEmployeeAvailabilityMap(prev => ({ ...prev, [personKey]: res.employees || [] }));
+        setServiceEmployeeData(prev => ({ ...prev, [personKey]: res.services || [] }));
       } catch (err: any) {
         if (err?.name === 'AbortError' || controller.signal.aborted) return;
         console.error(`Error fetching employee availability for ${personKey}:`, err);
@@ -949,7 +974,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
     });
 
     return () => { controller.abort(); };
-  }, [salonId, bookingData.date, bookingData.time, selectedServices, savedPeople]);
+  }, [salonId, bookingData.date, bookingData.time, selectedServices, savedPeople, buildExistingParticipants]);
 
   const validate = (): boolean => {
     const newErrors: Record<string, boolean> = {};
@@ -998,6 +1023,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
       serviceIds: mainServiceIds,
       employeeId: selectedTeamMemberId === 'any' ? null : selectedTeamMemberId,
       perServiceEmployees: Object.keys(perServiceEmployeeSelections).length > 0 ? { ...perServiceEmployeeSelections } : undefined,
+      perServiceLocked: Object.keys(autoLockedSelections).length > 0 ? { ...autoLockedSelections } : undefined,
       customDate: bookingData.date,
       customTime: bookingData.time,
     };
@@ -1021,6 +1047,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
     setPerServiceMode(false);
     setStep2Phase(0);
     setPerServiceEmployeeSelections({});
+    setAutoLockedSelections({});
     // Reset bookingData for the new person — pre-fill name from opts
     setBookingData({
       date: bookingData.date || '',
@@ -1179,6 +1206,35 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
     if (bookingStep === 3) {
       if (!validate()) return;
+
+      // Lock "Sans préférence" services to the backend-recommended employee at
+      // slot-selection time. The recommendation already excludes employees
+      // locked by previously-saved participants, so accumulating these locks
+      // across the group removes the false-available → 409-at-submission race.
+      // Locks are recomputed fresh on every continue (serviceEmployeeData is
+      // cleared when the date/time changes), and explicit user choices are
+      // never overwritten.
+      const activeKeys = new Set(selectedServices.map((svc: any) => (svc.id || svc.name) as string).filter(Boolean));
+      setPerServiceEmployeeSelections(prev => {
+        const updated = { ...prev };
+        for (const key of Object.keys(updated)) {
+          if (!activeKeys.has(key)) delete updated[key];
+        }
+        return updated;
+      });
+
+      const nextLocks: Record<string, string> = {};
+      const data = serviceEmployeeData['booker'] || [];
+      for (const svc of selectedServices) {
+        const key = svc.id || svc.name;
+        if (!key) continue;
+        if (perServiceEmployeeSelections[key] && perServiceEmployeeSelections[key] !== 'any') continue;
+        const svcAvail = data.find((s: any) => s.serviceId === svc.id);
+        const rec = (svcAvail?.employees || []).find((e: any) => e.recommended);
+        if (rec?.id) nextLocks[key] = rec.id;
+      }
+      setAutoLockedSelections(nextLocks);
+
       const nextStep = shouldShowStep4 ? 4 : 5;
       setBookingStep(nextStep);
       return;
@@ -1288,10 +1344,13 @@ const BookingModal: React.FC<BookingModalProps> = ({
             const pDate = p.customDate || bookingData.date;
             const pTime = p.customTime || bookingData.time;
             const pStart = createDateFromMoroccoDateTime(pDate, pTime);
-            // Translate per-service selections to real service IDs
+            // Translate per-service selections to real service IDs. Auto-locked
+            // employees are merged in — they are real backend-recommended
+            // assignments required for the group to fit.
             const svcEmployees: Array<{ serviceId: string; employeeId: string | null }> = [];
-            if (p.perServiceEmployees && Object.keys(p.perServiceEmployees).length > 0) {
-              for (const [svcKey, empId] of Object.entries(p.perServiceEmployees)) {
+            const merged = { ...(p.perServiceEmployees || {}), ...(p.perServiceLocked || {}) };
+            if (Object.keys(merged).length > 0) {
+              for (const [svcKey, empId] of Object.entries(merged)) {
                 if (empId && empId !== 'any') {
                   const svc = flatServices.find((s: any) => (s.id || s.name) === svcKey);
                   svcEmployees.push({ serviceId: svc?.id || svcKey, employeeId: empId });
@@ -1317,8 +1376,10 @@ const BookingModal: React.FC<BookingModalProps> = ({
             serviceIds: bookerServiceIds,
             employeeId: null,
             serviceEmployees: (() => {
-              const entries = Object.entries(perServiceEmployeeSelections)
-                .filter(([_, empId]) => empId && empId !== 'any');
+              const activeKeys = new Set(selectedServices.map((s: any) => (s.id || s.name) as string).filter(Boolean));
+              const merged = { ...perServiceEmployeeSelections, ...autoLockedSelections };
+              const entries = Object.entries(merged)
+                .filter(([svcKey, empId]) => activeKeys.has(svcKey) && empId && empId !== 'any');
               if (entries.length === 0) return undefined;
               return entries.map(([svcKey, empId]) => {
                 const svc = flatServices.find((s: any) => (s.id || s.name) === svcKey);

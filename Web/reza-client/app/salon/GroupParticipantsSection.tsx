@@ -17,6 +17,9 @@ export type GuestParticipant = {
   employeeId?: string | null;
   /** Per-service employee selections (keyed by serviceId or serviceName) */
   perServiceEmployees?: Record<string, string>;
+  /** Auto-locked employees (backend recommendation at slot selection) — flow
+   *  into existingParticipants + submission, hidden from the recap. */
+  perServiceLocked?: Record<string, string>;
   /** Custom time when participant has independent schedule (HH:MM) */
   customTime?: string;
   /** Custom date when participant has independent schedule (YYYY-MM-DD) */
