@@ -1370,16 +1370,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
           name: p.displayName as string,
           subtotal: p.subtotal as number,
           time: p.startTime ? formatMoroccoTime(p.startTime) : undefined,
-          services: (p.services || []).map((s: any) => {
-            const flatSvc = flatServices.find((fs: any) => fs.id === s.id) || s;
-            const empName = s.employeeName || getEmployeeName(s.employeeId || s.userEmployeeId, employees);
-            return {
-              ...flatSvc,
-              employeeId: s.employeeId,
-              userEmployeeId: s.userEmployeeId,
-              employeeName: empName || undefined,
-            };
-          }),
+          services: flatServices.filter((s) => p.serviceIds?.includes(s.id)),
         }));
         setReceiptSummary({
           participants: pricingParticipants,
@@ -1465,9 +1456,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
         salonPhone={salonData?.phone}
         salonIce={salonData?.ice}
         salonRc={salonData?.rc}
-         salonIf={salonData?.if}
-         employees={employees}
-       />
+        salonIf={salonData?.if}
+      />
     );
   }
 
@@ -2614,11 +2604,6 @@ function RecapParticipantSection({
     return null;
   };
 
-  // Check if any service in this participant is auto-assigned (Sans préférence)
-  const hasAutoAssignedServices = !employeeId && (!perServiceEmployees || Object.values(perServiceEmployees).some(
-    (v) => v === null
-  ));
-
   // Compute service time windows for logging (fires only when the content changes)
   const timeWindowsLogKey = JSON.stringify(services.map((svc) => {
     if (!time) return { name: svc.name, window: '', empName: getEmpForService(svc) };
@@ -2658,17 +2643,12 @@ function RecapParticipantSection({
       <div className="space-y-2">
         {services.map((svc, i) => {
           const empNameForSvc = getEmpForService(svc);
-          const svcKey = svc.id || svc.name;
-          const isAutoAssigned = employeeId === null && perServiceEmployees && !perServiceEmployees[svcKey];
           return (
             <div key={i} className="flex items-center justify-between text-xs">
               <div className="flex flex-col">
                 <span className="text-gray-900 font-medium">{svc.name}</span>
                 {empNameForSvc && (
                   <span className="text-[11px] text-gray-500">par {empNameForSvc}</span>
-                )}
-                {isAutoAssigned && (
-                  <span className="text-[11px] text-gray-400 italic">Attribué automatiquement</span>
                 )}
               </div>
               <span className="text-gray-500 whitespace-nowrap">{svc.duration} · {svc.price} MAD</span>

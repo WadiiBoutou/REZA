@@ -7,9 +7,6 @@ type Service = {
   name: string;
   duration: string;
   price?: number;
-  employeeId?: string | null;
-  userEmployeeId?: string | null;
-  employeeName?: string;
 };
 
 type BookingData = {
@@ -47,7 +44,6 @@ type ReceiptProps = {
   salonIce?: string;
   salonRc?: string;
   salonIf?: string;
-  employees?: Array<{ id: string; firstName: string; lastName: string }>;
 };
 
 const Receipt: React.FC<ReceiptProps> = ({
@@ -64,7 +60,6 @@ const Receipt: React.FC<ReceiptProps> = ({
   salonIce,
   salonRc,
   salonIf,
-  employees = [],
 }) => {
   const receiptNumber = referenceNumber || `REF${Date.now().toString(36).toUpperCase().slice(-9)}`;
   const displaySalonName = salonName || 'Salon';
@@ -116,28 +111,16 @@ const Receipt: React.FC<ReceiptProps> = ({
     }
   };
 
-  const getEmployeeName = (empId: string | null | undefined): string | null => {
-    if (!empId) return null;
-    const emp = employees.find((e) => e.id === empId);
-    return emp ? `${emp.firstName} ${emp.lastName}`.trim() : null;
-  };
-
   const renderServices = (services: Service[]) =>
-    services.map((service, idx) => {
-      const empName = service.employeeName || getEmployeeName(service.employeeId) || getEmployeeName(service.userEmployeeId);
-      return (
-        <div key={idx} className="mb-2">
-          <div className="flex justify-between">
-            <span className="flex-1">
-              {service.name}
-              {empName && <span className="text-[9px] text-gray-500 block">par {empName}</span>}
-            </span>
-            <span className="ml-2">{service.price}.00</span>
-          </div>
-          <div className="text-black text-[10px]">{service.duration}</div>
+    services.map((service, idx) => (
+      <div key={idx} className="mb-2">
+        <div className="flex justify-between">
+          <span className="flex-1">{service.name}</span>
+          <span className="ml-2">{service.price}.00</span>
         </div>
-      );
-    });
+        <div className="text-black text-[10px]">{service.duration}</div>
+      </div>
+    ));
 
   return (
     <div className="fixed inset-0 z-50 bg-[#f5f7f3] overflow-y-auto">
