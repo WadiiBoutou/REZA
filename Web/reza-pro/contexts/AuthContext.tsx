@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { isDemoMode } from '@/lib/demo-mode';
 
 interface User {
   id: string;
@@ -169,7 +170,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        let token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        if (!token && isDemoMode()) {
+          token = 'reza-demo-session';
+        }
         const savedFilter = loadSalonFilter();
         setSalonFilterState(savedFilter);
         api.setSalonFilter(savedFilter);

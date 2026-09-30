@@ -88,7 +88,7 @@ const TestimonialsAndBlogs = () => {
       category: "Tendances",
       readTime: "5 min",
       date: "10 Nov 2025",
-      image: "https://images.pexels.com/photos/7440052/pexels-photo-7440052.jpeg?_gl=1*h1012e*_ga*MTkyNzg5MTU2NC4xNzU5OTk3NzYy*_ga_8JE65Q40S6*czE3NjMwNTI5MjgkbzYkZzEkdDE3NjMwNTMwNTEkajQ3JGwwJGgw"
+      image: "/coiff/tendance.jpg"
     },
     {
       id: 2,
@@ -97,7 +97,7 @@ const TestimonialsAndBlogs = () => {
       category: "Business",
       readTime: "7 min",
       date: "8 Nov 2025",
-      image: "https://images.pexels.com/photos/4783289/pexels-photo-4783289.jpeg?_gl=1*o5a6la*_ga*MTkyNzg5MTU2NC4xNzU5OTk3NzYy*_ga_8JE65Q40S6*czE3NjMwNTI5MjgkbzYkZzEkdDE3NjMwNTMxMzAkajM5JGwwJGgw"
+      image: "/barbier/moderne.jpg"
     },
     {
       id: 3,
@@ -106,7 +106,7 @@ const TestimonialsAndBlogs = () => {
       category: "Bien-être",
       readTime: "4 min",
       date: "5 Nov 2025",
-      image: "https://images.pexels.com/photos/260405/pexels-photo-260405.jpeg?_gl=1*rdfmy0*_ga*MTkyNzg5MTU2NC4xNzU5OTk3NzYy*_ga_8JE65Q40S6*czE3NjMwNTI5MjgkbzYkZzEkdDE3NjMwNTMyNTkkajQkbDAkaDA."
+      image: "/institut-de-beaute/soinhydratant.jpg"
     },
     {
       id: 4,
@@ -115,7 +115,7 @@ const TestimonialsAndBlogs = () => {
       category: "Digital",
       readTime: "6 min",
       date: "2 Nov 2025",
-      image: "https://images.pexels.com/photos/7428220/pexels-photo-7428220.jpeg?_gl=1*g1snqg*_ga*MTkyNzg5MTU2NC4xNzU5OTk3NzYy*_ga_8JE65Q40S6*czE3NjMwNTI5MjgkbzYkZzEkdDE3NjMwNTM0NzckajU0JGwwJGgw"
+      image: "/institut-de-beaute/makeupprofessional.jpg"
     },
     {
       id: 5,
@@ -124,7 +124,7 @@ const TestimonialsAndBlogs = () => {
       category: "Soins",
       readTime: "5 min",
       date: "30 Oct 2025",
-      image: "https://media.vogue.fr/photos/63624d63e7c5eddc1da288a2/master/w_1600%2Cc_limit/1662673_box-1920x1440.png"
+      image: "/coiff/balayage.jpg"
     },
     {
       id: 6,
@@ -133,7 +133,7 @@ const TestimonialsAndBlogs = () => {
       category: "Marketing",
       readTime: "8 min",
       date: "28 Oct 2025",
-      image: "https://images.pexels.com/photos/590016/pexels-photo-590016.jpeg?_gl=1*5y1fk8*_ga*MTkyNzg5MTU2NC4xNzU5OTk3NzYy*_ga_8JE65Q40S6*czE3NjMwNTI5MjgkbzYkZzEkdDE3NjMwNTM1NzgkajI3JGwwJGgw"
+      image: "/manucure/banner.jpg"
     }
   ];
 

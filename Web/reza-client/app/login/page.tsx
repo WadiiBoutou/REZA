@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Eye, EyeOff, Mail, ArrowLeft, Camera, Loader2, Phone, Venus, Mars } from 'lucide-react';
+import { Eye, EyeOff, Mail, ArrowLeft, Camera, Loader2, Phone, Venus, Mars, Sparkles } from 'lucide-react';
 import { isValidMoroccanPhone, getMoroccanPhoneError } from '../../lib/utils';
 import CurvySlideButton from '@/components/UI/CurvySlideButton';
 import { Checkbox } from "@/components/UI/checkbox";
@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { AnimatePresence, motion } from 'framer-motion';
+import { DEMO_CLIENT, enableDemoMode } from '@/lib/demo-mode';
 
 // Animated Text Component
 const AnimatedText = ({ className = "" }: { className?: string }) => {
@@ -110,6 +111,19 @@ function LoginPageContent() {
   const { login, isAuthenticated, logout } = useAuth();
   const router = useRouter();
 
+
+  const handleDemoLogin = async () => {
+    enableDemoMode();
+    setError('');
+    setLoading(true);
+    const result = await login(DEMO_CLIENT.email, DEMO_CLIENT.password, false);
+    if (result.success) {
+      router.push('/account');
+    } else {
+      setError(result.error || 'Impossible de démarrer la démo.');
+      setLoading(false);
+    }
+  };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1044,6 +1058,20 @@ function LoginPageContent() {
                     }}
                   />
                 </div>
+                {mode === 'login' && (
+                  <div className="space-y-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleDemoLogin}
+                      disabled={loading}
+                      className="flex w-full items-center justify-center gap-2 rounded-full bg-[#bd9a52] px-5 py-3.5 text-sm font-extrabold uppercase tracking-wider text-[#201c10] shadow-lg shadow-[#bd9a52]/40 transition-all hover:bg-[#cba75c] hover:shadow-xl active:scale-[0.99] disabled:opacity-60"
+                    >
+                      <Sparkles size={18} aria-hidden="true" />
+                      Try démo account / Essayer compte démo
+                    </button>
+                    <p className="text-center text-xs font-semibold text-[#8b7340]">Mode démo · serveur actuellement indisponible</p>
+                  </div>
+                )}
                 </motion.form>
                 )}
               </AnimatePresence>

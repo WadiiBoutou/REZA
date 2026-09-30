@@ -1,6 +1,7 @@
 'use client';
 
 import { io, type Socket } from 'socket.io-client';
+import { isDemoMode } from './demo-mode';
 
 let socket: Socket | null = null;
 let tokenAtConnect: string | null = null;
@@ -40,6 +41,7 @@ function getApiBaseUrl(): string {
  */
 export function getRealtimeSocket(): Socket | null {
   if (typeof window === 'undefined') return null;
+  if (isDemoMode()) return null;
   const token = localStorage.getItem('token');
   if (!token) return null;
 

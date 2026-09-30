@@ -14,7 +14,12 @@ import {
   RATING_WEIGHT,
 } from '../lib/recommendation';
 
-export default function RecommendedSection() {
+interface RecommendedSectionProps {
+  /** Called with the set of salon IDs being displayed, so siblings can exclude them. */
+  onRenderedIds?: (ids: Set<string>) => void;
+}
+
+export default function RecommendedSection({ onRenderedIds }: RecommendedSectionProps) {
   const [catalog, setCatalog] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [preciseRequesting, setPreciseRequesting] = useState(false);
@@ -98,6 +103,13 @@ export default function RecommendedSection() {
       setPreciseRequesting(false);
     }
   }, [requestPreciseLocation]);
+
+  // Notify parent of which IDs are currently displayed so NewSalonsSection can exclude them.
+  useEffect(() => {
+    if (onRenderedIds && ranked.length > 0) {
+      onRenderedIds(new Set(ranked.map((s: any) => s.id)));
+    }
+  }, [ranked, onRenderedIds]);
 
   return (
     <SalonCarousel

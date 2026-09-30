@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import ReviewsTab from '../ReviewsTab';
+import { DEMO_SALON_PHOTOS } from '@/lib/demo-images';
 
 type Review = {
   id: number;
@@ -18,7 +19,7 @@ const mockReviews: Review[] = [
   {
     id: 1,
     salon: 'Salon Élégance',
-    salonImage: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=400&q=80',
+    salonImage: DEMO_SALON_PHOTOS[0],
     salonLocation: 'Casablanca',
     service: 'Coupe & Brushing',
     rating: 5,
@@ -29,7 +30,7 @@ const mockReviews: Review[] = [
   {
     id: 2,
     salon: 'Spa Royal',
-    salonImage: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=400&q=80',
+    salonImage: DEMO_SALON_PHOTOS[2],
     salonLocation: 'Casablanca',
     service: 'Massage Relaxant',
     rating: 4,

@@ -44,6 +44,7 @@ interface Appointment {
   totalPrice?: number | string;
   duration?: string;
   professional?: string;
+  professionalAvatar?: string | null;
   professionalSpecialty?: string;
   professionalYearsExp?: string;
   professionals?: Array<{ name: string; specialty: string }>;
@@ -533,8 +534,19 @@ const AppointmentsTab: React.FC<AppointmentsTabProps> = ({
                   </div>
 
                   <div className="flex items-center gap-6">
-                    <div className="w-20 h-20 bg-gray-900 rounded-full flex items-center justify-center text-white text-xl font-light">
-                      {selectedAppointment.professional.split(' ').map((n: string) => n[0]).join('')}
+                    <div className="w-20 h-20 rounded-full overflow-hidden flex-shrink-0 bg-gray-900 flex items-center justify-center">
+                      {selectedAppointment.professionalAvatar ? (
+                        <img
+                          src={selectedAppointment.professionalAvatar}
+                          alt={selectedAppointment.professional}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <span className="text-white text-xl font-light">
+                          {selectedAppointment.professional.split(' ').map((n: string) => n[0]).join('')}
+                        </span>
+                      )}
                     </div>
                     <div className="flex-1">
                       <h3 className="text-2xl font-light text-gray-900 mb-2">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, X, Star, ThumbsUp, ThumbsDown, Mail, Check, AlertCircle, User, Bubbles } from 'lucide-react';
+import { Search, X, Star, ThumbsUp, ThumbsDown, Mail, Check, AlertCircle, User, Bubbles, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { getImageUrl } from '@/lib/utils';
@@ -19,6 +19,8 @@ interface Review {
   date: Date;
   status: 'pending' | 'approved' | 'rejected';
 }
+
+const REVIEWS_PER_PAGE = 12;
 
 const formatDate = (date: Date, format: 'short' | 'long' = 'short') => {
   const d = new Date(date);
@@ -42,6 +44,7 @@ export default function AvisAModererPage() {
   const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
   const [rejectReason, setRejectReason] = useState('');
   const [loading, setLoading] = useState(true);
+  const [reviewPage, setReviewPage] = useState(1);
 
   // Fetch pending reviews from API
   useEffect(() => {
@@ -51,7 +54,7 @@ export default function AvisAModererPage() {
       try {
         setLoading(true);
         const response = await api.getReviews({ status: 'PENDING', limit: 100 });
-        const apiReviews = response.reviews || [];
+        const apiReviews = Array.isArray(response) ? response : Array.isArray(response?.reviews) ? response.reviews : [];
         
         // Format reviews to match frontend interface
         const formattedReviews: Review[] = apiReviews.map((review: any) => ({
@@ -90,6 +93,17 @@ export default function AvisAModererPage() {
     
     return matchesSearch && matchesRating;
   });
+
+  useEffect(() => {
+    setReviewPage(1);
+  }, [searchTerm, ratingFilter]);
+
+  const reviewPageCount = Math.max(1, Math.ceil(filteredReviews.length / REVIEWS_PER_PAGE));
+  const safeReviewPage = Math.min(reviewPage, reviewPageCount);
+  const pagedReviews = filteredReviews.slice(
+    (safeReviewPage - 1) * REVIEWS_PER_PAGE,
+    safeReviewPage * REVIEWS_PER_PAGE
+  );
 
   const handleAction = (review: Review, type: 'approve' | 'reject') => {
     setSelectedReview(review);
@@ -206,7 +220,7 @@ export default function AvisAModererPage() {
       {/* Grid View */}
       {viewMode === 'grid' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fadeIn">
-          {filteredReviews.map((review) => (
+          {pagedReviews.map((review) => (
             <div
               key={review.id}
               className="bg-white rounded-lg border border-gray-100 p-6 hover:shadow-md transition-all group"
@@ -298,7 +312,7 @@ export default function AvisAModererPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredReviews.map((review) => (
+                {pagedReviews.map((review) => (
                   <tr key={review.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -367,6 +381,30 @@ export default function AvisAModererPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {!loading && filteredReviews.length > REVIEWS_PER_PAGE && (
+        <div className="flex items-center justify-between mt-6 border-t border-gray-100 pt-4">
+          <button
+            type="button"
+            onClick={() => setReviewPage((page) => Math.max(1, page - 1))}
+            disabled={safeReviewPage === 1}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft size={16} />
+            Précédent
+          </button>
+          <span className="text-sm text-gray-500">Page {safeReviewPage} sur {reviewPageCount}</span>
+          <button
+            type="button"
+            onClick={() => setReviewPage((page) => Math.min(reviewPageCount, page + 1))}
+            disabled={safeReviewPage === reviewPageCount}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Suivant
+            <ChevronRight size={16} />
+          </button>
         </div>
       )}
 

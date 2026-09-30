@@ -48,7 +48,8 @@ export default function AvisRefusesPage() {
       const response = await api.getRejectedReviews();
       
       // Transform API response to match RejectedReview interface
-      const formattedReviews: RejectedReview[] = (response.reviews || response || []).map((review: any) => ({
+      const reviewRows = Array.isArray(response) ? response : Array.isArray(response?.reviews) ? response.reviews : [];
+      const formattedReviews: RejectedReview[] = reviewRows.map((review: any) => ({
         id: review.id,
         clientName: review.client 
           ? `${review.client.firstName || ''} ${review.client.lastName || ''}`.trim() 

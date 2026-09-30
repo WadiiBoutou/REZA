@@ -2,6 +2,8 @@
  * API Client for RezaPro Backend
  * Handles all API communication with the backend
  */
+import { demoApiRequest } from './demo-api';
+import { isDemoMode } from './demo-mode';
 
 // Ensure API_BASE_URL always ends with /api
 const getApiBaseUrl = () => {
@@ -166,6 +168,10 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    if (isDemoMode()) {
+      return demoApiRequest<T>(endpoint, options);
+    }
+
     // Always refresh token from localStorage on each request to ensure it's up to date
     if (typeof window !== 'undefined') {
       const storedToken = localStorage.getItem('token');

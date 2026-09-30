@@ -113,6 +113,11 @@ type ApiInvoice = {
   } | null;
 };
 
+const toFiniteNumber = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 type CatalogService = {
   id: string;
   name: string;
@@ -304,14 +309,15 @@ function CaissePageContent({
     };
 
     let type: Transaction['type'] = 'Vente';
-    let amount = invoice.total;
+    const invoiceTotal = toFiniteNumber(invoice.total ?? invoice.amount);
+    let amount = invoiceTotal;
     
     if (invoice.status === 'REFUNDED') {
       type = 'Remboursement';
-      amount = -invoice.total;
+      amount = -invoiceTotal;
     } else if (invoice.status === 'PAID') {
       type = 'Vente';
-      amount = invoice.total;
+      amount = invoiceTotal;
     }
 
     let clientName: string | undefined;
@@ -391,8 +397,8 @@ function CaissePageContent({
         const participant = item.participantName || groupParticipantName || undefined;
         return {
           serviceName: item.serviceName,
-          price: item.price,
-          quantity: item.quantity,
+          price: toFiniteNumber(item.price),
+          quantity: toFiniteNumber(item.quantity),
           employeeName: itemEmployee,
           participantName: participant,
         };
@@ -633,8 +639,9 @@ function CaissePageContent({
               ct.type === 'DEPOSIT' ? 'Dépôt' :
               ct.type === 'REFUND' ? 'Remboursement' :
               'Retrait';
+            const rawAmount = toFiniteNumber(ct.amount);
             const signedAmount =
-              ct.type === 'DEPOSIT' ? ct.amount : -Math.abs(ct.amount);
+              ct.type === 'DEPOSIT' ? rawAmount : -Math.abs(rawAmount);
 
             return {
               id: ct.id,
@@ -1132,6 +1139,7 @@ function CaissePageContent({
             <tbody className="divide-y divide-gray-100">
               {filteredTransactions.length > 0 ? (
                 filteredTransactions.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map(tx => {
+                  const transactionAmount = toFiniteNumber(tx.amount);
                    // Only multi-line transactions (multi-service, or a combined
                    // group invoice with several participant rows) expand — a
                    // single-service invoice, incl. a separately billed group
@@ -1196,8 +1204,8 @@ function CaissePageContent({
                       {tx.client || <span className="text-gray-400">-</span>}
                     </td>
                     <td className="px-6 py-4 text-xs text-gray-400">{tx.date.toLocaleString('fr-FR')}</td>
-                    <td className={`px-6 py-4 text-right font-light text-lg ${tx.amount < 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                      {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)} MAD
+                    <td className={`px-6 py-4 text-right font-light text-lg ${transactionAmount < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                      {transactionAmount > 0 ? '+' : ''}{transactionAmount.toFixed(2)} MAD
                     </td>
                   </tr>
                   {isExpanded && canExpand && (
@@ -1224,7 +1232,7 @@ function CaissePageContent({
                                     )}
                                   </td>
                                   <td className="px-4 py-2 text-sm text-gray-500">{item.employeeName || '-'}</td>
-                                  <td className="px-4 py-2 text-sm text-gray-600 text-right">{item.price.toFixed(2)} MAD</td>
+                                  <td className="px-4 py-2 text-sm text-gray-600 text-right">{toFiniteNumber(item.price).toFixed(2)} MAD</td>
                                 </tr>
                               ))}
                             </tbody>

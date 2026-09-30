@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
+import { isDemoMode } from '@/lib/demo-mode';
 import { getRealtimeSocket, disconnectRealtime } from '@/lib/realtime';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ProfileModal from '@/components/ProfileModal';
@@ -397,7 +398,7 @@ export default function Sidebar() {
 						<h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
 							<img src="/logos/logo-blue.svg" alt="Logo" className="w-6 h-6 ml-2" />
 
-							Reza Pro
+							{mounted && isDemoMode() ? 'Reza Demo' : 'Reza Pro'}
 						</h1>
 						{/* <button className="p-2 rounded-md hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-300 transition-all" aria-label="Collapse sidebar">
 							<LayoutPanelLeft size={22} className="text-gray-400" />

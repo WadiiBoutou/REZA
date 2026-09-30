@@ -42,7 +42,8 @@ export default function AvisModeresPage() {
       const response = await api.getApprovedReviews();
 
       // Transform API response to match Review interface
-      const formattedReviews: Review[] = (response.reviews || response || []).map((review: any) => ({
+      const reviewRows = Array.isArray(response) ? response : Array.isArray(response?.reviews) ? response.reviews : [];
+      const formattedReviews: Review[] = reviewRows.map((review: any) => ({
         id: review.id,
         clientName: review.client
           ? `${review.client.firstName || ''} ${review.client.lastName || ''}`.trim()

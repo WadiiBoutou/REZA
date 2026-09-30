@@ -3,8 +3,7 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import Hero from "../components/Hero";
 import PlatformDescription from "../components/PlatformDescription";
-import RecommendedSection from "../components/RecommendedSection";
-import NewSalonsSection from "../components/NewSalonsSection";
+import SalonSections from "../components/SalonSections";
 import About from "../components/About";
 import AppDownloadSection from "../components/AppDownloadSection";
 import ProCTASection from "../components/ProCTASection";
@@ -18,8 +17,7 @@ export default function Home() {
     <div className="flex min-h-screen flex-col bg-white font-sans overflow-x-hidden">
       <Header />
       <Hero />
-      <RecommendedSection />
-      <NewSalonsSection />
+      <SalonSections />
       <PlatformDescription />
       <About />
       <AppDownloadSection />

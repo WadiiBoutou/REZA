@@ -307,6 +307,7 @@ export default function AccountDashboard() {
           // Extract professional/employee name - check multiple sources
           // Priority 1: professional field (already formatted) - PRESERVE IT
           let professional = apt.professional;
+          let professionalAvatar: string | null = null;
           
           // Priority 2: Try employee object
           if (!professional && apt.employee) {
@@ -320,6 +321,10 @@ export default function AccountDashboard() {
                 professional = fullName;
               }
             }
+          }
+          // Extract employee avatar
+          if (apt.employee && typeof apt.employee === 'object' && apt.employee.avatar) {
+            professionalAvatar = apt.employee.avatar;
           }
           
           // Extract price - check multiple sources in order of priority
@@ -394,6 +399,7 @@ export default function AccountDashboard() {
             ...apt,
             // CRITICAL: Preserve professional field - it's already in the data!
             professional: professional || apt.professional || undefined,
+            professionalAvatar: professionalAvatar || apt.employee?.avatar || null,
             price: price !== undefined && price !== null ? Number(price) : (apt.price || 0),
             totalPrice: totalPrice !== undefined && totalPrice !== null ? Number(totalPrice) : (price || apt.price || 0)
           };
@@ -683,6 +689,7 @@ export default function AccountDashboard() {
           ...apt,
           // CRITICAL: Preserve professional field - it's already in the data!
           professional: professional || apt.professional || undefined,
+          professionalAvatar: (apt.employee && typeof apt.employee === 'object' ? apt.employee.avatar : null) || null,
           price: price !== undefined && price !== null ? Number(price) : (apt.price || 0),
           totalPrice: totalPrice !== undefined && totalPrice !== null ? Number(totalPrice) : (price || apt.price || 0)
         };

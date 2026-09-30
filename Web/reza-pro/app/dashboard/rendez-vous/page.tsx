@@ -466,8 +466,23 @@ const PAYMENT_METHOD_LABELS: Record<FinalizePaymentMethod, string> = {
 const API_PAYMENT_KEY: Record<string, FinalizePaymentMethod> = {
   'Espèces': 'CASH',
   'Carte': 'CARD',
+  'Carte bancaire': 'CARD',
   'Virement': 'BANK_TRANSFER',
   'Chèque': 'CHECK',
+};
+
+const getPaymentMethodOptions = (methods: string[]) => {
+  const orderedMethods = [...methods].sort((left, right) =>
+    Number(!API_PAYMENT_KEY[left]) - Number(!API_PAYMENT_KEY[right])
+  );
+  const seenValues = new Set<FinalizePaymentMethod>();
+
+  return orderedMethods.flatMap((method) => {
+    const value = API_PAYMENT_KEY[method] || 'CASH';
+    if (seenValues.has(value)) return [];
+    seenValues.add(value);
+    return [{ method, value }];
+  });
 };
 
 // Extract unique employee display info from appointment (per-service or top-level)
@@ -1674,7 +1689,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                                 setNewRdvInitialTime(time);
                                 setShowNewRDV(true);
                               }}
-                              className="absolute right-1.5 top-1.5 w-5 h-5 rounded-md bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 flex items-center justify-center opacity-0 group-hover/strip:opacity-100 transition-all z-10"
+                              className={`absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-md bg-gray-100 text-gray-400 transition-all hover:bg-gray-200 hover:text-gray-600 ${hoveredBookingId ? 'pointer-events-none opacity-0' : 'opacity-0 group-hover/strip:opacity-100'}`}
                             >
                               <Plus size={12} />
                             </button>
@@ -1762,7 +1777,7 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                           setNewRdvInitialTime(time);
                           setShowNewRDV(true);
                         }}
-                        className="absolute right-2 top-1.5 w-6 h-6 rounded-md bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600 flex items-center justify-center opacity-0 group-hover/strip:opacity-100 transition-all z-10"
+                        className={`absolute right-2 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-md bg-gray-100 text-gray-400 transition-all hover:bg-gray-200 hover:text-gray-600 ${hoveredBookingId ? 'pointer-events-none opacity-0' : 'opacity-0 group-hover/strip:opacity-100'}`}
                       >
                         <Plus size={14} />
                       </button>
@@ -2193,8 +2208,8 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                   <SelectValue placeholder="Mode de paiement" />
                 </SelectTrigger>
                 <SelectContent>
-                  {acceptedPaymentMethods.map((method) => (
-                    <SelectItem key={method} value={API_PAYMENT_KEY[method] || 'CASH'}>
+                  {getPaymentMethodOptions(acceptedPaymentMethods).map(({ method, value }) => (
+                    <SelectItem key={value} value={value}>
                       {method}
                     </SelectItem>
                   ))}
@@ -2335,8 +2350,8 @@ const RendezVousPage = () => {	const { isAuthenticated, salonFilter, effectiveSa
                     <SelectValue placeholder="Mode de paiement" />
                   </SelectTrigger>
                   <SelectContent>
-                    {acceptedPaymentMethods.map((method) => (
-                      <SelectItem key={method} value={API_PAYMENT_KEY[method] || 'CASH'}>
+                    {getPaymentMethodOptions(acceptedPaymentMethods).map(({ method, value }) => (
+                      <SelectItem key={value} value={value}>
                         {method}
                       </SelectItem>
                     ))}

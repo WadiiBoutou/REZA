@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { User, Calendar, Users, Lock, Settings, LogOut, Phone, Mail, MapPin, Edit2, Plus, X, Trash2, Check, Clock, Star, ChevronRight, Bell, Shield, CreditCard, Gift, Camera, Award, TrendingUp, Heart, Sparkles, Eye, EyeOff, Key, Smartphone } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getMoroccanPhoneError } from '@/lib/utils';
+import { DEMO_SALON_PHOTOS } from '@/lib/demo-images';
 
 // Import tab components
 import OverviewTab from './OverviewTab';
@@ -172,7 +173,7 @@ const AccountDashboard = () => {
       status: 'confirmed',
       price: 350,
       professional: 'Sarah M.',
-      image: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=400&q=80'
+      image: DEMO_SALON_PHOTOS[0]
     },
     {
       id: 2,
@@ -183,7 +184,7 @@ const AccountDashboard = () => {
       status: 'confirmed',
       price: 500,
       professional: 'Amina K.',
-      image: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=400&q=80'
+      image: DEMO_SALON_PHOTOS[2]
     },
     {
       id: 3,
@@ -194,7 +195,7 @@ const AccountDashboard = () => {
       status: 'completed',
       price: 200,
       professional: 'Karim L.',
-      image: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=400&q=80'
+      image: DEMO_SALON_PHOTOS[1]
     },
     {
       id: 4,
@@ -205,7 +206,7 @@ const AccountDashboard = () => {
       status: 'cancelled',
       price: 150,
       professional: 'Leila B.',
-      image: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&q=80'
+      image: DEMO_SALON_PHOTOS[3]
     }
   ];
 
@@ -221,7 +222,7 @@ const AccountDashboard = () => {
     {
       id: 1,
       salon: 'Salon Élégance',
-      salonImage: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=400&q=80',
+      salonImage: DEMO_SALON_PHOTOS[0],
       salonLocation: 'Casablanca',
       service: 'Coupe & Brushing',
       rating: 5,
@@ -232,7 +233,7 @@ const AccountDashboard = () => {
     {
       id: 2,
       salon: 'Spa Royal',
-      salonImage: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=400&q=80',
+      salonImage: DEMO_SALON_PHOTOS[2],
       salonLocation: 'Casablanca',
       service: 'Massage Relaxant',
       rating: 4,

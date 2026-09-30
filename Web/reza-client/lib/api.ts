@@ -1,3 +1,6 @@
+import { demoApiRequest } from './demo-api';
+import { isDemoMode } from './demo-mode';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/backend-api';
 
 // Human-friendly French messages for common statuses — used when the server
@@ -45,6 +48,10 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
+    if (isDemoMode()) {
+      return demoApiRequest<T>(endpoint, options);
+    }
+
     const url = `${this.baseUrl}${endpoint}`;
 
     const hadToken = !!clientAuthToken;

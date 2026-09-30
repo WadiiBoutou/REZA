@@ -22,6 +22,7 @@ const StatistiquesPage = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState('week');
   const [selectedEmployee, setSelectedEmployee] = useState('all');
+  const [employees, setEmployees] = useState<Array<{ id: string; name: string }>>([]);
   const [timeRange, setTimeRange] = useState('all');
   const [draggedCell, setDraggedCell] = useState<{day: string, time: string} | null>(null);
 
@@ -42,6 +43,21 @@ const StatistiquesPage = () => {
     fetchStats();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDate, selectedEmployee]);
+
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        const response = await api.getEmployees({ active: true });
+        setEmployees((response.employees || []).map((employee: any) => ({
+        id: employee.id,
+        name: `${employee.firstName || ''} ${employee.lastName || ''}`.trim(),
+        })).filter((employee: { id: string; name: string }) => employee.name));
+      } catch {
+        setEmployees([]);
+      }
+    };
+    fetchEmployees();
+  }, []);
 
   const fetchStats = async () => {
     try {
@@ -209,10 +225,9 @@ const StatistiquesPage = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tous les employ&eacute;s</SelectItem>
-                  <SelectItem value="yassine">Yassine El Fassi</SelectItem>
-                  <SelectItem value="samira">Samira Bouzid</SelectItem>
-                  <SelectItem value="khalid">Khalid Ait Lahcen</SelectItem>
-                  <SelectItem value="nadia">Nadia El Khatib</SelectItem>
+                  {employees.map((employee) => (
+                    <SelectItem key={employee.id} value={employee.id}>{employee.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

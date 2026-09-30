@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import api, { setClientAuthToken, setOnClientUnauthorized } from '../lib/api';
+import { isDemoMode, DEMO_CLIENT } from '../lib/demo-mode';
 
 interface User {
   email: string;
@@ -48,6 +49,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(JSON.parse(storedUser));
         setIsAuthenticated(true);
         setClientAuthToken(storedToken);
+      } else if (isDemoMode()) {
+        const demoUser: User = {
+          email: DEMO_CLIENT.email,
+          name: 'Nour Benali',
+          firstName: 'Nour',
+          lastName: 'Benali',
+          phone: '+212 6 12 34 56 78',
+          gender: 'FEMALE',
+        };
+        localStorage.setItem('user', JSON.stringify(demoUser));
+        localStorage.setItem('auth_token', 'reza-client-demo-session');
+        setUser(demoUser);
+        setIsAuthenticated(true);
+        setClientAuthToken('reza-client-demo-session');
       } else if (storedUser) {
         // Profile without a session token (pre-auth-fix install) — force re-login.
         clearAll();

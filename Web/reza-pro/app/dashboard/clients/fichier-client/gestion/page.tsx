@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Pencil, Trash2, Search, X, Phone, Mail, User as UserIcon, MapPin, Calendar, Loader2, Camera, Venus, Mars } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, X, Phone, Mail, User as UserIcon, MapPin, Calendar, Loader2, Camera, Venus, Mars, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -15,6 +15,7 @@ import { getMoroccanPhoneError, normalizeMoroccanPhone, getImageUrl } from '@/li
 const AVATAR_MAX_SIZE = 5 * 1024 * 1024; // 5 Mo
 const AVATAR_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
 const AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const CLIENTS_PER_PAGE = 12;
 
 
 // Backend client structure
@@ -134,6 +135,7 @@ export default function ClientsGestionPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Inactive'>('all');
   const [showInvites, setShowInvites] = useState(true); // ON = invités are included in the list
+  const [clientPage, setClientPage] = useState(1);
   const [editingAppointment, setEditingAppointment] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
@@ -506,6 +508,17 @@ export default function ClientsGestionPage() {
     return matchesSearch && matchesStatus && matchesInvite;
   });
 
+  useEffect(() => {
+    setClientPage(1);
+  }, [searchTerm, statusFilter, showInvites]);
+
+  const clientPageCount = Math.max(1, Math.ceil(filteredClients.length / CLIENTS_PER_PAGE));
+  const safeClientPage = Math.min(clientPage, clientPageCount);
+  const pagedClients = filteredClients.slice(
+    (safeClientPage - 1) * CLIENTS_PER_PAGE,
+    safeClientPage * CLIENTS_PER_PAGE
+  );
+
   if (loading && clients.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -648,7 +661,7 @@ export default function ClientsGestionPage() {
       {/* Grid View */}
       {viewMode === 'grid' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fadeIn">
-          {filteredClients.map((client) => (
+          {pagedClients.map((client) => (
             <div
               key={client.id}
               className="bg-white rounded-lg border border-gray-100 p-6 hover:shadow-lg hover:border-gray-200 transition-all group"
@@ -753,7 +766,7 @@ export default function ClientsGestionPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredClients.map((client) => (
+                {pagedClients.map((client) => (
                   <tr key={client.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-3 min-w-[160px]">
@@ -844,6 +857,30 @@ export default function ClientsGestionPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {!loading && filteredClients.length > CLIENTS_PER_PAGE && (
+        <div className="flex items-center justify-between mt-6 border-t border-gray-100 pt-4">
+          <button
+            type="button"
+            onClick={() => setClientPage((page) => Math.max(1, page - 1))}
+            disabled={safeClientPage === 1}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft size={16} />
+            Précédent
+          </button>
+          <span className="text-sm text-gray-500">Page {safeClientPage} sur {clientPageCount}</span>
+          <button
+            type="button"
+            onClick={() => setClientPage((page) => Math.min(clientPageCount, page + 1))}
+            disabled={safeClientPage === clientPageCount}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Suivant
+            <ChevronRight size={16} />
+          </button>
         </div>
       )}
 

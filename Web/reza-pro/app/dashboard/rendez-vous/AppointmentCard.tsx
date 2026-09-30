@@ -139,6 +139,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
   const serviceVisible = visibleFields.some(f => f.id === 'services');
   const notesVisible = visibleFields.some(f => f.id === 'notes');
   const multiService = card.serviceCount > 1;
+  const ownsBookingActions = !multiService || card.serviceIndex === 0;
 
   return (
     <div
@@ -169,7 +170,7 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
             </div>
           )}
           <div className="flex items-center gap-1 shrink-0">
-            {!isCompact && canConfirmStatus(apt.status) && onStatusUpdate && (
+            {ownsBookingActions && !isCompact && canConfirmStatus(apt.status) && onStatusUpdate && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -181,23 +182,25 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
                 Confirmer
               </button>
             )}
-            <Popover open={showMenu} onOpenChange={setShowMenu}>
-              <PopoverTrigger asChild>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowMenu(true);
-                  }}
-                  className="p-1 opacity-40 hover:opacity-100 transition-opacity"
+            {ownsBookingActions && (
+              <Popover open={showMenu} onOpenChange={setShowMenu}>
+                <PopoverTrigger asChild>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowMenu(true);
+                    }}
+                    aria-label="Actions du rendez-vous"
+                    className="relative z-20 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white/80 text-gray-600 opacity-80 shadow-sm transition-opacity hover:bg-white hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gray-500"
+                  >
+                    <MoreVertical size={isCompact ? 12 : 14} />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-48 p-1"
+                  align="end"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <MoreVertical size={isCompact ? 12 : 14} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent 
-                className="w-48 p-1" 
-                align="end"
-                onClick={(e) => e.stopPropagation()}
-              >
                 {canConfirmStatus(apt.status) && onStatusUpdate && (
                   <button
                     onClick={(e) => {
@@ -249,8 +252,9 @@ const AppointmentCard: React.FC<AppointmentCardProps> = ({
                 >
                   Détails
                 </button>
-              </PopoverContent>
-            </Popover>
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
         </div>
 

@@ -5,6 +5,7 @@ import { MapPin, Star, ArrowLeft, Heart, Share2, Gift, Phone, Mail, X, ChevronLe
 import RezaNavbar from '../../../components/Header';
 import Footer from '../../../components/Footer';
 import BookingModal, { type BookingData } from '../BookingModal';
+import { DEMO_SALON_PHOTOS } from '@/lib/demo-images';
 
 export default function SalonDetail() {
   const [isLiked, setIsLiked] = useState(false);
@@ -52,13 +53,7 @@ export default function SalonDetail() {
     phone: '+212 5 22 98 76 54',
     email: 'contact@salonelegance.ma',
     description: 'Un espace de beauté et de bien-être où le luxe rencontre la simplicité. Notre équipe de professionnels passionnés vous accueille dans un cadre élégant et apaisant pour une expérience beauté exceptionnelle.',
-    images: [
-      'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&q=80',
-      'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?w=800&q=80',
-      'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&q=80',
-      'https://images.unsplash.com/photo-1562322140-8baeececf3df?w=800&q=80',
-      'https://images.unsplash.com/photo-1633681926022-84c23e8cb2d6?w=800&q=80'
-    ],
+    images: DEMO_SALON_PHOTOS,
     hours: {
       'Lundi': '9h - 19h',
       'Mardi': '9h - 19h',

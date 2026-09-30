@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
-import { Eye, EyeOff, Mail, ArrowLeft, Camera, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Mail, ArrowLeft, Camera, Loader2, Sparkles } from 'lucide-react';
 import CurvySlideButton from '@/components/ui/CurvySlideButton';
 import { Checkbox } from '@/components/ui/checkbox';
 import LoadingOverlay from '@/components/ui/LoadingOverlay';
@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { getMoroccanPhoneError, normalizeMoroccanPhone } from '@/lib/utils';
+import { DEMO_ADMIN, enableDemoMode } from '@/lib/demo-mode';
 
 // Animated Text Component
 const AnimatedText = ({ className = "" }: { className?: string }) => {
@@ -145,6 +146,19 @@ function LoginPageContent() {
       return redirect;
     }
     return '/dashboard/rendez-vous';
+  };
+
+  const handleDemoLogin = async () => {
+    enableDemoMode();
+    setError('');
+    setLoading(true);
+    const result = await login(DEMO_ADMIN.email, DEMO_ADMIN.password);
+    if (result.success) {
+      router.push('/dashboard/rendez-vous');
+    } else {
+      setError(result.error || 'Impossible de démarrer la démo.');
+      setLoading(false);
+    }
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -953,6 +967,20 @@ function LoginPageContent() {
                     }}
                   />
                 </div>
+                {mode === 'login' && (
+                  <div className="space-y-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleDemoLogin}
+                      disabled={loading}
+                      className="flex w-full items-center justify-center gap-2 rounded-full bg-[#bd9a52] px-5 py-3.5 text-sm font-extrabold uppercase tracking-wider text-[#201c10] shadow-lg shadow-[#bd9a52]/40 transition-all hover:bg-[#cba75c] hover:shadow-xl active:scale-[0.99] disabled:opacity-60"
+                    >
+                      <Sparkles size={18} aria-hidden="true" />
+                      Try démo account / Essayer compte démo
+                    </button>
+                    <p className="text-center text-xs font-semibold text-[#8b7340]">Mode démo · serveur actuellement indisponible</p>
+                  </div>
+                )}
               </form>
             )}
 

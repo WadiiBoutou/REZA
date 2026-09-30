@@ -143,17 +143,17 @@ const GestionPrestations = () => {
       name: apiService.name,
       abbreviation: apiService.abbreviation || '',
       description: apiService.description || '',
-      color: apiService.color,
+      color: apiService.color || '#537f78',
       price: apiService.price || 0,
-      priceType: apiService.priceType.toLowerCase() as 'fixed' | 'from' | 'range',
+      priceType: (apiService.priceType || 'FIXED').toLowerCase() as 'fixed' | 'from' | 'range',
       priceFrom: apiService.priceFrom || undefined,
       priceTo: apiService.priceTo || undefined,
-      onQuote: apiService.onQuote,
-      duration: apiService.duration,
+      onQuote: apiService.onQuote ?? false,
+      duration: apiService.duration || 30,
       category: apiService.category || '',
-      visibility: apiService.visibility.toLowerCase() as 'bookable' | 'visible' | 'hidden',
+      visibility: (apiService.visibility || 'BOOKABLE').toLowerCase() as 'bookable' | 'visible' | 'hidden',
       competences: apiService.competences || [],
-      multipleProviders: apiService.multipleProviders,
+      multipleProviders: apiService.multipleProviders ?? false,
       employeeIds: apiService.employeeServices?.map(es => es.employee.id) || []
     };
   };

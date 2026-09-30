@@ -155,22 +155,7 @@ const RezaNavbar = () => {
               </div>
             </a>
 
-            {/* Desktop Navigation */}
-            <nav className="hidden lg:flex items-center gap-2">
-              {navItems.map((item) => (
-                <a
-                  key={item.name}
-                  href={item.path}
-                  className={`px-4 py-2 text-sm font-medium rounded-full transition-all duration-200 ${
-                    isScrolled
-                      ? 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-                      : 'text-gray-800 hover:text-gray-900 hover:bg-black/5'
-                  }`}
-                >
-                  {item.name}
-                </a>
-              ))}
-            </nav>
+            {/* Desktop Navigation — hidden */}
 
             {/* Right Side Actions */}
             <div className="flex items-center gap-4">
@@ -431,9 +416,9 @@ const RezaNavbar = () => {
             }}
           >
             <div className="flex flex-col h-full p-8 pt-24">
-              {/* Navigation Items */}
+              {/* Navigation Items — category links hidden in demo */}
               <div className="flex-1 space-y-2">
-                {navItems.map((item, idx) => (
+                {/* {navItems.map((item, idx) => (
                   <a
                     key={idx}
                     href={item.path}
@@ -442,7 +427,7 @@ const RezaNavbar = () => {
                   >
                     {item.name}
                   </a>
-                ))}
+                ))} */}
 
                 {/* Pro Link */}
                 <a

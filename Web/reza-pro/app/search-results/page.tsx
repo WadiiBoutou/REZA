@@ -6,12 +6,13 @@ import ModalFilters from '../../components/ModalFilters';
 import RezaNavbar from '../../components/Header';
 import Footer from '../../components/Footer';
 import { useRouter } from 'next/navigation';
+import { DEMO_SALON_PHOTOS } from '@/lib/demo-images';
 
 const mockResults = [
 	{
 		id: 1,
 		name: 'Salon Élégance',
-		image: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=800&q=80',
+		image: DEMO_SALON_PHOTOS[0],
 		rating: 4.8,
 		reviews: 156,
 		category: 'Coiffeur',
@@ -24,7 +25,7 @@ const mockResults = [
 	{
 		id: 2,
 		name: 'Barber Studio',
-		image: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=800&q=80',
+		image: DEMO_SALON_PHOTOS[1],
 		rating: 4.9,
 		reviews: 203,
 		category: 'Barbier',
@@ -37,7 +38,7 @@ const mockResults = [
 	{
 		id: 3,
 		name: 'Spa Royal Casablanca',
-		image: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=800&q=80',
+		image: DEMO_SALON_PHOTOS[2],
 		rating: 4.7,
 		reviews: 98,
 		category: 'Spa',
@@ -51,7 +52,7 @@ const mockResults = [
 		id: 4,
 		name: 'Beauty Center Chic',
 		// updated image URL (new photo)
-		image: 'https://images.unsplash.com/photo-1607746882042-944635dfe10e?w=800&q=80',
+		image: DEMO_SALON_PHOTOS[3],
 		rating: 4.6,
 		reviews: 124,
 		category: 'Centre de beauté',

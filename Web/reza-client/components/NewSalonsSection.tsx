@@ -7,7 +7,12 @@ import SalonCarousel from './SalonCarousel';
 import { useClientLocation } from '../hooks/useClientLocation';
 import { CAROUSEL_SIZE } from '../lib/recommendation';
 
-export default function NewSalonsSection() {
+interface NewSalonsSectionProps {
+  /** IDs already shown in another carousel — these will be excluded. */
+  excludeIds?: Set<string>;
+}
+
+export default function NewSalonsSection({ excludeIds }: NewSalonsSectionProps) {
   const [catalog, setCatalog] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { location } = useClientLocation();
@@ -32,18 +37,30 @@ export default function NewSalonsSection() {
     };
   }, []);
 
-  // "Nouveaux sur Reza" is explicitly NOT recommendation-scored — newest first.
-  const newest = useMemo(
-    () =>
-      [...catalog]
-        .sort((a: any, b: any) => {
-          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return tb - ta;
-        })
-        .slice(0, CAROUSEL_SIZE),
-    [catalog]
-  );
+  // "Nouveaux sur Reza" — newest first, excluding salons already in Recommandés.
+  // Always guarantee at least 2 cards by falling back to the last-added salons
+  // from the catalog (bottom of the list = most recently registered).
+  const newest = useMemo(() => {
+    if (catalog.length === 0) return [];
+
+    // Sort by createdAt desc (salons without a date stay at the end)
+    const sorted = [...catalog].sort((a: any, b: any) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta;
+    });
+
+    const filtered = sorted.filter((s: any) => !excludeIds?.has(s.id));
+
+    if (filtered.length >= 2) return filtered.slice(0, CAROUSEL_SIZE);
+
+    // Not enough unique salons — fill with the tail of the full sorted list
+    // (the most recently added ones that Recommandés ranked lowest).
+    const tail = [...catalog].reverse().filter(
+      (s: any) => !filtered.some((f: any) => f.id === s.id)
+    );
+    return [...filtered, ...tail].slice(0, 2);
+  }, [catalog, excludeIds]);
 
   return (
     <SalonCarousel
