@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { AnimatePresence, motion } from 'framer-motion';
-import { DEMO_CLIENT, enableDemoMode } from '@/lib/demo-mode';
+import { DEMO_CLIENT, enableDemoMode, isDemoMode } from '@/lib/demo-mode';
 
 // Animated Text Component
 const AnimatedText = ({ className = "" }: { className?: string }) => {
@@ -111,6 +111,13 @@ function LoginPageContent() {
   const { login, isAuthenticated, logout } = useAuth();
   const router = useRouter();
 
+
+  // In demo mode, skip the login page entirely — redirect straight to the account.
+  useEffect(() => {
+    if (isDemoMode()) {
+      router.replace('/account');
+    }
+  }, []);
 
   const handleDemoLogin = async () => {
     enableDemoMode();

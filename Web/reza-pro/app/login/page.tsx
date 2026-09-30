@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { getMoroccanPhoneError, normalizeMoroccanPhone } from '@/lib/utils';
-import { DEMO_ADMIN, enableDemoMode } from '@/lib/demo-mode';
+import { DEMO_ADMIN, enableDemoMode, isDemoMode } from '@/lib/demo-mode';
 
 // Animated Text Component
 const AnimatedText = ({ className = "" }: { className?: string }) => {
@@ -147,6 +147,13 @@ function LoginPageContent() {
     }
     return '/dashboard/rendez-vous';
   };
+
+  // In demo mode, skip the login page entirely — redirect straight to the dashboard.
+  useEffect(() => {
+    if (isDemoMode()) {
+      router.replace('/dashboard/rendez-vous');
+    }
+  }, []);
 
   const handleDemoLogin = async () => {
     enableDemoMode();
