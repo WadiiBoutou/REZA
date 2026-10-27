@@ -9,8 +9,8 @@ import '../services/service_catalog_service.dart';
 
 class CaisseViewModel extends ChangeNotifier {
   int selectedPeriod = 0;
-  final periods = const ['Aujourd\'hui', 'Cette semaine', 'Ce mois'];
-  List<Map<String, dynamic>> transactions = [];
+  final periods = const ['Aujourd\'hui', 'Cette semaine', 'Ce mois', 'Tous'];
+  List<Map<String, dynamic>> _allTransactions = [];
   List<Map<String, dynamic>> clients = [];
   List<Map<String, dynamic>> catalogServices = [];
   List<Map<String, dynamic>> employees = [];
@@ -21,6 +21,10 @@ class CaisseViewModel extends ChangeNotifier {
   /// so a slow/overlapping response can't clobber newer data (intermittent
   /// “aucune transaction” until a manual refresh).
   int _loadSeq = 0;
+
+  static const int pageSize = 8;
+  int currentPage = 1;
+  String searchQuery = '';
 
   static const paymentMethodLabels = <String, String>{
     'CASH': 'Espèces',
@@ -72,9 +76,9 @@ class CaisseViewModel extends ChangeNotifier {
     return DateTime(now.year, now.month, 1);
   }
 
-  /// Date range sent to the backend — the backend does the filtering now, so
-  /// both platforms always see the same set of transactions.
+  /// Date range sent to the backend. "Tous" sends no bounds.
   (String?, String?) _periodRange() {
+    if (selectedPeriod == 3) return (null, null);
     final start = _periodStart();
     final now = DateTime.now();
     return (start.toUtc().toIso8601String(), now.toUtc().toIso8601String());
@@ -86,8 +90,104 @@ class CaisseViewModel extends ChangeNotifier {
         0.0;
   }
 
-  Future<void> load() async {
+  List<Map<String, dynamic>> get transactions {
+    final q = searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return _allTransactions;
+    return _allTransactions.where((t) {
+      final haystack = [
+        t['client'],
+        t['service'],
+        t['method'],
+        t['id'],
+      ].map((value) => (value ?? '').toString().toLowerCase()).join(' ');
+      return haystack.contains(q);
+    }).toList();
+  }
+
+  int get totalPages {
+    final count = transactions.length;
+    if (count == 0) return 1;
+    return (count / pageSize).ceil();
+  }
+
+  List<Map<String, dynamic>> get pageTransactions {
+    final all = transactions;
+    if (all.isEmpty) return const [];
+    final start = (currentPage - 1) * pageSize;
+    if (start >= all.length) return const [];
+    final end = start + pageSize > all.length ? all.length : start + pageSize;
+    return all.sublist(start, end);
+  }
+
+  void setSearch(String query) {
+    if (query == searchQuery) return;
+    searchQuery = query;
+    currentPage = 1;
+    notifyListeners();
+  }
+
+  void nextPage() {
+    if (currentPage >= totalPages) return;
+    currentPage++;
+    notifyListeners();
+  }
+
+  void previousPage() {
+    if (currentPage <= 1) return;
+    currentPage--;
+    notifyListeners();
+  }
+
+  void _clampPage() {
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+  }
+
+  Map<String, dynamic> _mapInvoice(Map<String, dynamic> inv) {
+    final created =
+        DateTime.tryParse(inv['createdAt']?.toString() ?? '')?.toLocal();
+    final client = inv['client'] as Map<String, dynamic>?;
+    final appointment = inv['appointment'] as Map<String, dynamic>?;
+    final service = appointment?['service'] as Map<String, dynamic>?;
+    final items = (inv['items'] as List?) ?? [];
+    var serviceLabel = service?['name']?.toString() ?? '';
+    if (serviceLabel.isEmpty && items.isNotEmpty) {
+      serviceLabel = items
+          .map((item) {
+            final it = item as Map;
+            final svc = it['service'] as Map?;
+            return svc?['name']?.toString() ??
+                it['serviceName']?.toString() ??
+                it['description']?.toString() ??
+                '';
+          })
+          .where((name) => name.isNotEmpty)
+          .join(', ');
+    }
+    if (serviceLabel.isEmpty) serviceLabel = 'Facture';
+
+    final clientName = client != null
+        ? '${client['firstName'] ?? ''} ${client['lastName'] ?? ''}'.trim()
+        : 'Client';
+    return {
+      'id': inv['invoiceNumber']?.toString() ?? inv['id']?.toString() ?? '',
+      'client': clientName.isEmpty ? 'Client' : clientName,
+      'service': serviceLabel,
+      'amount': (inv['total'] as num?)?.toDouble() ??
+          (inv['amount'] as num?)?.toDouble() ??
+          0.0,
+      'method': _methodLabel(inv['paymentMethod']?.toString()),
+      'status': _statusUi(inv['status']?.toString()),
+      'time': created != null ? DateFormat('HH:mm').format(created) : '--:--',
+      'employee': '—',
+      '_sortAt': created ?? DateTime.fromMillisecondsSinceEpoch(0),
+    };
+  }
+
+  Future<void> load({bool resetPage = false}) async {
     final seq = ++_loadSeq;
+    if (resetPage) currentPage = 1;
+
     loading = true;
     error = null;
     notifyListeners();
@@ -99,45 +199,14 @@ class CaisseViewModel extends ChangeNotifier {
       );
       // A newer load started while this request was in flight — discard ours.
       if (seq != _loadSeq) return;
-      final mapped = <Map<String, dynamic>>[];
-      for (final inv in raw) {
-        final created =
-            DateTime.tryParse(inv['createdAt']?.toString() ?? '')?.toLocal();
-        final client = inv['client'] as Map<String, dynamic>?;
-        final appointment = inv['appointment'] as Map<String, dynamic>?;
-        final service = appointment?['service'] as Map<String, dynamic>?;
-        final items = (inv['items'] as List?) ?? [];
-        String serviceLabel = service?['name']?.toString() ?? '';
-        if (serviceLabel.isEmpty && items.isNotEmpty) {
-          final names = items
-              .map((i) {
-                final it = i as Map;
-                final svc = it['service'] as Map?;
-                return svc?['name']?.toString() ?? it['description']?.toString() ?? '';
-              })
-              .where((n) => n.isNotEmpty)
-              .join(', ');
-          serviceLabel = names;
-        }
-        if (serviceLabel.isEmpty) serviceLabel = 'Facture';
-
-        final clientName = client != null
-            ? '${client['firstName'] ?? ''} ${client['lastName'] ?? ''}'.trim()
-            : 'Client';
-        mapped.add({
-          'id': inv['invoiceNumber']?.toString() ?? inv['id']?.toString() ?? '',
-          'client': clientName.isEmpty ? 'Client' : clientName,
-          'service': serviceLabel,
-          'amount': (inv['total'] as num?)?.toDouble() ??
-              (inv['amount'] as num?)?.toDouble() ??
-              0.0,
-          'method': _methodLabel(inv['paymentMethod']?.toString()),
-          'status': _statusUi(inv['status']?.toString()),
-          'time': created != null ? DateFormat('HH:mm').format(created) : '--:--',
-          'employee': '—',
+      final mapped = raw.map(_mapInvoice).toList()
+        ..sort((a, b) {
+          final aDate = a['_sortAt'] as DateTime;
+          final bDate = b['_sortAt'] as DateTime;
+          return bDate.compareTo(aDate);
         });
-      }
-      transactions = mapped;
+      _allTransactions = mapped;
+      _clampPage();
       loading = false;
       notifyListeners();
     } on ApiException catch (e) {
@@ -168,7 +237,9 @@ class CaisseViewModel extends ChangeNotifier {
   }
 
   Future<void> setPeriod(int i) async {
+    if (selectedPeriod == i) return;
     selectedPeriod = i;
+    currentPage = 1;
     notifyListeners();
     await load();
   }
@@ -239,6 +310,7 @@ class CaisseViewModel extends ChangeNotifier {
         notes: notes,
         tenantId: tenantId,
       );
+      currentPage = 1;
       await load();
     } finally {
       saleBusy = false;
@@ -264,6 +336,7 @@ class CaisseViewModel extends ChangeNotifier {
         notes: notes,
         tenantId: tenantId,
       );
+      currentPage = 1;
       await load();
     } finally {
       saleBusy = false;
