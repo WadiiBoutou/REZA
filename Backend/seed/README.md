@@ -16,19 +16,18 @@ npm run seed
 
 | Role | Email | Password | App |
 |------|-------|----------|-----|
-| Pro admin (2 salons) | `admin@spa-royal.ma` | `password123` | reza-pro → dashboard + Mes salons |
+| Pro admin (Atelier Noor) | `demo.pro@reza.ma` | `demo1234` | reza-pro |
 | Superadmin | `superadmin@gmail.com` | `123456` | reza-pro → `/superadmin` |
-| B2C client | `client1@gmail.com` | `123456` | reza-client / mobile client |
-| Single-salon admins | `admin@{subdomain}.ma` | `password123` | discovery venues only |
+| B2C client (Nour Benali) | `demo.client@reza.ma` | `demo1234` | reza-client / mobile client |
+| Other salon admins | `admin@{subdomain}.ma` | `password123` | one discovery salon each |
 
 ## Data included
 
-### Spa Royal account (multi-salon)
-- **Spa Royal Casablanca** — 3 clients, 4 services, 4 RDV (incl. 2 same hour), employees Sara + Nadia, paid invoices
-- **Spa Royal 2** (Rabat) — 2 clients, 3 services, 3 RDV
+Mirrors the frontend-only demo on branch `demo`.
 
-### Discovery salons (client search)
-Salon Élégance, Barber Studio, Beauty Center Chic, Nail Bar Chic, Zen Spa. Each has its own account, admin, services, and one public employee.
+- **Atelier Noor** (Casablanca) — pro account. 6 services, 4 employees (Salma, Youssef, Lina, Meryem), 16 clients, 150 appointments from July to October 2026, invoices before 30 Sept 2026, 36 reviews.
+- **Seven discovery salons** — Maison Safran, Studio Sable, Ligne Claire, Dar Glow, Le Petit Fauteuil, Miroir Moderne, Nacre Studio. Each has its own account, a slice of the shared service list, and the same four public employees.
+- **Nour Benali** — 34 appointments spread across all eight salons, favorites (Atelier Noor, Studio Sable, Le Petit Fauteuil), 28 reviews.
 
 ## Structure
 
@@ -39,8 +38,7 @@ seed/
   constants.ts          # passwords, business hours
   superadmin.ts
   subscription-plan.ts  # billing config
-  spa-royal-account.ts  # multi-salon demo
-  discovery-salons.ts   # B2C discovery venues
+  demo-world.ts         # Atelier Noor + discovery salons + Nour Benali
 ```
 
 ## Notes
