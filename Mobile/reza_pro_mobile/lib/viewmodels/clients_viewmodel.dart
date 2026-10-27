@@ -12,17 +12,53 @@ class ClientsViewModel extends ChangeNotifier {
   bool loading = true;
   String? error;
 
+  static const int pageSize = 8;
+  int currentPage = 1;
+
   final sortOptions = const ['Nom', 'Dernière visite', 'Total dépensé', 'Visites'];
+
+  int get totalPages {
+    final count = filteredClients.length;
+    if (count == 0) return 1;
+    return (count / pageSize).ceil();
+  }
+
+  List<Client> get pageClients {
+    final all = filteredClients;
+    if (all.isEmpty) return const [];
+    final start = (currentPage - 1) * pageSize;
+    if (start >= all.length) return const [];
+    final end = start + pageSize > all.length ? all.length : start + pageSize;
+    return all.sublist(start, end);
+  }
+
+  void nextPage() {
+    if (currentPage >= totalPages) return;
+    currentPage++;
+    notifyListeners();
+  }
+
+  void previousPage() {
+    if (currentPage <= 1) return;
+    currentPage--;
+    notifyListeners();
+  }
+
+  void _clampPage() {
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+  }
 
   Future<void> load() async {
     loading = true;
     error = null;
     notifyListeners();
     try {
-      final raw = await clientService.list(limit: 200);
+      final raw = await clientService.listAll();
       var mapped = raw.map(Client.fromJson).toList();
       mapped = await _enrichWithStats(mapped);
       clients = mapped;
+      _clampPage();
       loading = false;
       notifyListeners();
     } on ApiException catch (e) {
@@ -118,18 +154,22 @@ class ClientsViewModel extends ChangeNotifier {
   }
 
   void setSearch(String q) {
+    if (q == searchQuery) return;
     searchQuery = q;
+    currentPage = 1;
     notifyListeners();
   }
 
   void setSort(String s) {
+    if (s == sortBy) return;
     sortBy = s;
+    currentPage = 1;
     notifyListeners();
   }
 
   List<Client> get filteredClients {
     var list = clients.where((c) {
-      final q = searchQuery.toLowerCase();
+      final q = searchQuery.trim().toLowerCase();
       return c.name.toLowerCase().contains(q) ||
           c.email.toLowerCase().contains(q) ||
           c.phone.contains(q);
@@ -168,6 +208,7 @@ class ClientsViewModel extends ChangeNotifier {
     });
     final client = Client.fromJson(raw);
     clients.insert(0, client);
+    currentPage = 1;
     notifyListeners();
     return client;
   }

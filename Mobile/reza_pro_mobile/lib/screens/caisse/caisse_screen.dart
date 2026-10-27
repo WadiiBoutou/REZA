@@ -7,10 +7,25 @@ import '../../services/api_client.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../viewmodels/caisse_viewmodel.dart';
 import '../../widgets/group_billing_sheet.dart';
+import '../../widgets/page_controls.dart';
 import '../../widgets/pro_drawer.dart';
 
-class CaisseScreen extends StatelessWidget {
+class CaisseScreen extends StatefulWidget {
   const CaisseScreen({super.key});
+
+  @override
+  State<CaisseScreen> createState() => _CaisseScreenState();
+}
+
+class _CaisseScreenState extends State<CaisseScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  bool _showActions = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +45,7 @@ class CaisseScreen extends StatelessWidget {
                           style: GoogleFonts.outfit(color: AppColors.cancelled)),
                       const SizedBox(height: 12),
                       ElevatedButton(
-                        onPressed: vm.load,
+                        onPressed: () => vm.load(),
                         style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary),
                         child: Text('Réessayer',
@@ -43,68 +58,172 @@ class CaisseScreen extends StatelessWidget {
                   slivers: [
                     _buildAppBar(context, vm),
                     SliverToBoxAdapter(child: _PeriodSelector(vm: vm)),
+                    SliverToBoxAdapter(child: _buildSearch(vm)),
                     SliverToBoxAdapter(child: _RevenueCard(vm: vm)),
                     SliverToBoxAdapter(child: _PaymentBreakdown(vm: vm)),
                     SliverToBoxAdapter(child: _TransactionsHeader(vm: vm)),
-                    if (vm.transactions.isEmpty)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Center(
-                            child: Text(
-                              'Aucune transaction sur cette période',
-                              style:
-                                  GoogleFonts.outfit(color: AppColors.textGray),
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (ctx, i) =>
-                              _TransactionItem(txn: vm.transactions[i]),
-                          childCount: vm.transactions.length,
-                        ),
+                    SliverToBoxAdapter(
+                      child: PagedSwipe(
+                        page: vm.currentPage,
+                        onPrevious: vm.previousPage,
+                        onNext: vm.nextPage,
+                        child: vm.pageTransactions.isEmpty
+                            ? Padding(
+                                padding: const EdgeInsets.all(32),
+                                child: Center(
+                                  child: Text(
+                                    vm.searchQuery.trim().isEmpty
+                                        ? 'Aucune transaction sur cette période'
+                                        : 'Aucune transaction trouvée',
+                                    style: GoogleFonts.outfit(
+                                      color: AppColors.textGray,
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : Column(
+                                children: [
+                                  for (final txn in vm.pageTransactions)
+                                    _TransactionItem(txn: txn),
+                                ],
+                              ),
                       ),
-                    const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+                    ),
+                    const SliverPadding(padding: EdgeInsets.only(bottom: 88)),
                   ],
                 ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          FloatingActionButton.extended(
-            onPressed: () => _showGroupBillingSheet(context),
-            backgroundColor: const Color(0xFF7C3AED),
-            foregroundColor: Colors.white,
-            heroTag: 'groupBillingFab',
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            icon: const Icon(Icons.group_rounded, size: 20),
-            label: Text(
-              'Facturer un groupe',
-              style:
-                  GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 13),
+      bottomNavigationBar: vm.loading || vm.error != null
+          ? null
+          : PagePager(
+              page: vm.currentPage,
+              totalPages: vm.totalPages,
+              onPrevious: vm.previousPage,
+              onNext: vm.nextPage,
             ),
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton.extended(
-            onPressed: () => _showNewSaleSheet(context),
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            heroTag: 'newSaleFab',
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            icon: const Icon(Icons.add_rounded, size: 22),
-            label: Text(
-              'Nouvelle vente',
-              style:
-                  GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14),
+      floatingActionButton: _buildActionsToggle(),
+    );
+  }
+
+  Widget _buildSearch(CaisseViewModel vm) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Container(
+        height: 46,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: TextField(
+          controller: _searchController,
+          onChanged: vm.setSearch,
+          style: GoogleFonts.outfit(fontSize: 13),
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: 'Client, service, n° facture...',
+            hintStyle: GoogleFonts.outfit(
+              fontSize: 13,
+              color: AppColors.textLight,
             ),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              color: AppColors.textGray,
+              size: 20,
+            ),
+            suffixIcon: _searchController.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Effacer',
+                    onPressed: () {
+                      _searchController.clear();
+                      vm.setSearch('');
+                    },
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: AppColors.textGray,
+                      size: 18,
+                    ),
+                  ),
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 13),
           ),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildActionsToggle() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        IgnorePointer(
+          ignoring: !_showActions,
+          child: AnimatedAlign(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.bottomRight,
+            heightFactor: _showActions ? 1 : 0,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              opacity: _showActions ? 1 : 0,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  FloatingActionButton.extended(
+                    onPressed: () => _showGroupBillingSheet(context),
+                    backgroundColor: const Color(0xFF7C3AED),
+                    foregroundColor: Colors.white,
+                    heroTag: 'groupBillingFab',
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    icon: const Icon(Icons.group_rounded, size: 20),
+                    label: Text(
+                      'Facturer un groupe',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  FloatingActionButton.extended(
+                    onPressed: () => _showNewSaleSheet(context),
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    heroTag: 'newSaleFab',
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    icon: const Icon(Icons.add_rounded, size: 22),
+                    label: Text(
+                      'Nouvelle vente',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ),
+        ),
+        FloatingActionButton.extended(
+          heroTag: 'caisseActionsToggle',
+          onPressed: () => setState(() => _showActions = !_showActions),
+          backgroundColor: _showActions ? AppColors.textDark : AppColors.primary,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          icon: Icon(_showActions ? Icons.close_rounded : Icons.add_rounded, size: 20),
+          label: Text(
+            _showActions ? 'Masquer' : 'Actions',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+        ),
+      ],
     );
   }
 
@@ -148,7 +267,7 @@ class CaisseScreen extends StatelessWidget {
       actions: [
         IconButton(
           icon: const Icon(Icons.refresh_rounded, color: AppColors.textGray),
-          onPressed: vm.load,
+          onPressed: () => vm.load(),
         ),
         Padding(
           padding: const EdgeInsets.only(right: 12),

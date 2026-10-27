@@ -7,6 +7,7 @@ import '../../services/api_client.dart';
 import '../../viewmodels/clients_viewmodel.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../widgets/client_card.dart';
+import '../../widgets/page_controls.dart';
 import '../../widgets/pro_drawer.dart';
 
 class ClientsScreen extends StatefulWidget {
@@ -25,13 +26,20 @@ class _ClientsScreenState extends State<ClientsScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _searchController.addListener(() {
       context.read<ClientsViewModel>().setSearch(_searchController.text);
     });
   }
 
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    setState(() {});
+  }
+
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -94,12 +102,21 @@ class _ClientsScreenState extends State<ClientsScreen>
                   )
                 : TabBarView(
                     controller: _tabController,
+                    physics: const NeverScrollableScrollPhysics(),
                     children: [
                       _buildClientList(vm),
                       _buildClientFiche(vm),
                     ],
                   ),
       ),
+      bottomNavigationBar: _tabController.index == 0 && !vm.loading && vm.error == null
+          ? PagePager(
+              page: vm.currentPage,
+              totalPages: vm.totalPages,
+              onPrevious: vm.previousPage,
+              onNext: vm.nextPage,
+            )
+          : null,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddClientSheet(vm),
         backgroundColor: AppColors.primary,
@@ -140,9 +157,7 @@ class _ClientsScreenState extends State<ClientsScreen>
             ),
           ),
           Text(
-            auth.hasMultipleSalons
-                ? '${auth.salonFilterLabel} · ${vm.clients.length} clients'
-                : '${vm.clients.length} clients enregistrés',
+            _clientsSubtitle(auth, vm),
             style: GoogleFonts.outfit(
               fontSize: 11,
               color: AppColors.textGray,
@@ -288,31 +303,51 @@ class _ClientsScreenState extends State<ClientsScreen>
     );
   }
 
-  Widget _buildClientList(ClientsViewModel vm) {
-    final clients = vm.filteredClients;
-    if (clients.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.person_search_rounded, size: 48, color: AppColors.textLight),
-            const SizedBox(height: 12),
-            Text(
-              'Aucun client trouvé',
-              style: GoogleFonts.outfit(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textGray,
-              ),
-            ),
-          ],
-        ),
-      );
+  String _clientsSubtitle(AuthViewModel auth, ClientsViewModel vm) {
+    final query = vm.searchQuery.trim();
+    if (query.isNotEmpty) {
+      final count = vm.filteredClients.length;
+      final label = count == 1 ? 'résultat' : 'résultats';
+      return '$count $label';
     }
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-      itemCount: clients.length,
-      itemBuilder: (ctx, i) => ClientCard(client: clients[i]),
+    final count = vm.clients.length;
+    if (auth.hasMultipleSalons) {
+      return '${auth.salonFilterLabel} · $count clients';
+    }
+    return '$count clients enregistrés';
+  }
+
+  Widget _buildClientList(ClientsViewModel vm) {
+    final clients = vm.pageClients;
+    final empty = Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.person_search_rounded, size: 48, color: AppColors.textLight),
+          const SizedBox(height: 12),
+          Text(
+            'Aucun client trouvé',
+            style: GoogleFonts.outfit(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textGray,
+            ),
+          ),
+        ],
+      ),
+    );
+    return PagedSwipe(
+      expand: true,
+      page: vm.currentPage,
+      onPrevious: vm.previousPage,
+      onNext: vm.nextPage,
+      child: clients.isEmpty
+          ? empty
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
+              itemCount: clients.length,
+              itemBuilder: (ctx, i) => ClientCard(client: clients[i]),
+            ),
     );
   }
 
