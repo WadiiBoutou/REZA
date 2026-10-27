@@ -329,7 +329,7 @@ async function loadTenantCtx(prismaClient: PrismaClient, tenant: { id: string; n
     }),
     prismaClient.employee.findMany({
       where: { tenantId: tenant.id, isActive: true },
-      select: { id: true, firstName: true, lastName: true, email: true },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true },
     }),
     prismaClient.employeeService.findMany({
       where: { employee: { tenantId: tenant.id } },
@@ -352,6 +352,7 @@ async function loadTenantCtx(prismaClient: PrismaClient, tenant: { id: string; n
           password: hashed,
           firstName: e.firstName,
           lastName: e.lastName,
+          phone: e.phone,
           role: 'STAFF',
           isActive: true,
           avatar: avatarUrlFor(e.firstName, e.lastName, e.email!),

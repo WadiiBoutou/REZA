@@ -293,6 +293,7 @@ async function seedOneSalon(
         avatar: avatarUrlFor(e.firstName, e.lastName, e.email),
         phone: '+212600000099',
         isActive: true,
+        isPublic: true,
         workingHours: EMPLOYEE_WORKING_HOURS,
         agendaSettings: {
           color: e.color,
@@ -332,6 +333,7 @@ export async function seedRezaAccount(prisma: PrismaClient) {
       password: REZA_ADMIN_HASHED_PASSWORD,
       firstName: REZA_ADMIN.firstName,
       lastName: REZA_ADMIN.lastName,
+      phone: '+212522000100',
       role: 'ADMIN',
       tenantId: null,
       isActive: true,

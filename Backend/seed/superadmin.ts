@@ -11,6 +11,7 @@ export async function seedSuperadmin(prisma: PrismaClient) {
       password: hashed,
       firstName: SUPERADMIN.firstName,
       lastName: SUPERADMIN.lastName,
+      phone: '+212600000000',
       role: 'SUPER_ADMIN',
       tenantId: null,
       isActive: true,
