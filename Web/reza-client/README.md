@@ -1,5 +1,22 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## REZA Client Demo
+
+The opt-in portfolio demo uses the existing `lib/api.ts` boundary and an isolated `lib/demo-api.ts` provider. Normal mode continues to call the production API; demo mode needs no backend, database credentials, or external image service.
+
+The browser seed contains eight salons, service and employee catalogs, reviews, and client appointments. Dates cover the current and following calendar month and advance automatically. Bookings, cancellations, favorites, and profile edits are simulated in memory and reset after refresh. Image fields are blank placeholders.
+
+Enable the demo with `NEXT_PUBLIC_DEMO_MODE=true`, visit `/login?demo=true`, or select **Try demo account** from the login page. Set the Vercel project root to `Web/reza-client`; demo mode needs no backend environment variables.
+
+| Account | Email | Password | Demo focus |
+| --- | --- | --- | --- |
+| Customer | `demo.client@reza.ma` | `demo1234` | Discover salons, view services/reviews, book, cancel, manage favorites |
+
+```text
+Customer pages -> lib/api.ts -> live Express API (normal mode)
+						 \-> lib/demo-api.ts (selected demo mode)
+```
+
 ## Getting Started
 
 First, run the development server:

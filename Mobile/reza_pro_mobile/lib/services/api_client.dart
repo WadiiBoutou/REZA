@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
+import '../config/demo_config.dart';
+import 'demo_api_client.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -62,6 +64,11 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> get(String path, {Map<String, String>? query}) async {
+    // Demo mode: intercept and use mock data
+    if (DemoConfig.isDemoMode) {
+      return DemoApiClient.request('GET', path, query: query);
+    }
+    
     final parsed = Uri.parse('$_base$path');
     final uri = (query == null || query.isEmpty)
         ? parsed
@@ -71,6 +78,11 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> post(String path, [Map<String, dynamic>? body]) async {
+    // Demo mode: intercept and use mock data
+    if (DemoConfig.isDemoMode) {
+      return DemoApiClient.request('POST', path, body: body);
+    }
+    
     final res = await _client.post(
       Uri.parse('$_base$path'),
       headers: await _headers(path),
@@ -80,6 +92,11 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body) async {
+    // Demo mode: intercept and use mock data
+    if (DemoConfig.isDemoMode) {
+      return DemoApiClient.request('PUT', path, body: body);
+    }
+    
     final res = await _client.put(
       Uri.parse('$_base$path'),
       headers: await _headers(path),
@@ -89,6 +106,11 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> patch(String path, [Map<String, dynamic>? body]) async {
+    // Demo mode: intercept and use mock data
+    if (DemoConfig.isDemoMode) {
+      return DemoApiClient.request('PATCH', path, body: body);
+    }
+    
     final res = await _client.patch(
       Uri.parse('$_base$path'),
       headers: await _headers(path),
@@ -98,6 +120,11 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> delete(String path, {Map<String, String>? query}) async {
+    // Demo mode: intercept and use mock data
+    if (DemoConfig.isDemoMode) {
+      return DemoApiClient.request('DELETE', path, query: query);
+    }
+    
     final uri = Uri.parse('$_base$path').replace(queryParameters: query);
     final res = await _client.delete(uri, headers: await _headers(path));
     return _decode(res);
