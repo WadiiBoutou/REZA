@@ -974,7 +974,7 @@ function LoginPageContent() {
                     }}
                   />
                 </div>
-                {mode === 'login' && (
+                {mode === 'login' && isDemoMode() && (
                   <div className="space-y-2 pt-1">
                     <button
                       type="button"
