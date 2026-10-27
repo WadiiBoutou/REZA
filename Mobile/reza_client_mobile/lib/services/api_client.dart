@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import '../config/api_config.dart';
+import '../config/demo_config.dart';
+import 'demo_api_client.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -40,6 +42,11 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> get(String path, {Map<String, String>? query}) async {
+    // Demo mode: intercept and use mock data
+    if (DemoConfig.isDemoMode) {
+      return DemoApiClient.request('GET', path, query: query);
+    }
+    
     final parsed = Uri.parse('$_base$path');
     final uri = (query == null || query.isEmpty)
         ? parsed
@@ -53,6 +60,11 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body, {Map<String, String>? query}) async {
+    // Demo mode: intercept and use mock data
+    if (DemoConfig.isDemoMode) {
+      return DemoApiClient.request('POST', path, body: body, query: query);
+    }
+    
     final parsed = Uri.parse('$_base$path');
     final uri = (query == null || query.isEmpty)
         ? parsed
@@ -70,6 +82,11 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> put(String path, Map<String, dynamic> body, {Map<String, String>? query}) async {
+    // Demo mode: intercept and use mock data
+    if (DemoConfig.isDemoMode) {
+      return DemoApiClient.request('PUT', path, body: body, query: query);
+    }
+    
     final parsed = Uri.parse('$_base$path');
     final uri = (query == null || query.isEmpty)
         ? parsed
@@ -87,6 +104,11 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> patch(String path, [Map<String, dynamic>? body]) async {
+    // Demo mode: intercept and use mock data
+    if (DemoConfig.isDemoMode) {
+      return DemoApiClient.request('PATCH', path, body: body);
+    }
+    
     final headers = await _headers();
     final res = await _client.patch(
       Uri.parse('$_base$path'),
@@ -97,6 +119,11 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> delete(String path, {Map<String, String>? query}) async {
+    // Demo mode: intercept and use mock data
+    if (DemoConfig.isDemoMode) {
+      return DemoApiClient.request('DELETE', path, query: query);
+    }
+    
     final uri = Uri.parse('$_base$path').replace(queryParameters: query);
     final headers = await _headers();
     final res = await _client.delete(uri, headers: headers);
@@ -105,6 +132,10 @@ class ApiClient {
 
   /// Multipart file upload (e.g. avatar) — POSTs `file` as the `avatar` field.
   Future<Map<String, dynamic>> uploadAvatar(Uint8List bytes, String filename, String contentType) async {
+    if (DemoConfig.isDemoMode) {
+      return DemoApiClient.request('POST', '/public/auth/upload-avatar');
+    }
+
     final uri = Uri.parse('$_base/public/auth/upload-avatar');
     final req = http.MultipartRequest('POST', uri)
       ..headers['Accept'] = 'application/json'
